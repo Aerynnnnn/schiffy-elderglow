@@ -17,7 +17,7 @@
   const SAVE_KEY = 'schiffy-elderglow.save.v2' + SLOT, OLD_KEY = 'schiffy-elderglow.save.v1' + SLOT;
   // step 6: ?visit=<island id> = someone else's island, read-only (src/social_ui.js): never saved, the visitor walks as Schiffy
   const VISIT = /^[A-Za-z0-9_-]{1,64}$/.test(Q.get('visit') || '') ? Q.get('visit') : null;
-  let soc = null, walker = null, bootSum = null, cloudUI = null, noSaves = false;
+  let soc = null, walker = null, bootSum = null, cloudUI = null, noSaves = false, lan = null, lfx = null;   // Round 2 step 4: lantern notes + World Bloom
   // ---- step 7: ONE backend (src/net.js) for the social side and the cloud save; the cloud check starts NOW (sign-in +
   // fetch run while the map loads) so a newer cloud copy is in place before load() reads the save. Off for visits (never
   // saved), ?nosave=1, ?reset=1 (test sessions) and ?cloud=0. ?mockdb=NAME = a separate pretend server.
@@ -395,7 +395,7 @@
     $('dyClose').onclick = closeDiary; $('diary').addEventListener('click', e => { if (e.target.id === 'diary') closeDiary(); });
     $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
     if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
-    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['crit', 'critter'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
+    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['crit', 'critter'], ['lan', 'lantern'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
     $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem);
       const ch = e.target.closest('[data-crit]'); if (ch) { closeBook(); meetCritter(+ch.dataset.crit, true); }   // a visitor here now: fly there + its card
@@ -418,7 +418,7 @@
       else if (b.dataset.act === 'cancel') { if (Sim.cancel(S, curPlot, nav)) { toast('Blueprint cancelled, materials back in the pile', 2400); save(); } }
       renderPlot(true); refreshBuild(true);
     });
-    $('awayOk').onclick = () => { $('away').hidden = true; if (soc) soc.awayDone(); for (const p of S.pups) delete p.isNew; save(); refreshRoster(true); if (giftPending) { giftPending = false; openGift(); } };
+    $('awayOk').onclick = () => { $('away').hidden = true; if (soc) soc.awayDone(); if (lan) lan.awayDone(); for (const p of S.pups) delete p.isNew; save(); refreshRoster(true); if (giftPending) { giftPending = false; openGift(); } };
     $('awayList').addEventListener('click', e => {
       const hb = e.target.closest('button[data-haul]'); if (hb) { $('awayOk').onclick(); openHaul(+hb.dataset.haul); return; }
       const mb = e.target.closest('button[data-memaway]'); if (mb) { $('awayOk').onclick(); showMemory(+mb.dataset.memaway); return; }
@@ -694,6 +694,8 @@
       h += renderWords(); if (Story.unread(S)) { Story.readAll(S); save(); }
     } else if (bookTab === 'crit') {
       h += renderCritters();
+    } else if (bookTab === 'lan') {   // Round 2 step 4: lanterns received + sent
+      h += lan ? lan.bookHtml() : '<p class="bsub">Lanterns live on your own island.</p>';
     } else {
       const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
       h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>. The wardrobe (dress your pups) comes in a later update.</p><div class="pgrid">`;
@@ -748,6 +750,20 @@
     else snd.sfx('like', { gain: 0.6 });
     save(); if (!$('book').hidden) renderBook();
   }
+  // Round 2 step 4: watch a released lantern rise from the plaza (then home); look at a sky lantern
+  function releaseCam(p) {
+    const TP = nav.TP, ux = p[0] - TP[0], uz = p[2] - TP[2], ul = Math.hypot(ux, uz) || 1, k = W() < H() ? 1.35 : 1;
+    follow = -1; pups.select(-1);
+    flyTo(new THREE.Vector3(p[0] + ux / ul * 75 * k, p[1] + 12, p[2] + uz / ul * 75 * k), new THREE.Vector3(p[0], p[1] + 25, p[2]), 1.4, () => {
+      tween = { e0: camera.position.clone(), t0: controls.target.clone(), e1: camera.position.clone(), t1: new THREE.Vector3(p[0], p[1] + 160, p[2]), t: 0, dur: 10, then: () => setTimeout(() => { if (!tween && follow < 0) flyHome(); }, 1200) };
+    });
+  }
+  function bloomCam() {   // the World Bloom on the horizon: from the island's edge on its side, looking out (the orbit target stays within reach)
+    if (!lfx) return; const b = lfx.bloomPos(), TP = nav.TP, d = new THREE.Vector3(b[0] - TP[0], 0, b[2] - TP[2]).normalize();
+    const eye = new THREE.Vector3(TP[0], TP[1], TP[2]).addScaledVector(d, 170); eye.y = ground(eye.x, eye.z, TP[1]) + 30; const dir = new THREE.Vector3(b[0], b[1] - 25, b[2]).sub(eye).normalize();
+    follow = -1; pups.select(-1); flyTo(eye, eye.clone().addScaledVector(dir, 320), 1.8);
+  }
+  function lookAt(p) { const tgt = new THREE.Vector3(p[0], p[1], p[2]), dir = camera.position.clone().sub(tgt).setY(0).normalize(); follow = -1; flyTo(tgt.clone().add(dir.multiplyScalar(55)).add(new THREE.Vector3(0, -10, 0)), tgt, 1.2); }
   function critCam(id) {
     const p = crFx && crFx.posOf(id); if (!p) return;
     const v = S.crit.vis.find(x => x.id === id), big = crFx.sizeOf(id), tgt = new THREE.Vector3(p[0], p[1], p[2]);
@@ -1258,7 +1274,7 @@
         h += `<li class="np" data-i="${i}"><span class="dot" style="background:${p.collar}"></span><div><input data-i="${i}" maxlength="14" value="${esc(p.name)}" aria-label="Name"><small>${p.parents ? `${IC.paw}a puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')} &middot; ` : ''}${p.breed} &middot; loves ${IC[p.like] || ''}${JOB_NAMES[p.like]} &middot; dislikes ${IC[p.dislike] || ''}${JOB_NAMES[p.dislike]}</small><div class="jobs">${jobBtns(p)}</div></div></li>`;
       }
     }
-    const sh = soc ? soc.awayHtml() : '';   // step 6: visitors, waterings, gifts, likes, guestbook notes
+    const sh = (soc ? soc.awayHtml() : '') + (lan ? lan.awayHtml(sum) : '');   // step 6: visitors, gifts, notes; Round 2 step 4: lanterns + bloom petals
     h += sh;
     if (!h) return;
     $('awayTitle').textContent = sum || (sh && !news.length) ? 'While you were away' : 'Welcome, newcomer!';
@@ -1319,6 +1335,7 @@
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pups) return; down = null;
     const r = renderer.domElement.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
     const fr = nfx && nfx.pickFruit(mx, my, camera, W(), H(), PHONE ? 44 : 32); if (fr) { collectFruit(fr); return; }   // glowing fruit first (events)
+    const lp = lfx && lfx.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34); if (lp && lan) { if (lp === 'bloom') lan.open('bloom'); else lan.openRead(lp, false); return; }   // a sky lantern / the World Bloom
     const cr = crFx && crFx.pick(mx, my, camera, W(), H(), PHONE ? 48 : 38); if (cr !== null && cr !== undefined) { meetCritter(cr, false); return; }   // then a sky critter
     let best = -1, bd = PHONE ? 46 : 36;
     pups.list.forEach((P, i) => {
@@ -1380,6 +1397,7 @@
     // Round 2 step 3: sky critters (the library's elderglow_critters.glb; loads in the background, never blocks the boot)
     crFx = CritterFx(scene, m, nav, ground, { phone: PHONE, scale: () => fx.scale, H: () => renderer.domElement.height });
     crFx.load(LIB + 'elderglow_critters.glb', loader).catch(e => console.warn('critters not loaded:', e));
+    if (!VISIT) lfx = LanternFx(scene, nav, { phone: PHONE, scale: () => fx.scale });   // Round 2 step 4: sky lanterns + the World Bloom on the horizon
     { const g0 = plots.glowPieces; plots.glowPieces = fn => { g0(fn); expFx.glowPieces(fn); nfx.glowPieces(fn); seaFx.glowPieces(fn); }; }   // placed decor + wards + autumn lanterns glow at night too
     buildUI(); buildExpUI(); buildNeedUI();
     let sum = null;
@@ -1414,6 +1432,13 @@
       soc.startVisit();
     } else {
       soc.startHome();
+      // Round 2 step 4: lantern notes + the World Bloom (src/lantern_ui.js; the server side is server/patch_3.sql)
+      lan = LanternUI({ net: NET, get S() { return S; }, save, toast, esc, IC, snd, mode: 'home', lfx, prof: () => soc.prof, openExplore: () => soc.open(), touch: () => { if (cloud) cloud.touch(); },
+        night: () => Sim.dayCurve(Sim.dayH(S)).night > 0.45, refresh: () => { refreshTree(); refreshBuild(true); }, closeOthers: () => { soc.close(); closePlot(); closeExp(); closeEvents(); closeNeed(); },
+        critVisit: v => meetCritter(v.id, true), releaseCam, lookAt, bloomCam, awayOpen: () => !$('away').hidden, showAway: () => showAway(bootSum),
+        floatHeart: () => { const d = nav.door(fx.scale).p; floater([d[0], d[1] + 12, d[2]], IC.heart); },
+        busyUI: () => !$('away').hidden || !$('gift').hidden || !$('mem').hidden || !!boatCam || !!tween, onWords: () => { if (!$('book').hidden && bookTab === 'words') renderBook(); } });
+      lan.start();
       // step 7: cloud save cards + account changes (email code, magic link landing, sign-out)
       cloudUI = CloudUI({ net: NET, cloud: CLOUD_ON ? cloud : null, esc, toast, IC, closeOthers: () => soc.close(), onAccount, signOut: cloudSignOut, reloadClean });
       NET.onAuth && NET.onAuth((ev, id) => { if (ev === 'switched') onAccount(id); else if (cloudUI.safeOpen) cloudUI.openSafe('main'); });
@@ -1463,6 +1488,8 @@
       Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, startWave,
       // Round 2 step 3 (tests): Critters, crFx, meetCritter(id, fly), critCam(id), openCritCard(c, visit, first), closeCritCard,
       // spawnCritter(c, key, min) = put a visitor here NOW (captures only: use ?nosave=1 / a test slot), renderCritters
+      // Round 2 step 4 (tests): Lanterns, lan (LanternUI: sync, open(tab), openRead(id), status, claim), lfx (LanternFx: release, setSky, setBloom, bloomPos)
+      Lanterns, get lan() { return lan; }, get lfx() { return lfx; }, releaseCam, lookAt, bloomCam,
       Critters, get crFx() { return crFx; }, meetCritter, critCam, openCritCard, closeCritCard, sparkleAt,
       spawnCritter(c, key, min) { const sp = Critters.BY[c]; if (!sp) return null; S.crit.vis = S.crit.vis.filter(v => v.c !== c); const v = { id: ++S.crit.n, c, k: key || 't0', t0: S.time - 10, end: S.time + (min || 60) * 60, tap: 0 }; S.crit.vis.push(v); Critters.entry(S, c).v++; return v; },
       setColour(R, wave) { RST.lock = null; RST.wave = null; ElderMap.uRestWave.value = 0; if (R === null) { RST.R = Story.radius(S).R; return RST.R; } if (wave) { RST.R = Math.min(RST.R, R); startWave(RST.R, R); RST.wave.lockEnd = R; } else RST.lock = R; return R; },
@@ -1622,6 +1649,7 @@
     seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
     seasonCheck();
     if (crFx) { crFx.bind(S); crFx.update(S, t, dt, Math.min(STEP, acc), dn.state.night, camera, now / 1000); }   // sky critters
+    if (lfx) lfx.update(dt, dn.state.night, scene.fog.color);   // Round 2 step 4: lanterns + the World Bloom
     poses.length = 0;
     expFx.update(S, t, dt, Math.min(STEP, acc));   // boats first: pups on a trip ride in them
     for (let i = 0; i < S.pups.length; i++) {

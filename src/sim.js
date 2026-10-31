@@ -131,7 +131,7 @@
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
     const s = {
-      v: 9, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 10, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -145,6 +145,7 @@
     if (window.Social) window.Social.create(s);   // S.social (step 6, src/social.js): account, public flag, merged gift ids
     if (window.Story) window.Story.create(s);     // S.story (Round 2 step 2, src/story.js): colour rings, the tree's words, diaries
     if (window.Critters) window.Critters.create(s);   // S.crit (Round 2 step 3, src/critters.js): sky critter visits + album
+    if (window.Lanterns) window.Lanterns.create(s);   // S.lan (Round 2 step 4, src/lanterns.js): lantern notes + World Bloom petals
     s.health = healthOf(s); return s;
   }
   const eaters = s => { let n = 0; for (const p of s.pups) if (p.phase !== 'away') n++; return n; };   // a team away eats its packed supplies
@@ -407,6 +408,7 @@
     s.res.wood += c.woodshed * C.B.woodshed.wood * dt / H; s.res.stone += c.quarry * C.B.quarry.stone * dt / H;
     s.health = healthOf(s);
     s.xp += C.XP_PER_H(s.health) * dt / H;
+    if (window.Lanterns) window.Lanterns.tick(s, dt);   // Round 2 step 4: World Bloom petals from healthy tree hours
     const sap = C.SAP_PER_H(s.health) * sea(s, 'sap') * (s.level >= 8 ? C.ELDER_SAP : 1) * dt / H; s.sap += sap;
     while (s.level < C.MAX_LV && s.xp >= C.LV_XP[s.level]) {
       s.level++; if (ev) ev.push({ type: 'level', level: s.level });
@@ -435,7 +437,7 @@
   // offline catch-up in coarse steps; returns a summary for the "while you were away" card
   function catchUp(s, seconds, nav) {
     const sec = Math.max(0, Math.min(C.OFFLINE_CAP, seconds || 0));
-    const b = { buckets: s.stats.buckets, orbs: s.stats.orbs, sap: s.sap, xp: s.xp, level: s.level, health: s.health, needs: Object.assign({}, s.needs), res: Object.assign({}, s.res), st: Object.assign({}, s.stats), cleared: s.blight.cleared, fed: s.garden.fed };
+    const b = { buckets: s.stats.buckets, orbs: s.stats.orbs, sap: s.sap, xp: s.xp, level: s.level, health: s.health, needs: Object.assign({}, s.needs), res: Object.assign({}, s.res), st: Object.assign({}, s.stats), cleared: s.blight.cleared, fed: s.garden.fed, pend: s.lan ? s.lan.bl.pend : 0 };
     let left = sec, nightSec = 0; const ev = [], tr0 = s.pups.map(p => p.trips), ring0 = s.story ? s.story.ring : 0;
     while (left > 1e-6) { const dt = Math.min(C.COARSE, left); if (dayCurve(dayH(s)).night > 0.5) nightSec += dt; step(s, dt, nav, ev); left -= dt; }
     return { sec, nightSec, capped: seconds > C.OFFLINE_CAP, buckets: s.stats.buckets - b.buckets, orbs: s.stats.orbs - b.orbs, sap: s.sap - b.sap,
@@ -449,7 +451,9 @@
       // Round 2 step 2: trips per pup while away (tree dreams) + the colour rings before / after
       pupTrips: s.pups.map((p, i) => p.trips - (tr0[i] || 0)), ringFrom: ring0, ringTo: s.story ? s.story.ring : 0,
       // Round 2 step 3: sky critters that came while away (start records) + the visits that left a gift
-      critters: ev.filter(e => e.type === 'crit' && e.k === 'start').map(e => e.v), critGifts: ev.filter(e => e.type === 'crit' && e.k === 'end' && e.gift).map(e => e.v) };
+      critters: ev.filter(e => e.type === 'crit' && e.k === 'start').map(e => e.v), critGifts: ev.filter(e => e.type === 'crit' && e.k === 'end' && e.gift).map(e => e.v),
+      // Round 2 step 4: World Bloom petals the island's care earned while away (sent when the game is online)
+      petals: s.lan ? s.lan.bl.pend - b.pend : 0 };
   }
 
   // where a pup is for the renderer (extra = seconds since the last tick, for smooth motion)
@@ -478,7 +482,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -566,6 +570,8 @@
     if (window.Story) window.Story.sanitize(s, o.v >= 8 ? o : {});
     // v9 (Round 2 step 3): sky critters (visitors here now, album, recent visits); older saves: an empty album
     if (window.Critters) window.Critters.sanitize(s, o.v >= 9 ? o : {});
+    // v10 (Round 2 step 4): lantern notes (received / sent logs, a lantern waiting for dusk) + World Bloom petals + claimed gifts
+    if (window.Lanterns) window.Lanterns.sanitize(s, o.v >= 10 ? o : {});
     s.health = healthOf(s); return s;
   }
 

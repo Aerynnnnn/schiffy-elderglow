@@ -106,6 +106,18 @@
     sea3: ['Winter', 'Winter. The snow makes everything quiet, so I can hear every paw step. Keep the lanterns lit for me?'],
     crit1: ['Small guests', 'Did you see? Someone small came to visit, not a pup at all. The wild things are coming back. They only come where it feels like home.'],
     whale1: ['The whale', 'A sky whale sang over us today. I have not heard that song since I was a sapling. It means the sky remembers us.'],
+    // Round 2 step 4: lantern notes + the World Bloom (src/lanterns.js)
+    lan1: ['A lantern', 'A little light came drifting over the water tonight, all the way from another island. Somebody out there was thinking of us. Go on, read it.'],
+    lanSent1: ['Kind words', 'You sent a light into the dark for someone you have never met. I watched it go until it was a star. That is the oldest kind of magic.'],
+    warm1: ['Warmth', 'Someone sent warmth back. They will never know who you are, and they did not need to. Kindness does not need a name.'],
+    bloomNew: ['A new bud', 'Far beyond the edge of the sky, a new bud is waking{x}. Every island that is cared for helps it open. Ours too.'],
+    bloom0: ['The first ring', 'The World Bloom opened its first ring of petals. Every tree that was cared for is in it, a little. There is a gift for everyone.'],
+    bloom1: ['Many hands', 'Another ring opened on the World Bloom. I never knew there were so many of us. It makes my roots tingle.'],
+    bloom2: ['A guest of honour', 'The Bloom is so bright now that the crystal deer came down from the far hills to see it. One of them is coming here.'],
+    bloom3: ['Crystal rain', 'When the Bloom opened again, a little crystal rain fell on every island at once. Imagine that: everywhere, together.'],
+    bloom4: ['A seedling', 'The Bloom dropped seedlings on the wind, one for every island. Plant it somewhere you like to sit.'],
+    bloom5: ['Full and golden', 'The World Bloom is nearly open. I can feel the other trees humming along with me, very far away.'],
+    bloom6: ['Wide open', 'Wide open. Every petal. This is what all of us did, together, without ever meeting. I will remember this season.'],
     visit: ['A visitor','Someone from another island walked under my branches today{x}. They left the air a little warmer than they found it.'],
   };
   function words(e) {   // log entry -> { t: title, x: text, kind }
@@ -337,6 +349,6 @@
     return out.filter(x => x.text);
   }
 
-  window.Story = { C, CH, MS, JOBS, bloom, ringOf, radiusOf, radius, ringR, words, create, sanitize, pupIn, tick, midnight, openDay, visit, chapterCheck,
+  window.Story = { once, C, CH, MS, JOBS, bloom, ringOf, radiusOf, radius, ringR, words, create, sanitize, pupIn, tick, midnight, openDay, visit, chapterCheck,
     next, unread, read, readAll, Session, dream, diary, diaryLine, dayIdx, say };
 })();

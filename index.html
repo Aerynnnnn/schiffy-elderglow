@@ -437,7 +437,42 @@
   .chere .cdot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); background: var(--c); }
   body.phone #critCard { bottom: 76px; } body.phone #critCard p { font-size: 13.5px; }
   body.phone #visPanel { bottom: 78px; } body.phone .gopts { grid-template-columns: repeat(3, 1fr); } body.phone #visHint { white-space: normal; width: 80%; bottom: 84px; text-align: center; }
-</style>
+/* Round 2 step 4: lantern notes + the World Bloom (src/lantern_ui.js) */
+#lanCard { background: #fffbf2; position: absolute; top: 64px; right: 12px; width: 390px; max-height: calc(100% - 80px); overflow-y: auto; z-index: 9; padding: 0 12px 12px; }
+#lanCard .pch { background: #fffbf2; } #lanTitle { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } #lanTitle svg.ic { width: 24px; height: 24px; }
+#lanBody .sub { font-size: 12px; color: #5d567a; margin: 4px 0 8px; } #lanBody .small { font-size: 11px; } #lanBody h4 { display: flex; align-items: center; gap: 5px; margin: 12px 0 6px; } #lanBody h4 svg.ic { width: 18px; height: 18px; }
+#lanBody u { cursor: pointer; } .lanoff { background: #f1ecff; border-radius: 10px; padding: 6px 8px; display: flex; gap: 6px; align-items: center; }
+.lanprompts { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; } .lanprompts button { border: 2px solid var(--ink); background: #fff6dc; border-radius: 12px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+.lanprompts button:hover { background: #ffe9a8; }
+.lanta { position: relative; } .lanta textarea { width: 100%; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 12px; padding: 8px 10px 18px; font: 500 15px Fredoka, sans-serif; resize: none; background: #fff; }
+.lanta small { position: absolute; right: 10px; bottom: 6px; font-size: 11px; color: #8a83a6; }
+.lancols { display: flex; gap: 8px; margin: 8px 0 2px; } .lancols button { width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--ink); padding: 0; cursor: pointer; }
+.lancols button.on { box-shadow: 0 0 0 3px #fffbf2, 0 0 0 5.5px var(--ink); }
+#lanGo { display: flex; align-items: center; gap: 4px; } #lanGo svg.ic { width: 20px; height: 20px; }
+.lanq { display: flex; gap: 8px; align-items: center; background: #f1ecff; border-radius: 12px; padding: 6px 8px; font-size: 13px; margin-bottom: 6px; } .lanq small { display: block; color: #5d567a; font-size: 11px; } .lanq > div { flex: 1; }
+.lanrow { box-sizing: border-box; display: flex; gap: 8px; align-items: flex-start; padding: 6px 4px; border-bottom: 1.5px dashed #e3dcf2; font-size: 13.5px; text-align: left; width: 100%; } .lanrow small { display: block; color: #5d567a; font-size: 11.5px; margin-top: 2px; }
+.lanrow svg.ic { width: 24px; height: 24px; flex: none; } .lanrow small svg.ic { width: 13px; height: 13px; vertical-align: -2px; }
+button.lanbtn { background: none; border: none; border-bottom: 1.5px dashed #e3dcf2; cursor: pointer; font: inherit; color: inherit; } button.lanbtn.new { background: #fff6dc; border-radius: 10px; }
+.blhd { display: flex; gap: 10px; align-items: center; margin: 2px 0 8px; } .blhd small { display: block; font-size: 11.5px; color: #5d567a; } .blhd b { font-size: 19px; }
+.blsw { width: 40px; height: 40px; border-radius: 12px; border: 2.5px solid var(--ink); display: grid; place-items: center; flex: none; } .blsw svg.ic { width: 28px; height: 28px; }
+.blbar { height: 22px; margin: 4px 0 6px; } .blbar i { transition: width .6s; }
+.blsay { display: flex; gap: 8px; background: linear-gradient(175deg, #fffdf6, #f3edff); border: 2px solid #e3dcf2; border-radius: 12px; padding: 8px; font-size: 13px; font-style: italic; color: #3e3860; }
+.blsay b { display: block; font-style: normal; } .blsay svg.ic { width: 22px; height: 22px; flex: none; }
+.blm { display: flex; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1.5px dashed #e3dcf2; font-size: 13px; } .blm > b { width: 52px; font-family: var(--disp); font-size: 14px; } .blm > div { flex: 1; } .blm small { display: block; font-size: 11px; color: #8a83a6; }
+.blm.done { opacity: .6; } .blm.ready { background: #fff6dc; border-radius: 10px; } .blm .ok, .blm .lk { display: flex; align-items: center; gap: 2px; font-size: 12px; } .blm svg.ic { width: 16px; height: 16px; }
+#lanBtn.wig { animation: wig 1.6s ease-in-out infinite; }
+#lanBtn svg.ic { display: none; }
+body.phone #lanBtn { position: absolute; top: 98px; right: 0; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: grid; place-items: center; }
+body.phone #lanBtn span { display: none; } body.phone #lanBtn svg.ic { display: block; width: 28px; height: 28px; }
+#lanRead { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); width: min(420px, 92%); z-index: 21; padding: 14px 18px 12px; background: radial-gradient(120% 90% at 50% 0%, #fff8e6, #fffdf6 55%, #f3edff); animation: tin .35s ease-out; }
+#lanRead[hidden] { display: none; } #lrClose { position: absolute; top: 8px; right: 10px; border: none; background: none; font-size: 17px; cursor: pointer; }
+.lrh { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #5d567a; } .lrh svg.ic { width: 34px; height: 34px; filter: drop-shadow(0 0 8px var(--lc)); }
+.lrt { margin: 10px 4px 12px; font: 600 19px/1.4 Fredoka, sans-serif; color: #3e3860; text-align: center; }
+.lrf { display: flex; align-items: center; gap: 8px; justify-content: flex-end; } .lrf .go { display: flex; align-items: center; gap: 4px; font-size: 14px; } .lrf .go svg.ic, .lrw svg.ic { width: 18px; height: 18px; }
+.lrf .big { font-size: 15px; padding: 4px 14px; } .lrf .rp { margin-right: auto; display: flex; align-items: center; gap: 3px; font-size: 12px; } .lrf .rp svg.ic { width: 16px; height: 16px; }
+.lrw { display: flex; align-items: center; gap: 3px; font-size: 13px; color: #b06a1e; font-weight: 600; }
+body.phone #lanCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 76%; border-radius: 18px 18px 0 0; border-bottom: none; z-index: 12; }
+body.phone #lanRead { bottom: 12px; padding: 12px 12px 10px; } .lrf button { white-space: nowrap; } body.phone .lrf { gap: 5px; } body.phone .lrf .go { font-size: 13px; padding: 5px 7px; } body.phone .lrf .big { font-size: 14px; padding: 4px 10px; }</style>
 </head>
 <body>
 <div id="app">
@@ -473,7 +508,7 @@
   <div id="hint" class="card" hidden>Tap a pup, then give it a job. Tap <b>Build</b> to plan a home.</div>
   <div id="away" hidden><div class="card"><h2 id="awayTitle">While you were away</h2><ul id="awayList"></ul><button class="big" id="awayOk">Lovely!</button></div></div>
   <div id="gift" hidden><div class="card gcard"><div class="gh"><h2>Daily gift</h2><span id="gStreak" class="gs"></span><button id="gClose" title="Close">&#10005;</button></div><p id="gMsg" class="gm"></p><div id="gTiles" class="gtiles"></div><div id="gGot" class="ggot" hidden></div><div id="gMonth" class="gmon"></div><div class="gf"><button class="big" id="gClaim">Claim!</button><small>Missed a day? No problem: the calendar just waits for you.</small></div></div></div>
-  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button><button data-t="crit">Critters</button><button data-t="words">Tree's words</button></div><div id="bookBody"></div></div></div>
+  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button><button data-t="crit">Critters</button><button data-t="lan">Lanterns</button><button data-t="words">Tree's words</button></div><div id="bookBody"></div></div></div>
   <div id="mem" hidden><div class="card mcard"><div id="memBody"></div><button class="big" id="memOk">Lovely!</button></div></div>
   <div id="treeSay" class="card" hidden><div class="tsh"><span id="tsIc"></span><b class="disp">The Elder Tree</b><small id="tsKind"></small><button id="tsClose" title="Close">&#10005;</button></div><p id="tsText"></p><div id="tsPups"></div><div class="tsf"><button class="ghost" id="tsLog">All the tree's words</button><button class="big" id="tsOk">Mm.</button></div></div>
   <div id="diary" hidden><div class="card dcard"><div class="gh"><span class="dot" id="dyDot"></span><h2 id="dyTitle"></h2><button id="dyClose" title="Close">&#10005;</button></div><div id="dyBody"></div></div></div>
@@ -491,7 +526,7 @@
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/critter_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

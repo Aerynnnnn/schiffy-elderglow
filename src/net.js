@@ -15,6 +15,9 @@
 //   (this anonymous user gets an email: same uid), verifyLink(email, code), sendCode(email) (new device; never creates a user),
 //   verifyCode(email, code) -> { uid } (now signed in as that account), signOut() -> a fresh anonymous uid, onAuth(fn('switched'|'updated', uid)).
 //   Auth failures carry code: rate | badcode | exists | nouser | bademail | offline | setup | other. The mock shows its pretend code as mockCode.
+// Round 2 step 4 (lantern notes + World Bloom, server/patch_3.sql; { setup: true } = patch not run yet): lanternSend({ body, col }) -> { ok, id, left },
+//   lanternInbox() -> [{ id, from, body, col, at, read, warm }] (marks them delivered), lanternAct(id, 'read'|'warmth'|'report'),
+//   lanternSent() -> [{ id, at, found, warm }] (never who), bloomStatus() -> { cyc, total, prev, today, mine, cap }, bloomAdd(n) -> { added, today, total }
 (function () {
   'use strict';
   const SB_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
@@ -186,10 +189,59 @@
         delete u.login; wrA(o); uid = k; try { localStorage.setItem(UIDK, uid); } catch (x) {} authSubs.forEach(f => f('switched', uid)); return { ok: true, uid };
       },
       async signOut() { uid = 'mock-' + Math.random().toString(36).slice(2, 12); try { localStorage.setItem(UIDK, uid); } catch (e) {} return { ok: true, uid }; },
+      // ---- lantern notes + World Bloom (= server/patch_3.sql: the same picks, limits and privacy)
+      async lanternSend({ body, col }) {
+        const o = rdL(), d = db(), u = me(d); if (!uid) return { ok: false, why: 'not signed in' }; if (!u) return { ok: false, why: 'pick a name first' };
+        const c = Soc().noteCheck(body); if (!c.ok) return { ok: false, why: 'please keep it kind' };
+        if (!window.Lanterns.colOk(col)) return { ok: false, why: 'bad colour' };
+        const day = today(), mineL = o.lan.filter(l => l.from === uid);
+        if (mineL.filter(l => l.hidden && Date.now() - l.at < 30 * 86400000).length >= 3) return { ok: false, why: 'your lanterns are resting for a while' };
+        const n = mineL.filter(l => l.day === day).length; if (n >= window.Lanterns.C.PER_DAY) return { ok: false, why: 'three lanterns a day', left: 0 };
+        const last = mineL.length ? mineL[mineL.length - 1].to : null;
+        const cands = Object.values(d.islands).filter(i => i.owner !== uid && i.owner !== 'sample' && i.owner !== last && o.lan.filter(l => l.to === i.owner && l.day === day).length < 6);
+        const act = cands.filter(i => Date.now() - (i.updated || 0) < 3 * 86400000), pool = act.length ? act : cands;
+        // nobody else plays in this pretend world: a sample island "finds" it (so a solo test still sees "found someone")
+        const to = pool.length ? pool[Math.floor(Math.random() * pool.length)].owner : (last !== 'sample' ? 'sample' : null);
+        if (!to) return { ok: false, why: 'no one new to find yet: try again later' };
+        const l = { id: 'lan' + pad(++o.seq, 8), from: uid, to, fromName: u.island, body: c.v, col, day, at: Date.now(), dl: to === 'sample' ? Date.now() : 0, rd: 0, warm: 0, hidden: false };
+        o.lan.push(l); wrL(o); return { ok: true, id: l.id, left: window.Lanterns.C.PER_DAY - 1 - n };
+      },
+      async lanternInbox() {
+        if (!uid) return []; const o = rdL(); let ch = false;
+        const L = o.lan.filter(l => l.to === uid && !l.hidden && Date.now() - l.at < 30 * 86400000);
+        for (const l of L) if (!l.dl) { l.dl = Date.now(); ch = true; }
+        if (ch) wrL(o);
+        return L.slice(-50).reverse().map(l => ({ id: l.id, from: l.fromName, body: l.body, col: l.col, at: l.at, read: !!l.rd, warm: !!l.warm }));
+      },
+      async lanternAct(id, act) {
+        const o = rdL(), l = o.lan.find(x => x.id === id && x.to === uid); if (!uid || !l) return { ok: false, why: 'not your lantern' };
+        if (act === 'read') l.rd = l.rd || Date.now();
+        else if (act === 'warmth') { if (l.warm) return { ok: false, why: 'already sent' }; if (l.hidden) return { ok: false, why: 'not your lantern' }; l.warm = Date.now(); l.rd = l.rd || Date.now(); }
+        else if (act === 'report') { l.hidden = true; const d = db(); if (!d.reports.some(r => r.uid === uid && r.kind === 'lantern' && r.target === id)) { d.reports.push({ id: nid(d, 'r'), uid, kind: 'lantern', target: id, reason: 'reported by its recipient', at: Date.now() }); write(d); } }
+        else return { ok: false, why: 'bad action' };
+        wrL(o); return { ok: true };
+      },
+      async lanternSent() { if (!uid) return []; return rdL().lan.filter(l => l.from === uid && Date.now() - l.at < 30 * 86400000).slice(-40).reverse().map(l => ({ id: l.id, at: l.at, found: !!l.dl, warm: !!l.warm })); },
+      async bloomStatus() {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const o = rdL(), c = window.Lanterns.cycleOf(Date.now()), day = today(), k = c + '|' + uid + '|' + day;
+        let mine = 0; for (const x in o.pet) if (x.startsWith(c + '|' + uid + '|')) mine += o.pet[x].n;
+        return { ok: true, cyc: c, total: o.tot[c] || 0, prev: o.tot[c - 1] || 0, today: o.pet[k] ? o.pet[k].n : 0, mine, cap: window.Lanterns.C.CAP_DAY };
+      },
+      async bloomAdd(n) {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const o = rdL(), c = window.Lanterns.cycleOf(Date.now()), k = c + '|' + uid + '|' + today(), cur = o.pet[k] || { n: 0, at: 0 }, cap = window.Lanterns.C.CAP_DAY;
+        if (cur.at && Date.now() - cur.at < (opt.bloomGap === undefined ? 10000 : opt.bloomGap)) return { ok: false, why: 'slow down' };
+        const add = Math.max(0, Math.min(Math.round(+n || 0), cap - cur.n));
+        o.pet[k] = { n: cur.n + add, at: Date.now() }; o.tot[c] = (o.tot[c] || 0) + add; wrL(o);
+        return { ok: true, added: add, today: cur.n + add, cap, cyc: c, total: o.tot[c] };
+      },
       onAuth(fn) { authSubs.push(fn); },
       onChange(fn) { subs.push(fn); },
     };
-    const SKEY = KEY + '.saves', AKEY = KEY + '.auth', authSubs = [];
+    const SKEY = KEY + '.saves', AKEY = KEY + '.auth', LKEY = KEY + '.lan', authSubs = [];
+    const rdL = () => { try { const o = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (o && Array.isArray(o.lan) && o.tot && o.pet) return o; } catch (e) {} return { seq: 0, lan: [], tot: {}, pet: {} }; };
+    const wrL = o => { localStorage.setItem(LKEY, JSON.stringify(o)); if (bc) bc.postMessage(1); };
     const rdS = () => { try { const o = JSON.parse(localStorage.getItem(SKEY) || 'null'); if (o && o.saves) return o; } catch (e) {} return { saves: {} }; };
     const wrS = o => localStorage.setItem(SKEY, JSON.stringify(o));
     const rdA = () => { try { const o = JSON.parse(localStorage.getItem(AKEY) || 'null'); if (o && o.users && Array.isArray(o.mails)) return o; } catch (e) {} return { users: {}, mails: [] }; };
@@ -337,6 +389,17 @@
         uid = id; myId = null; return { ok: true, uid: id };
       },
       async signOut() { await sb.auth.signOut({ scope: 'local' }); uid = null; myId = null; return api.signIn(); },
+      // ---- lantern notes + World Bloom (server/patch_3.sql; a missing function = patch_3 not run yet -> { setup: true })
+      async lanternSend({ body, col }) {
+        const c = Soc().noteCheck(body); if (!c.ok) return { ok: false, why: c.why };
+        const r = await sb.rpc('send_lantern', { p_body: c.v, p_color: col }); if (r.error) return failL(r.error);
+        return r.data && r.data.ok ? { ok: true, id: lid(r.data.id), left: r.data.left } : { ok: false, why: (r.data && r.data.why) || 'no', left: r.data && r.data.left };
+      },
+      async lanternInbox() { const r = await sb.rpc('lantern_inbox'); if (r.error) return failL(r.error); return (r.data || []).map(l => ({ id: lid(l.id), from: l.from, body: l.body, col: l.color, at: Date.parse(l.at), read: !!l.read, warm: !!l.warm })); },
+      async lanternAct(id, act) { const r = await sb.rpc('lantern_act', { p_id: +String(id).slice(1), p_act: act }); if (r.error) return failL(r.error); return r.data && r.data.ok ? { ok: true } : { ok: false, why: (r.data && r.data.why) || 'no' }; },
+      async lanternSent() { const r = await sb.rpc('my_lanterns'); if (r.error) return failL(r.error); return (r.data || []).map(l => ({ id: lid(l.id), at: Date.parse(l.at), found: !!l.found, warm: !!l.warm })); },
+      async bloomStatus() { const r = await sb.rpc('bloom_status'); if (r.error) return failL(r.error); const d = r.data || {}; return { ok: true, cyc: d.cycle, total: +d.total || 0, prev: +d.prev || 0, today: +d.today || 0, mine: +d.mine || 0, cap: d.cap || 20 }; },
+      async bloomAdd(n) { const r = await sb.rpc('bloom_add', { p_n: Math.max(0, Math.round(+n || 0)) }); if (r.error) return failL(r.error); const d = r.data || {}; return d.ok ? { ok: true, added: d.added, today: d.today, cap: d.cap, cyc: d.cycle, total: +d.total || 0 } : { ok: false, why: d.why || 'no' }; },
       onAuth(fn) {   // a magic link opened in this tab / another tab signed in: tell the game (deferred: no supabase calls inside the callback)
         ready().then(() => sb.auth.onAuthStateChange((ev, ses) => { const id = ses && ses.user ? ses.user.id : null; if (id && uid && id !== uid) { uid = id; myId = null; setTimeout(() => fn('switched', id), 0); } else if (ev === 'USER_UPDATED') setTimeout(() => fn('updated', id), 0); })).catch(() => {});
       },
@@ -344,6 +407,9 @@
     };
     // the page the email link returns to (Supabase -> Authentication -> URL Configuration must allow it: SETUP.md step 6)
     const redirect = () => location.origin + location.pathname + (opt.slot ? '?slot=' + encodeURIComponent(opt.slot) : '');
+    const lid = n => 'l' + pad(n, 12);   // bigint lantern id -> sortable string id (Lanterns.merge sorts by id)
+    // a missing RPC (PGRST202 / 42883) = server/patch_3.sql not run yet: the game keeps lanterns + the bloom quiet
+    const failL = e => (e && (e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01' || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'lanterns are not switched on on the server yet (server/patch_3.sql)' } : fail(e);
     const failS = e => (e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table|relation .*saves.* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'cloud save is not switched on on the server yet (server/patch_2.sql)' } : fail(e);
     function authFail(e) {
       const c = (e && e.code) || '', m = String((e && e.message) || ''), st = e && e.status;

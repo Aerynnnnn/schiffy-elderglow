@@ -165,6 +165,7 @@
       if (x.kind === 'water') {
         s.needs.water = Math.min(100, s.needs.water + C.W_SELF.water); s.sap += C.W_SELF.sap;
         if (typeof x.island === 'string' && ID_RE.test(x.island) && Number.isInteger(x.day)) so.watered[x.island] = Math.max(so.watered[x.island] || 0, x.day);
+        if (window.Lanterns && s.lan) window.Lanterns.petal(s, window.Lanterns.C.PET_WATER);   // Round 2 step 4: watering a friend's tree adds World Bloom petals
       } else if (x.kind === 'res' && RES.includes(x.item)) {
         const n = Math.round(fin(x.n, 0, 0, C.GIFT_MAX[x.item]));
         if (x.item === 'seeds') s.inv.seeds = Math.max(0, s.inv.seeds - n); else s.res[x.item] = Math.max(0, s.res[x.item] - n);

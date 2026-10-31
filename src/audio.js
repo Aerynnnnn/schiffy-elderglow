@@ -224,9 +224,17 @@
     sting_bloom: () => { const a = arr(6.2), r = rng(33); mix(a, sweepNoise(4.2, u => 500 + 2600 * u, 0.7, u => Math.pow(Math.sin(Math.PI * u), 2) * 0.09, 34, 200), 0.1, 1);
       [43, 55, 62, 67, 71, 74, 79, 83].forEach((m, k) => mix(a, Pi(m, r), k * 0.32, k === 0 ? 0.55 : 0.62 - k * 0.03)); [86, 91, 95, 98].forEach((m, k) => mix(a, Ce(m, r), 2.0 + k * 0.28, 0.32)); return norm(fadeOut(a, 1.4), 0.5); },
     voice: () => { const a = arr(3.0), r = rng(35); mix(a, Pi(48, r), 0, 0.5); mix(a, Pi(55, r), 0.18, 0.45); mix(a, Ce(88, r), 0.42, 0.3); mix(a, sweepNoise(1.8, () => 900, 0.6, u => Math.sin(Math.PI * u) * 0.05, 36, 200), 0.05, 1); return norm(fadeOut(a, 0.9), 0.36); },
+    // Round 2 step 4: a lantern released (an airy lift + a slow rising celesta line over two soft piano notes), a lantern drifting in
+    // (two far bells + a firefly shimmer), warmth back (a warm low chord + one bell), the World Bloom opening (a kalimba cascade + bells)
+    lantern_rise: () => { const a = arr(4.6), r = rng(37); mix(a, sweepNoise(3.6, u => 350 + 1500 * u, 0.8, u => Math.pow(Math.sin(Math.PI * u), 1.6) * 0.16, 38, 180), 0.05, 1);
+      mix(a, Pi(55, r), 0, 0.45); mix(a, Pi(62, r), 0.2, 0.38); [79, 83, 86, 91, 95].forEach((m, k) => mix(a, Ce(m, r), 0.5 + k * 0.42, 0.5 - k * 0.05)); return norm(fadeOut(a, 1.2), 0.42); },
+    lantern_find: () => { const a = arr(2.6), r = rng(39); mix(a, Ce(88, r), 0, 0.55); mix(a, Ce(84, r), 0.34, 0.5); mix(a, tink(40), 0.6, 0.45); return norm(fadeOut(a, 0.8), 0.36); },
+    warmth: () => { const a = arr(3.0), r = rng(41); mix(a, Pi(48, r), 0, 0.5); mix(a, Pi(55, r), 0.04, 0.42); mix(a, Pi(64, r), 0.08, 0.38); mix(a, Pi(67, r), 0.12, 0.3); mix(a, Ce(88, r), 0.5, 0.35); return norm(fadeOut(a, 1.0), 0.42); },
+    sting_petals: () => { const a = arr(3.6), r = rng(42); [72, 76, 79, 83, 86, 88, 91].forEach((m, k) => mix(a, K(m, r), k * 0.11, 0.7 - k * 0.04)); [93, 96, 100].forEach((m, k) => mix(a, Ce(m, r), 0.9 + k * 0.22, 0.32));
+      mix(a, sweepNoise(2.4, () => 6500, 0.8, u => Math.sin(Math.PI * u) * 0.08, 43, 3500), 0.4, 1); return norm(fadeOut(a, 1.0), 0.5); },
   };
-  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1, sting_bloom: 1, voice: 1 };
-  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2, sting_bloom: 6, voice: 2.6 };
+  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1, sting_bloom: 1, voice: 1, lantern_rise: 1, lantern_find: 1, warmth: 1, sting_petals: 1 };
+  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2, sting_bloom: 6, voice: 2.6, lantern_rise: 4.6, sting_petals: 3.6 };
   const GAP = { tap: 0.04, pour: 0.35, lantern: 0.35, tok: 0.08, pop: 0.03, yip: 20, shimmer: 0.3, notify: 0.5, open: 0.08, close: 0.08 };
 
   // ======================================================================= the bank (built once per page, shared by contexts)
