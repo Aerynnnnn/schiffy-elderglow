@@ -126,12 +126,12 @@
 
   function newPup(def, job, at) {
     return { id: def.id, name: def.name, breed: def.breed, collar: def.collar, like: def.like, dislike: def.dislike,
-      job, phase: 'idle', t: 0, dur: 0, leg: null, at, face: null, trips: 0, acc: 0, morale: 70, task: null, tgt: null, exp: null, xpE: 0 };
+      job, phase: 'idle', t: 0, dur: 0, leg: null, at, face: null, trips: 0, acc: 0, morale: 70, task: null, tgt: null, exp: null, xpE: 0, dy: [], dd: null, dt0: 0 };
   }
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
     const s = {
-      v: 7, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 8, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -143,6 +143,7 @@
     window.Needs.create(s);   // S.wake, S.blight, S.wards, S.garden, S.fr (src/needs.js)
     window.Events.create(s, seed || 1);   // S.events (src/events.js)
     if (window.Social) window.Social.create(s);   // S.social (step 6, src/social.js): account, public flag, merged gift ids
+    if (window.Story) window.Story.create(s);     // S.story (Round 2 step 2, src/story.js): colour rings, the tree's words, diaries
     s.health = healthOf(s); return s;
   }
   const eaters = s => { let n = 0; for (const p of s.pups) if (p.phase !== 'away') n++; return n; };   // a team away eats its packed supplies
@@ -360,6 +361,8 @@
   }
 
   function step(s, dt, nav, ev) {
+    if (!ev) ev = [];   // Round 2 step 2: the story reads this step's events (pushes only: nothing else depends on ev)
+    const e0 = ev.length;
     const dc = dayCurve(dayH(s)), duskK = 1 + C.NIGHT.LIGHT_DUSK * dc.dusk;
     const N = window.Needs, madd = N.moraleAdd(s), frK = N.friendK(s);   // music / glum island; friends on the same job work a bit faster
     // pups
@@ -411,6 +414,7 @@
     // arrivals
     if (arrivalOk(s, nav)) { s.arrive += dt; if (s.arrive >= (s.invite ? C.INVITE_WAIT : C.ARRIVE_WAIT)) arrive(s, nav, ev); }
     s.time += dt;
+    if (window.Story) window.Story.tick(s, dt, ev, e0);   // colour rings, the tree's words, pup diaries (src/story.js)
   }
 
   function assign(s, i, job, nav) {
@@ -430,7 +434,7 @@
   function catchUp(s, seconds, nav) {
     const sec = Math.max(0, Math.min(C.OFFLINE_CAP, seconds || 0));
     const b = { buckets: s.stats.buckets, orbs: s.stats.orbs, sap: s.sap, xp: s.xp, level: s.level, health: s.health, needs: Object.assign({}, s.needs), res: Object.assign({}, s.res), st: Object.assign({}, s.stats), cleared: s.blight.cleared, fed: s.garden.fed };
-    let left = sec, nightSec = 0; const ev = [];
+    let left = sec, nightSec = 0; const ev = [], tr0 = s.pups.map(p => p.trips), ring0 = s.story ? s.story.ring : 0;
     while (left > 1e-6) { const dt = Math.min(C.COARSE, left); if (dayCurve(dayH(s)).night > 0.5) nightSec += dt; step(s, dt, nav, ev); left -= dt; }
     return { sec, nightSec, capped: seconds > C.OFFLINE_CAP, buckets: s.stats.buckets - b.buckets, orbs: s.stats.orbs - b.orbs, sap: s.sap - b.sap,
       xp: s.xp - b.xp, levels: s.level - b.level, healthFrom: b.health, healthTo: s.health, needsFrom: b.needs, needsTo: Object.assign({}, s.needs),
@@ -439,7 +443,9 @@
       exped: ev.filter(e => e.type === 'exp-back').map(e => e.haul), departed: ev.filter(e => e.type === 'exp-go').map(e => e.trip),
       // step 4: events that happened (start records; their outcome is in S.events.log), blight, gardening, wake-ups, puppies
       events: ev.filter(e => e.type === 'event' && e.k === 'start').map(e => e.e.id), blightNew: ev.filter(e => e.type === 'blight').length, cleared: s.blight.cleared - b.cleared,
-      fed: s.garden.fed - b.fed, woke: ev.filter(e => e.type === 'wake').map(e => e.need), puppies: ev.filter(e => e.type === 'arrive' && e.puppy).map(e => e.pup) };
+      fed: s.garden.fed - b.fed, woke: ev.filter(e => e.type === 'wake').map(e => e.need), puppies: ev.filter(e => e.type === 'arrive' && e.puppy).map(e => e.pup),
+      // Round 2 step 2: trips per pup while away (tree dreams) + the colour rings before / after
+      pupTrips: s.pups.map((p, i) => p.trips - (tr0[i] || 0)), ringFrom: ring0, ringTo: s.story ? s.story.ring : 0 };
   }
 
   // where a pup is for the renderer (extra = seconds since the last tick, for smooth motion)
@@ -468,7 +474,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -537,6 +543,7 @@
       if (typeof q.xpE === 'number') p.xpE = q.xpE;   // explorer xp (v4); trips are checked by Exped.sanitize below
       if (q.isNew === true && !v1) p.isNew = true;
       if (q.special === true && !v1) p.special = true;
+      if (window.Story) window.Story.pupIn(p, v1 ? null : q);   // v8: diary
       s.pups.push(p);
     });
     if (!s.pups.length) return null;
@@ -551,6 +558,8 @@
     window.Events.sanitize(s, o.v >= 5 ? o : {});
     // v7 (step 6): account id, public flag, island + host names, gift / outbox ids already merged; older saves: none yet
     if (window.Social) window.Social.sanitize(s, o.v >= 7 ? o : {});
+    // v8 (Round 2 step 2): colour ring, the tree's log, chapters; older saves get the ring of their progress (no grey regression)
+    if (window.Story) window.Story.sanitize(s, o.v >= 8 ? o : {});
     s.health = healthOf(s); return s;
   }
 

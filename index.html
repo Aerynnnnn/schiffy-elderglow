@@ -385,6 +385,37 @@
   body.phone #sndBtn { right: 8px; bottom: auto; top: 92px; width: 38px; height: 38px; } body.phone #sndBtn svg.ic { width: 22px; height: 22px; }
   body.phone #sndCard { right: 8px; left: 8px; width: auto; bottom: auto; top: 136px; }
   body.phone #sndAsk { right: 8px; bottom: 144px; top: auto; padding: 4px 6px 4px 8px; gap: 6px; } body.phone #sndAsk span { font-size: 13px; } body.phone #sndAsk .big { font-size: 13px; padding: 4px 8px; }
+  /* ---- Round 2 step 2: the tree's voice, Tree's words, dreams, pup diaries */
+  #treeSay { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); width: min(430px, 70%); z-index: 15; padding: 12px 16px 10px; background: radial-gradient(circle at 18% 0, #eafff4, #fffbf2 58%); border-radius: 22px 22px 22px 6px;
+    opacity: 0; transition: opacity .9s ease, transform .9s ease; pointer-events: none; }
+  #treeSay.in { opacity: 1; transform: translateX(-50%) translateY(6px); pointer-events: auto; } #treeSay[hidden] { display: none; }
+  #treeSay .tsh { display: flex; align-items: center; gap: 6px; } #treeSay .tsh svg.ic { width: 24px; height: 24px; } #treeSay .tsh b { font-size: 17px; font-weight: 400; }
+  #treeSay .tsh small { color: #6b8f3a; font-size: 11.5px; margin-left: 2px; } #treeSay .tsh button { margin-left: auto; border: none; background: none; font-size: 16px; cursor: pointer; color: var(--ink); }
+  #tsText { margin: 6px 2px 6px; font-size: 15.5px; line-height: 1.5; font-style: italic; color: #3e3860; min-height: 3em; }
+  #tsText span { opacity: 0; transition: opacity .5s; } #tsText span.on { opacity: 1; }
+  #tsPups { font-size: 12px; color: #6a4a6a; display: flex; align-items: center; gap: 4px; min-height: 16px; } #tsPups svg.ic { width: 14px; height: 14px; }
+  #treeSay .tsf { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 4px; } #treeSay .tsf .big { font-size: 15px; padding: 4px 16px; } #treeSay .tsf .ghost { font-size: 12px; }
+  body.phone #treeSay { width: auto; left: 8px; right: 8px; transform: none; top: auto; bottom: 150px; } body.phone #treeSay.in { transform: translateY(-4px); } body.phone #tsText { font-size: 14px; }
+  .wlist { display: flex; flex-direction: column; gap: 8px; } .wtile { border: 2.5px solid var(--ink); border-radius: 14px; padding: 8px 12px; background: linear-gradient(170deg, #fffdf6, #effbf3); }
+  .wtile .wl { font-size: 11px; color: #6b8f3a; display: flex; gap: 6px; align-items: center; } .wtile b { font-weight: 400; font-size: 16px; } .wtile p { margin: 3px 0 0; font-style: italic; color: #3e3860; font-size: 14px; line-height: 1.45; }
+  .wtile.dream { background: linear-gradient(160deg, #f1e9ff, #e7f4ff); } .wtile.moment { background: linear-gradient(170deg, #fffdf6, #fff4dc); } .wtile.new { box-shadow: 0 0 0 3px #b9a7ff; }
+  .wtile em { font-style: normal; background: #8f6bff; color: #fff; font: 600 10px Fredoka, sans-serif; border: 2px solid var(--ink); border-radius: 999px; padding: 0 6px; margin-left: auto; }
+  #away.dreamy { background: radial-gradient(ellipse at 50% 30%, #c9b8ff66, #2a244288 70%); -webkit-backdrop-filter: blur(5px) saturate(1.15); backdrop-filter: blur(5px) saturate(1.15); }
+  #away li.dreamli { display: block; margin: 0; }
+  .dreamv { position: relative; overflow: hidden; margin: 2px -6px 8px; padding: 12px 14px 12px; background: linear-gradient(170deg, #2e2a5a, #5b4f9a 55%, #9c86d8); color: #fff6e8; border-radius: 16px; border: 2.5px solid var(--ink); }
+  .dreamv h3 { margin: 0 0 4px; font-family: var(--disp); font-weight: 400; font-size: 17px; display: flex; align-items: center; gap: 6px; color: #ffe9a8; } .dreamv h3 svg.ic { width: 20px; height: 20px; }
+  .dreamv p { position: relative; z-index: 1; margin: 0; font-style: italic; font-size: 14.5px; line-height: 1.5; text-shadow: 0 1px 6px #2a2442; }
+  .dreamv i { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #fff3b0; box-shadow: 0 0 10px 3px #fff3b088; opacity: 0; animation: mote 6s ease-in-out infinite; }
+  @keyframes mote { 0% { opacity: 0; transform: translate(0, 10px) scale(.6); } 30% { opacity: .9; } 100% { opacity: 0; transform: translate(14px, -46px) scale(1.1); } }
+  .pup .frl .dybtn { margin-left: auto; border: 2px solid var(--ink); background: #fff4c6; border-radius: 999px; padding: 0 8px; font: 600 11px Fredoka, sans-serif; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: var(--ink); }
+  #diary { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #2a244266; z-index: 23; } #diary[hidden] { display: none; }
+  .dcard { width: min(420px, 92%); max-height: 86%; display: flex; flex-direction: column; padding: 0; overflow: hidden; background: #fffaf0; }
+  .dcard .gh { padding: 12px 16px 8px; background: linear-gradient(180deg, #fff1cf, #fffaf0); display: flex; align-items: center; gap: 8px; } .dcard .gh h2 { margin: 0; font-family: var(--disp); font-weight: 400; font-size: 22px; }
+  .dcard .gh .dot { width: 16px; height: 16px; } .dcard .gh button { margin-left: auto; border: none; background: none; font-size: 18px; cursor: pointer; }
+  #dyBody { overflow-y: auto; padding: 4px 18px 16px; background: repeating-linear-gradient(180deg, transparent 0 27px, #e9dcc0 27px 28px); }
+  .dyl { display: flex; gap: 10px; padding: 4px 0; font-size: 14px; line-height: 1.45; } .dyl b { flex: none; width: 52px; font-family: var(--disp); font-weight: 400; color: #b07a45; font-size: 13px; padding-top: 1px; }
+  .dyl span { font-style: italic; color: #3e3860; } .dyl.today b { color: #8f6bff; } .dsub { margin: 6px 0; font-size: 12px; color: #6a5a7a; }
+  body.phone .dcard { width: 100%; max-height: 80%; align-self: flex-end; border-radius: 18px 18px 0 0; }
   body.phone #visPanel { bottom: 78px; } body.phone .gopts { grid-template-columns: repeat(3, 1fr); } body.phone #visHint { white-space: normal; width: 80%; bottom: 84px; text-align: center; }
 </style>
 </head>
@@ -422,8 +453,10 @@
   <div id="hint" class="card" hidden>Tap a pup, then give it a job. Tap <b>Build</b> to plan a home.</div>
   <div id="away" hidden><div class="card"><h2 id="awayTitle">While you were away</h2><ul id="awayList"></ul><button class="big" id="awayOk">Lovely!</button></div></div>
   <div id="gift" hidden><div class="card gcard"><div class="gh"><h2>Daily gift</h2><span id="gStreak" class="gs"></span><button id="gClose" title="Close">&#10005;</button></div><p id="gMsg" class="gm"></p><div id="gTiles" class="gtiles"></div><div id="gGot" class="ggot" hidden></div><div id="gMonth" class="gmon"></div><div class="gf"><button class="big" id="gClaim">Claim!</button><small>Missed a day? No problem: the calendar just waits for you.</small></div></div></div>
-  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button></div><div id="bookBody"></div></div></div>
+  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button><button data-t="words">Tree's words</button></div><div id="bookBody"></div></div></div>
   <div id="mem" hidden><div class="card mcard"><div id="memBody"></div><button class="big" id="memOk">Lovely!</button></div></div>
+  <div id="treeSay" class="card" hidden><div class="tsh"><span id="tsIc"></span><b class="disp">The Elder Tree</b><small id="tsKind"></small><button id="tsClose" title="Close">&#10005;</button></div><p id="tsText"></p><div id="tsPups"></div><div class="tsf"><button class="ghost" id="tsLog">All the tree's words</button><button class="big" id="tsOk">Mm.</button></div></div>
+  <div id="diary" hidden><div class="card dcard"><div class="gh"><span class="dot" id="dyDot"></span><h2 id="dyTitle"></h2><button id="dyClose" title="Close">&#10005;</button></div><div id="dyBody"></div></div></div>
   <div id="loading"><div class="card">Waking the Elder Tree...</div></div>
 </div>
 <div id="err"></div>
@@ -437,7 +470,7 @@
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

@@ -202,7 +202,7 @@
       // the shrine door of the Elder Tree (always a candidate, strongest)
       if (o.door) { const d = o.door(); src.push({ id: 'shrine', x: d[0], y: d[1] + 3, z: d[2], r: 16, k: 1.4, col: new THREE.Color(0.5, 0.9, 1.0), pl: true }); }
     }
-    const tmpC = new THREE.Color(), WATER_N = new THREE.Color(), GR = new THREE.Vector3();
+    const tmpC = new THREE.Color(), WATER_N = new THREE.Color(), GR = new THREE.Vector3(), MISTC = new THREE.Color(), MIST = new THREE.Color(0.8, 0.8, 0.84);
     const SEA_W = new THREE.Color(0.86, 0.9, 0.97), SEA_A = new THREE.Color(1.0, 0.86, 0.7), SEA_S = new THREE.Color(0.38, 0.66, 1.0), ICE = new THREE.Color(0.78, 0.9, 0.97);
     function updateLights(dt, night) {
       const cam = camera.position, tgt = o.controls.target;
@@ -233,7 +233,7 @@
     }
 
     const api = {
-      state, lights, pools, halos, life, dome, stars, plK: 1, season: [0, 0, 0, 0],   // plK = point-light strength knob (tests); season weights (step 5)
+      state, lights, pools, halos, life, dome, stars, plK: 1, season: [0, 0, 0, 0], mist: 0, mistNear: 120, mistFar: 1100,   // mist: Round 2 step 2 (game)   // plK = point-light strength knob (tests); season weights (step 5)
       palette: h => palette(h, { zen: new THREE.Color(), hor: new THREE.Color(), gnd: new THREE.Color(), sun: new THREE.Color(), hs: new THREE.Color(), hg: new THREE.Color() }),
       // h = hours 0..24 (Sim.tod), t = seconds (animation), sick 0..1 (unhealthy tree greys the day sky a bit)
       update(h, t, dt, sick, treeScale) {
@@ -246,6 +246,13 @@
         if (sw[3] > 0.001) { pal.hor.lerp(SEA_W, sw[3] * 0.35 * dk); pal.zen.lerp(SEA_W, sw[3] * 0.2 * dk); }
         if (sw[2] > 0.001) pal.hor.lerp(SEA_A, sw[2] * 0.16 * dk);
         if (sw[1] > 0.001) pal.zen.lerp(SEA_S, sw[1] * 0.15 * dk);
+        // Round 2 step 2: a grey island (api.mist 0..1 = how much colour is still asleep) has a paler, greyer sky + a soft mist
+        const mi = api.mist || 0;
+        if (mi > 0.001) {
+          const md = mi * 0.6 * (1 - dc.night * 0.4);
+          for (const c of [pal.hor, pal.zen, pal.gnd]) { const l = c.r * 0.3 + c.g * 0.59 + c.b * 0.11; MISTC.setRGB(l, l, l * 1.03); c.lerp(MISTC, md); }
+          pal.hor.lerp(MIST, mi * 0.22 * (1 - dc.night));
+        }
         U.zen.value.copy(pal.zen); U.hor.value.copy(pal.hor); U.gnd.value.copy(pal.gnd);
         U.sunDir.value.copy(sp.sun); U.sunCol.value.copy(pal.sun); U.moonDir.value.copy(sp.moon); U.uTime.value = t; U.uNight.value = dc.night;
         U.uPx.value = o.renderer.getPixelRatio();
@@ -255,6 +262,7 @@
         // night grade: the fog closes in (blue-violet distance), so the far island sinks into the night and the lights pop
         if (!fog0) fog0 = { near: scene.fog.near, far: scene.fog.far };
         const fk = Math.max(dc.night, dc.dusk * 0.4); scene.fog.near = fog0.near + (260 - fog0.near) * fk; scene.fog.far = fog0.far + (2400 - fog0.far) * fk;
+        if (mi > 0.001) { scene.fog.near += (api.mistNear - scene.fog.near) * mi * 0.85; scene.fog.far += (api.mistFar - scene.fog.far) * mi * 0.75; }   // the mist thins as colour returns
         hemi.color.copy(pal.hs); hemi.groundColor.copy(pal.hg); hemi.intensity = pal.hi - (sick || 0) * 0.12 * (1 - dc.night);
         // directional: the sun while it is up, then the moon (both ~0 around the switch); never lower than 14 deg (no endless shadows)
         const useSun = sunK > 0.001 || moonK < 0.001;

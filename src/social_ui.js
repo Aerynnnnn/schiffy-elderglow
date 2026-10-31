@@ -60,7 +60,10 @@
       const nn = { got, visits: (nw && nw.visits) || [], notes: (nw && nw.notes) || [], likesNew: (nw && nw.likesNew) || 0, likes: (nw && nw.likes) || 0 };
       if (got.length || nn.visits.length || nn.notes.length || nn.likesNew) {
         news = nn; s.social.tot.visitors += nn.visits.length; s.social.tot.notes += nn.notes.length; s.social.tot.likes = nn.likes;
-        s.social.seenAt = Date.now(); g.save(); g.refresh();
+        s.social.seenAt = Date.now();
+        const who = [...new Set(nn.visits.map(v => v.from).concat(got.map(x => x.from)).filter(Boolean))];
+        if (who.length && g.onVisitors) g.onVisitors(who);   // Round 2 step 2: the tree's words remember a friend's visit
+        g.save(); g.refresh();
         if (showCard) g.showAway(g.lastSum && g.lastSum()); else toast(`${IX.globe} Visitors came by! <u>See</u>`, 8000, () => g.showAway(null));
       }
       if (got.length) refreshTree();

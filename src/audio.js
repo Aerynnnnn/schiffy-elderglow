@@ -219,9 +219,14 @@
     sting_haul: () => { const a = arr(2.4), r = rng(28); mix(a, plop(500, 900, 0.06), 0, 0.7); [67, 71, 74, 79, 83].forEach((m, k) => mix(a, K(m, r), 0.12 + k * 0.09, 0.75)); mix(a, sweepNoise(1.4, () => 7500, 0.8, u => Math.sin(Math.PI * u) * 0.1, 29, 4000), 0.4, 1); return norm(fadeOut(a, 0.5), 0.5); },
     sting_gift: () => { const a = arr(2.6), r = rng(30); [72, 76, 79, 84, 88, 91].forEach((m, k) => mix(a, Ce(m, r), k * 0.085, 0.7)); mix(a, Pi(60, r), 0, 0.4); mix(a, Pi(64, r), 0.02, 0.3); mix(a, sweepNoise(1.6, () => 7000, 0.8, u => Math.sin(Math.PI * u) * 0.1, 31, 4000), 0.3, 1); return norm(fadeOut(a, 0.6), 0.5); },
     sting_arrive: () => { const a = arr(2.0), r = rng(32); [76, 79, 84].forEach((m, k) => mix(a, K(m, r), k * 0.15, 0.8)); mix(a, K(88, r), 0.5, 0.5); mix(a, SFX.yip(), 0.75, 0.6); return norm(fadeOut(a, 0.4), 0.48); },
+    // Round 2 step 2: the colour wave (a slow felt-piano bloom rising under an airy swell + celesta sparkles) and the tree's
+    // voice (two low soft piano notes + one high bell: "the tree speaks")
+    sting_bloom: () => { const a = arr(6.2), r = rng(33); mix(a, sweepNoise(4.2, u => 500 + 2600 * u, 0.7, u => Math.pow(Math.sin(Math.PI * u), 2) * 0.09, 34, 200), 0.1, 1);
+      [43, 55, 62, 67, 71, 74, 79, 83].forEach((m, k) => mix(a, Pi(m, r), k * 0.32, k === 0 ? 0.55 : 0.62 - k * 0.03)); [86, 91, 95, 98].forEach((m, k) => mix(a, Ce(m, r), 2.0 + k * 0.28, 0.32)); return norm(fadeOut(a, 1.4), 0.5); },
+    voice: () => { const a = arr(3.0), r = rng(35); mix(a, Pi(48, r), 0, 0.5); mix(a, Pi(55, r), 0.18, 0.45); mix(a, Ce(88, r), 0.42, 0.3); mix(a, sweepNoise(1.8, () => 900, 0.6, u => Math.sin(Math.PI * u) * 0.05, 36, 200), 0.05, 1); return norm(fadeOut(a, 0.9), 0.36); },
   };
-  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1 };
-  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2 };
+  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1, sting_bloom: 1, voice: 1 };
+  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2, sting_bloom: 6, voice: 2.6 };
   const GAP = { tap: 0.04, pour: 0.35, lantern: 0.35, tok: 0.08, pop: 0.03, yip: 20, shimmer: 0.3, notify: 0.5, open: 0.08, close: 0.08 };
 
   // ======================================================================= the bank (built once per page, shared by contexts)

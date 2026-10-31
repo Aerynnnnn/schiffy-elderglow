@@ -135,6 +135,9 @@
     summer: SV('<circle cx="12" cy="12" r="4.6" fill="#ffb02e"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" fill="none"/>'),
     autumn: SV('<path d="M12 21v-5M12 3l2 4 4-1-1 4 3 2-4 1 1 3-5-2-5 2 1-3-4-1 3-2-1-4 4 1z" fill="#f2832d"/>'),
     winter: SV('<path d="M12 2.5v19M4 7l16 10M20 7L4 17M9.5 4l2.5 2 2.5-2M9.5 20l2.5-2 2.5 2" fill="none" stroke="#5aa8e0"/><circle cx="12" cy="12" r="2" fill="#dff1ff"/>'),
+    // Round 2 step 2
+    tree: SV('<path d="M10.5 21l.6-6h1.8l.6 6z" fill="#b07a45"/><path d="M12 3.5c-3.6 0-6.5 2.6-6.5 5.8 0 1 .3 1.9.8 2.7-.6.6-.9 1.3-.9 2.1 0 2 1.9 3.4 4.1 3.4h5c2.2 0 4.1-1.5 4.1-3.4 0-.8-.3-1.5-.9-2.1.5-.8.8-1.7.8-2.7 0-3.2-2.9-5.8-6.5-5.8z" fill="#7fd36a"/><circle cx="9.5" cy="9" r="1" fill="#ffe066" stroke="none"/><circle cx="14.5" cy="12" r="1" fill="#ffe066" stroke="none"/>'),
+    diary: SV('<rect x="5" y="3" width="14" height="18" rx="2" fill="#ffd9a8"/><path d="M5 3h3v18H5z" fill="#c98a4b"/><path d="M11 8h5M11 11.5h5M11 15h3" fill="none"/>'),
     memory: SV('<path d="M12 2.5c4 3 6.5 6.3 6.5 10a6.5 6.5 0 0 1-13 0c0-3.7 2.5-7 6.5-10z" fill="#9fe8ff"/><path d="M12 8.5v8M9 12.5l3 3 3-3" fill="none"/>'),
   };
   const NEED_NAMES = { water: 'Water', light: 'Light', nourish: 'Nourish', protect: 'Protect', spirit: 'Spirit' };
@@ -174,7 +177,7 @@
     return (STATUS[p.job] || {})[p.phase] || '';
   }
 
-  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, booted = false;
+  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, booted = false, bootAt = 0;
   const newSeed = () => (+Q.get('seed') >>> 0) || ((Math.random() * 4294967296) >>> 0) || 1;   // ?seed=N (tests)   // a fresh island's event seed (the sim itself never uses Math.random)
   const ev = [];
 
@@ -376,6 +379,7 @@
     const ro = $('roster');
     ro.addEventListener('click', e => {
       const row = e.target.closest('.pup'); if (!row) return; const i = +row.dataset.i;
+      if (e.target.closest('[data-diary]')) { openDiary(i); return; }
       const b = e.target.closest('button[data-job]');
       if (b) { setJob(i, b.dataset.job); return; }
       focusPup(i);
@@ -384,10 +388,13 @@
     $('sheetBtn').onclick = () => { const o = $('side').classList.toggle('open'); $('sheetBtn').innerHTML = o ? 'Close &#9660;' : 'Pups &#9650;'; };
     $('camTree').onclick = () => { closePlot(); focusPup(-1); flyHome(); };
     // step 5: the Book (tree memories, pups met, decorations, outfits) + the tree memory card
-    $('bookBtn').onclick = () => { if ($('book').hidden) openBook(S.book.read < S.level ? 'mem' : bookTab); else closeBook(); };
+    $('bookBtn').onclick = () => { if ($('book').hidden) openBook(S.book.read < S.level ? 'mem' : Story.unread(S) ? 'words' : bookTab); else closeBook(); };
+    // Round 2 step 2: the tree's voice bubble + pup diaries
+    $('tsIc').innerHTML = IC.tree; $('tsOk').onclick = $('tsClose').onclick = closeSay; $('tsLog').onclick = () => { closeSay(); openBook('words'); };
+    $('dyClose').onclick = closeDiary; $('diary').addEventListener('click', e => { if (e.target.id === 'diary') closeDiary(); });
     $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
     if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
-    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
+    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
     $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem); });
     $('memOk').onclick = () => { closeMemory(); if (!$('book').hidden) renderBook(); };
@@ -467,7 +474,7 @@
       // friendship hint: hearts = friends; the selected pup shows who (and a puppy its parents)
       const fl = Needs.friendsOf(S, i), fc = row.querySelector('.frc'), best = fl.length ? fl[0].lv : 0;
       fc.innerHTML = fl.length ? `${IC.friends}<b>${fl.length}</b>` : ''; fc.className = 'frc' + (best >= 3 ? ' close' : ''); fc.title = fl.length ? friendLine(i, true).replace(/<[^>]+>/g, '') : '';
-      const fv = row.querySelector('.frl'); if (pups.selected === i) { const h = friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : ''); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
+      const fv = row.querySelector('.frl'); if (pups.selected === i) { const h = friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : '') + (VISIT ? '' : `<button class="dybtn" data-diary="${i}" title="${esc(p.name)}'s diary">${IC.diary}Diary</button>`); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
       row.querySelector('.mor b').textContent = Math.round(p.morale);
       row.querySelector('.st').textContent = statusOf(p);
       const xc = row.querySelector('.xpc'), xl = expLv(p); xc.textContent = p.xpE > 0 ? 'Explorer ' + xl : ''; xc.hidden = !(p.xpE > 0);
@@ -523,7 +530,91 @@
       if ($('seaChip').dataset.k !== nm) { $('seaChip').dataset.k = nm; $('rSeaI').innerHTML = IC[nm]; $('rSea').textContent = Seasons.TITLE[nm]; $('seaChip').className = 'sea-' + nm; }
       $('seaChip').title = `${Seasons.TITLE[nm]} on the island: ${SEA_TXT[nm]}. ${Seasons.fix !== null ? '(fixed for testing)' : `Changes to ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} in ${fmtDays(a.left)}.`} One season per week.`;
     }
-    $('bookBtn').classList.toggle('ready', S.book.read < S.level);
+    $('bookBtn').classList.toggle('ready', S.book.read < S.level || (!VISIT && Story.unread(S) > 0));
+  }
+  // ---- Round 2 step 2: the tree's voice (ONE unprompted message per session open, the rest wait in the Book), pup diaries
+  const session = Story.Session();
+  let sayOpen = false, sayT = 0, sayTimer = null;
+  const overlayOpen = () => ['away', 'gift', 'mem', 'haul', 'book', 'diary'].some(id => $(id) && !$(id).hidden) || !!document.querySelector('#pickCard:not([hidden]), #safeCard:not([hidden])');
+  function trySpeak(force) {
+    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || boatCam || RST.wave))) return null;
+    const r = session.speak(S); if (!r) return null;
+    showSay(r.w, r.e); save(); return r;
+  }
+  function showSay(w, e) {
+    sayOpen = true; const el = $('treeSay');
+    $('tsKind').textContent = w.kind === 'chapter' ? `· Chapter ${w.n} · ${w.t}` : `· ${w.t}`;
+    // the words fade in a few at a time
+    $('tsText').innerHTML = w.x.split(/(\s+)/).map(x => /^\s+$/.test(x) ? x : `<span>${esc(x)}</span>`).join('');
+    const sp = [...$('tsText').querySelectorAll('span')]; let k = 0; clearInterval(sayTimer);
+    sayTimer = setInterval(() => { for (let n = 0; n < 2 && k < sp.length; n++) sp[k++].classList.add('on'); if (k >= sp.length) clearInterval(sayTimer); }, 120);
+    // the pups react: the two nearest the view look up at the tree (a heart / note floats over them)
+    const tg = controls.target, near = S.pups.map((p, i) => [i, pups.list[i] ? pups.list[i].holder.position.distanceTo(tg) : 1e9]).filter(x => x[1] < 220 && !S.pups[x[0]].exp).sort((a, b) => a[1] - b[1]).slice(0, 2).map(x => x[0]);
+    near.forEach((i, k) => setTimeout(() => { const P = pups.list[i]; if (P) floater([P.holder.position.x, P.holder.position.y + 9, P.holder.position.z], k ? IC.spirit : IC.heart); }, 900 + k * 500));
+    const nm = near.map(i => `<b>${esc(S.pups[i].name)}</b>`);
+    $('tsPups').innerHTML = nm.length ? `${IC.paw}${nm.join(' and ')} ${nm.length > 1 ? 'look' : 'looks'} up at the tree.` : '';
+    el.hidden = false; requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+    snd.sfx('voice'); sayT = performance.now();
+  }
+  function closeSay() { const el = $('treeSay'); el.classList.remove('in'); sayOpen = false; clearInterval(sayTimer); setTimeout(() => { if (!sayOpen) el.hidden = true; }, 900); }
+  function renderWords() {
+    const L = S.story.log; let h = `<p class="bsub">The Elder Tree speaks softly: a chapter of its story on the days you come by, a few words when something lovely happens, and its dreams while you are away. <b>${S.story.ch} / ${Story.CH.length}</b> chapters so far.</p><div class="wlist">`;
+    if (!L.length) h += `<div class="wtile"><p>The tree is still finding its words.</p></div>`;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const e = L[i], w = Story.words(e); if (!w) continue;
+      const lab = w.kind === 'chapter' ? `${IC.tree}Chapter ${w.n}` : w.kind === 'dream' ? `${IC.moon}A dream` : `${IC.star}A moment`;
+      h += `<div class="wtile ${w.kind}${e.u ? ' new' : ''}"><div class="wl">${lab} &middot; island day ${e.d}${e.u ? '<em>new</em>' : ''}</div>${w.kind === 'dream' ? '' : `<b class="disp">${esc(w.t)}</b>`}<p>${esc(w.x)}</p></div>`;
+    }
+    return h + '</div>';
+  }
+  function openDiary(i) {
+    const p = S.pups[i]; if (!p) return; closeSay();
+    $('dyDot').style.background = p.collar; $('dyTitle').textContent = `${p.name}'s diary`;
+    const L = Story.diary(S, i);
+    $('dyBody').innerHTML = `<p class="dsub">${esc(p.name)} writes a line on the days something happens. Island day ${S.story.dn}.</p>` +
+      (L.length ? L.map(x => `<div class="dyl${x.today ? ' today' : ''}"><b>${x.today ? 'Today' : 'Day ' + x.dn}</b><span>${esc(x.text)}</span></div>`).join('') : `<div class="dyl"><span>Nothing written yet. Tomorrow, maybe!</span></div>`);
+    $('diary').hidden = false; snd.sfx('open');
+  }
+  function closeDiary() { $('diary').hidden = true; snd.sfx('close'); }
+  // a dream for the away card (only after a night away); it is this session's one unprompted message
+  function awayDream(sum, away) {
+    if (!sum || away < 60) return;
+    const dr = Story.dream(S, sum); if (!dr) return;
+    sum.dream = dr.text; const e = Story.say(S, 'dream', dr.text); e.u = 0; session.used();
+  }
+
+  // ---- Round 2 step 2: colour restoring. Story.radius(S) = what the island has earned (pure, from the sim); the view eases
+  // toward it, and a jump (a new ring, online or after being away) plays a slow colour WAVE with a sound sting + a toast.
+  const RST = { R: -1, wave: null, held: false };
+  function restoreTick(dt, t) {
+    const tgt = Story.radius(S), U = ElderMap.uRest.value;
+    if (RST.R < 0) RST.R = tgt.R;
+    if (RST.lock !== null && RST.lock !== undefined && !RST.wave) { U.set(RST.lock, Story.C.EDGE, Story.C.NOISE, 1); dn.mist = Math.max(0, 1 - Math.max(0, RST.lock - 22) / 560); return; }   // tests: a fixed radius
+    const canWave = !VISIT && !overlayOpen() && !boatCam;
+    if (RST.wave) {
+      const w = RST.wave; w.t += dt; const k = Math.min(1, w.t / w.dur), e = k * k * (3 - 2 * k);
+      RST.R = w.from + (w.to - w.from) * e; ElderMap.uRestWave.value = Math.sin(Math.PI * Math.min(1, k * 1.05)) * 0.9;
+      if (k >= 1) { RST.wave = null; ElderMap.uRestWave.value = 0; if (w.lockEnd !== undefined) RST.lock = w.lockEnd; if (w.back) w.back(); }
+    } else if (tgt.R - RST.R > 12) { if (canWave) startWave(RST.R, tgt.R); }   // waits while a card is open (the away card first)
+    else RST.R += (tgt.R - RST.R) * Math.min(1, dt * 0.4);   // the slow creep inside a ring (or back after a test)
+    const full = tgt.full && !RST.wave && RST.R >= Story.C.RINGS[Story.C.RINGS.length - 1].r - 1;
+    U.set(RST.R, Story.C.EDGE, Story.C.NOISE, full ? 0 : 1);
+    dn.mist = full ? 0 : Math.max(0, 1 - Math.max(0, RST.R - 22) / 560);
+  }
+  function startWave(from, to) {
+    const rFrom = Story.C.RINGS.reduce((k, x, i) => from >= x.r - 1 ? i : k, 0), rTo = Story.radius(S).ring;
+    const big = rTo > rFrom, dur = Math.max(5, Math.min(13, 4 + (to - from) / 45));
+    RST.wave = { from, to, t: 0, dur, back: null };
+    if (!big || VISIT) return;
+    // a new ring: the tree glows, a sting, a toast; the camera rises to watch if it is free (not following a pup / a boat)
+    snd.sfx('sting_bloom'); fx.burst();
+    const ring = Story.C.RINGS[rTo];
+    toast(`${IC.tree} Colour returns to <b>${ring.name}</b>${rTo === Story.C.RINGS.length - 1 ? ': the whole island is awake!' : ''}`, 6500, () => openBook('words'));
+    if (follow < 0 && !tween) {
+      const back = { e: camera.position.clone(), t: controls.target.clone() }, TP = nav.TP, see = Math.min(640, to);
+      const tg = new THREE.Vector3(TP[0], TP[1] + 20, TP[2]), eye = tg.clone().add(camera.position.clone().sub(controls.target).setY(0).setLength(see * 1.15 + 120)).setY(TP[1] + see * 0.7 + 90);
+      flyTo(eye, tg, 2.2, () => {}); RST.wave.back = () => { if (!tween && follow < 0) flyTo(back.e, back.t, 2.0, () => {}); };
+    }
   }
   // ---- step 5: seasons, growth stages, tree memories, the Book
   const SEA_TXT = { spring: 'blossoms everywhere, gardeners +20 %', summer: 'long sunny days, the tree is thirstier, +10 % glow sap', autumn: 'harvest time: gathering + gardens +25 %, lanterns by the plaza', winter: 'snow, short days: light matters most (lantern paths +50 %), the tree drinks less' };
@@ -566,6 +657,7 @@
   function renderBook() {
     document.querySelectorAll('#bookTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === bookTab));
     const unread = S.book.read < S.level; $('bookTabs').querySelector('[data-t="mem"]').classList.toggle('new', unread);
+    $('bookTabs').querySelector('[data-t="words"]').classList.toggle('new', bookTab !== 'words' && Story.unread(S) > 0);
     let h = '';
     if (bookTab === 'mem') {
       const sk = Seasons.of(S);
@@ -593,6 +685,8 @@
       h += `<p class="bsub">Decorations found: <b>${n} / ${ids.length}</b> (sky trips, the trader, the daily gift).</p><div class="pgrid">`;
       for (const d of ids) h += `<div class="ptile${have[d] ? '' : ' lock'}"><i class="dface">${have[d] ? IC.decor : IC.lock}</i><b class="disp">${have[d] ? decorName(d) : '???'}</b><small>${have[d] ? `${have[d]} found &middot; ${S.placed.filter(x => x.id === d).length} placed` : findWhere(d)}</small></div>`;
       h += '</div>';
+    } else if (bookTab === 'words') {
+      h += renderWords(); if (Story.unread(S)) { Story.readAll(S); save(); }
     } else {
       const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
       h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>. The wardrobe (dress your pups) comes in a later update.</p><div class="pgrid">`;
@@ -1055,7 +1149,11 @@
   function showAway(sum) {
     const news = S.pups.map((p, i) => p.isNew ? i : -1).filter(i => i >= 0);
     let h = '';
+    // Round 2 step 2: after a night away the card opens with the tree's dream of what happened (src/story.js, deterministic)
+    const dream = sum && sum.dream ? `<li class="dreamli"><div class="dreamv">${[...Array(10)].map((_, k) => `<i style="left:${(k * 37 + 7) % 96}%;top:${(k * 53 + 20) % 80 + 10}%;animation-delay:${(k * 0.67).toFixed(2)}s"></i>`).join('')}<h3>${IC.moon}The Elder Tree dreamt...</h3><p>${esc(sum.dream)}</p></div></li>` : '';
+    $('away').classList.toggle('dreamy', !!dream);
     if (sum) {
+      h += dream;
       const lv = sum.levels > 0 ? `<li class="good exl">${IC.star}<div>The tree grew ${sum.levels} level${sum.levels > 1 ? 's' : ''}! Now level ${S.level} (<b>${Growth.stageName(S.level)}</b>).<br><button class="go sm" data-memaway="${S.level}">${IC.memory} Read its memory</button></div></li>` : '';
       const g = sum.gathered || {};
       h += `<li>${IC.clock}${sum.capped ? 'Over 8 h (pups count up to 8 h)' : fmtT(sum.sec)}</li>
@@ -1186,6 +1284,7 @@
     soc = SocialUI({ Q, SLOT, SAVE_KEY, IC, esc, toast, nav, net: NET, mode: VISIT ? 'visit' : 'home', get S() { return S; }, save, showAway: s => showAway(s || null), lastSum: () => bootSum,
       touch: () => { if (cloud) cloud.touch(); }, openSafe: v => { if (cloudUI) cloudUI.openSafe(v); }, cloudStatus: () => cloudUI ? cloudUI.statusHtml() : '',
       refresh: () => { refreshTree(); refreshBuild(true); },
+      onVisitors: names => { if (!VISIT && S && Story.visit(S, names[0] || '')) save(); },   // Round 2 step 2: the tree notices a friend's visit
       onWater: () => { snd.sfx('water'); S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
       onGift: () => { snd.sfx('gift'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
       onLike: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); } });
@@ -1211,8 +1310,10 @@
     let sum = null;
     // anchor the island clock so that it reads "now" once the catch-up has run (the catch-up then lives through the
     // real hours, night included); a fresh island just starts at "now"
+    if (!VISIT) RST.R = Story.radius(S).R;   // Round 2 step 2: the colour as it was when the player left (a new ring then waves in)
     if (ld.away > 5) { anchorClock(Math.min(ld.away, Sim.C.OFFLINE_CAP)); sum = Sim.catchUp(S, ld.away, nav); fx.setScale(Sim.scaleOf(S)); }
     else anchorClock(0);
+    if (!VISIT) { awayDream(sum, ld.away); Story.openDay(S, Daily.dayNum(new Date())); }
     dn = DayNight({ scene, renderer, camera, controls, hemi, sun, center: c, lightR: r * 1.2, map: m, nav, ground, plots, phone: PHONE, door: () => nav.door(fx.scale).p });
     growLand(S.level); fx.level = S.level;
     if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree has ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
@@ -1253,7 +1354,8 @@
       if (window.__linkError) setTimeout(() => toast(`${cloudUI.IX.mail} That email link has expired or was already used. Ask for a new code in <u>Keep my island safe</u>.`, 9000, () => cloudUI.openSafe('main')), 900);
       if (CLOUD_ON) setInterval(() => cloud.tick(), 5000);
     }
-    $('loading').remove(); booted = true; m.readyAt = performance.now() - t0;
+    $('loading').remove(); booted = true; bootAt = performance.now(); m.readyAt = performance.now() - t0;
+    ElderMap.uRestC.value.set(nav.TP[0], nav.TP[2], Story.C.Y0, Story.C.YK);
     sndUI = ElderSound.ui(snd, {});
     save();
     giftCheck(true);
@@ -1281,6 +1383,10 @@
         for (let i = 0; i < P.length; i += 3) { if (P[i + 1] > 6) continue; v.set(P[i], P[i + 1], P[i + 2]).applyMatrix4(M); const dx = v.x - TP[0], dz = v.z - TP[2], a = Math.floor(((Math.atan2(dz, dx) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 72) % 72; R[a] = Math.max(R[a], Math.hypot(dx, dz)); }
         return R.map(x => Math.round(x * 10) / 10);
       },
+      // Round 2 step 2 (tests): Story, RST (shown colour radius / wave), session, trySpeak(force), showSay(words), closeSay,
+      // openDiary(i), closeDiary, setColour(R | null, wave) = jump the shown radius (null = back to the earned one)
+      Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, startWave,
+      setColour(R, wave) { RST.lock = null; RST.wave = null; ElderMap.uRestWave.value = 0; if (R === null) { RST.R = Story.radius(S).R; return RST.R; } if (wave) { RST.R = Math.min(RST.R, R); startWave(RST.R, R); RST.wave.lockEnd = R; } else RST.lock = R; return R; },
       waterRuns() { return waterRuns(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
   }).catch(e => { err('Could not start: ' + (e.stack || e)); window.__mapError = String(e); });
 
@@ -1386,7 +1492,7 @@
     const c0 = performance.now();
     // sim
     if (real > 30) {   // tab was hidden / laptop slept: coarse catch-up, summary if long
-      const sum = Sim.catchUp(S, real * SPEED, nav); syncPups(); if (real >= 60 && !VISIT) showAway(sum); acc = 0;
+      const sum = Sim.catchUp(S, real * SPEED, nav); syncPups(); if (!VISIT) { if (real >= 3600) session.n = 0; /* back after an hour+ (a phone woken the next morning) = a new session open */ if (real >= 60 && session.n === 0) awayDream(sum, real); Story.openDay(S, Daily.dayNum(new Date())); } if (real >= 60 && !VISIT) showAway(sum); acc = 0;
     } else {
       acc += real * SPEED; let n = 0;
       if (cloud && !VISIT) cloud.played();   // real play since the last save: the save counter moves on (src/cloud.js)
@@ -1411,6 +1517,7 @@
       clockAcc = 0;
       if (TIME_FIX === null && SPEED === 1) { const dft = Math.abs(((Sim.tod(S) * 3600 - realSec()) % 86400 + 86400 + 43200) % 86400 - 43200); if (dft > 120 || Math.abs(S.ep0 + S.time - Seasons.localNow()) > 120) anchorClock(0); }
       giftCheck(false);
+      if (!VISIT) Story.openDay(S, Daily.dayNum(new Date()));   // past midnight with the game open: a new day played
     }
     // step 5: season (weights fade over the first night hours of a new week) -> map tints, sky, weather, tree petals / leaves;
     // the sky reads the season-warped hour (summer long days, winter short)
@@ -1432,6 +1539,7 @@
     plots.update(S, t, dt, S.level, poses);
     cameraTick(dt); if (walker) walker.update(dt); controls.update();
     pups.lod(camera.position, PHONE ? 220 : 260);   // home view sees the plaza at ~190 m: keep its pups inked
+    restoreTick(dt, t);   // Round 2 step 2: the colour radius (one uniform set) + the mist
     map.update(camera, t, renderer.domElement.height);
     renderer.render(scene, camera);
     // labels: projected over each pup's head, then stacked upward where they would overlap (nearest pup keeps its spot)
@@ -1453,7 +1561,7 @@
       L.l.style.left = L.x + 'px'; L.l.style.top = y + 'px';
     }
     expLabels();
-    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (snd.live) snd.update(sndState()); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
+    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (session.n === 0) trySpeak(false); if (snd.live) snd.update(sndState()); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
     if (now - lastSave > 5000) save();
     cpu += performance.now() - c0; frames++; pacc += real;
     if (pacc >= 0.5) {

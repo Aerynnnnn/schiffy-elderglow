@@ -91,12 +91,33 @@
       c = mix(c, vec3(0.93, 0.96, 1.0), snow);
       diffuseColor.rgb = c;
     }`;
+  // Round 2 step 2 (colour restoring, src/story.js): albedo outside the restored radius is a soft misty grey. uRest = (radius m,
+  // soft edge half-width m, edge wobble m, strength: 0 = full colour = exactly the shipped look); uRestC = (tree x, z, y0, yk:
+  // height above y0 counts yk x, so the sky isles come last); uRestWave 0..1 = a warm glow band riding the edge during a
+  // colour wave. One uniform set for every map batch (+ water / glass); the tree + orbs (makeTintMat) never grey.
+  const uRest = { value: new THREE.Vector4(1e4, 26, 18, 0) }, uRestC = { value: new THREE.Vector4(0, 0, 30, 2) }, uRestWave = { value: 0 };
+  const REST_DECL = 'uniform vec4 uRest;\nuniform vec4 uRestC;\nuniform float uRestWave;\n';
+  const restoreFS = (wp, unlitK) => `
+    #ifndef EG_NORESTORE
+    if (uRest.w > 0.0) {
+      vec3 wR = ${wp};
+      float dR = length(wR.xz - uRestC.xy) + max(0.0, wR.y - uRestC.z) * uRestC.w;
+      float nR = sin(wR.x * 0.043 + wR.z * 0.029) * 0.55 + sin(wR.z * 0.067 - wR.x * 0.051 + 1.7) * 0.3 + sin((wR.x + wR.z) * 0.13) * 0.15;
+      float eR = dR - uRest.x - nR * uRest.z;
+      float gR = smoothstep(-uRest.y, uRest.y, eR) * uRest.w;
+      vec3 cR = diffuseColor.rgb; float lR = dot(cR, vec3(0.3, 0.59, 0.11));
+      vec3 greyR = mix(vec3(lR), vec3(0.42), 0.4) * vec3(0.9, 0.9, 0.97);   // flat, muted, a little cool (not snow-white)
+      float rimR = uRestWave * exp(-eR * eR / (uRest.y * uRest.y * 1.4));
+      diffuseColor.rgb = mix(cR, greyR, gR * ${unlitK}) + rimR * vec3(1.0, 0.8, 0.42) * 0.4;
+    }
+    #endif`;
   const GRADE_FS = `#include <color_fragment>
     ${SEA_FS}
+    ${restoreFS('vSeaWP', '(vUnlit > 0.5 ? 0.75 : 1.0)')}
     if (vUnlit < 0.5) { float aL = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb, aL * uGrade.rgb, uGrade.a) * (1.0 - uGradeDark * uNight); }`;
   const GLOW_FOG = 'vec3 preFog = gl_FragColor.rgb;\n#include <fog_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, preFog, gU * uNight * 0.6);';
-  const glowUniforms = s => { s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; };
-  const GLOW_DECL = 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
+  const glowUniforms = s => { s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave; s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; };
+  const GLOW_DECL = REST_DECL + 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
   litMat.onBeforeCompile = s => {
     s.uniforms.uTime = uTime; glowUniforms(s);
     s.vertexShader = SWAY_DECL + SEA_DECL_V + 'attribute float unlit;\nvarying float vUnlit;\n' + s.vertexShader
@@ -129,8 +150,19 @@
   function seeMat(m) {   // Water* / Glass*: as in viewer.html
     if (seeCache[m.name]) return seeCache[m.name];
     const water = m.name.startsWith('Water');
-    return (seeCache[m.name] = new THREE.MeshToonMaterial({ color: m.color.clone(), gradientMap: grad, transparent: true,
-      opacity: m.opacity < 1 ? m.opacity : (water ? 0.8 : 0.35), depthWrite: false }));
+    const sm = new THREE.MeshToonMaterial({ color: m.color.clone(), gradientMap: grad, transparent: true,
+      opacity: m.opacity < 1 ? m.opacity : (water ? 0.8 : 0.35), depthWrite: false });
+    sm.onBeforeCompile = s => {   // Round 2 step 2: rivers / lake / glass grey outside the restored radius too
+      s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave;
+      s.vertexShader = 'varying vec3 vRestWP;\n' + s.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        { vec4 pR = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            pR = instanceMatrix * pR;
+          #endif
+          vRestWP = (modelMatrix * pR).xyz; }`);
+      s.fragmentShader = 'varying vec3 vRestWP;\n' + REST_DECL + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + restoreFS('vRestWP', '0.82'));
+    };
+    return (seeCache[m.name] = sm);
   }
 
   // ---- geometry merge
@@ -339,7 +371,7 @@
       s.uniforms.uTime = uTime; s.uniforms.uGlow = u.glow; s.uniforms.uLeaf = u.leaf; s.uniforms.uBoost = u.boost; glowUniforms(s);
       s.vertexShader = SWAY_DECL + SEA_DECL_V + 'attribute float unlit;\nvarying float vUnlit;\nvarying float vLeaf;\n' + s.vertexShader
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvUnlit = unlit; vLeaf = swayW;' + SWAY_VS + SEA_VS);
-      s.fragmentShader = 'varying float vUnlit;\nvarying float vLeaf;\nuniform float uGlow;\nuniform float uLeaf;\nuniform float uBoost;\n' + GLOW_DECL + s.fragmentShader
+      s.fragmentShader = '#define EG_NORESTORE\nvarying float vUnlit;\nvarying float vLeaf;\nuniform float uGlow;\nuniform float uLeaf;\nuniform float uBoost;\n' + GLOW_DECL + s.fragmentShader
         .replace('#include <color_fragment>', `#include <color_fragment>
           float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
           if (vUnlit > 0.5) {
@@ -355,5 +387,5 @@
     m.customProgramCacheKey = () => 'eg-tint-' + id;
     return m;
   }
-  window.ElderMap = { load, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache };
+  window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache };
 })();
