@@ -368,6 +368,23 @@
   body.phone #socCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 72%; border-radius: 18px 18px 0 0; border-bottom: none; z-index: 12; }
   body.phone #visBan { top: 8px; left: 8px; right: 8px; padding: 4px 8px; } body.phone #visBan b { font-size: 18px; } body.phone #visBan .isw { width: 34px; height: 34px; }
   body.phone #visBar { bottom: 10px; gap: 4px; padding: 4px; } body.phone #visBar button { min-width: 56px; padding: 3px 4px; font-size: 12px; } body.phone #visBar button svg.ic { width: 22px; height: 22px; }
+  /* Round 2 step 1: sound (src/audio.js): round button bottom-right, small panel, first-time "cozy sounds?" chip */
+  #sndBtn { position: absolute; right: 12px; bottom: 14px; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 7; background: #fffbf2; cursor: pointer; }
+  #sndBtn svg.ic { width: 26px; height: 26px; } #sndBtn.off { background: #efeaf7; } #sndBtn:hover { background: #fff6d6; }
+  #sndCard { position: absolute; right: 12px; bottom: 66px; width: 300px; z-index: 14; padding: 0 12px 8px; background: #fffbf2; }
+  #sndCard .pch { background: #fffbf2; } .sndt { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } .sndt svg.ic { width: 24px; height: 24px; }
+  .sndon { margin: 4px 0 8px; } .sndon b { font-size: 15px; }
+  .sndr { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13.5px; margin: 6px 0; } .sndr svg.ic { width: 20px; height: 20px; flex: none; } .sndr span { width: 86px; flex: none; }
+  .sndr input { flex: 1; min-width: 0; accent-color: #7fd36a; } #sndCard.muted .sndr { opacity: .5; }
+  #sndCard .sub { font-size: 11.5px; color: #5d567a; margin: 6px 0 2px; }
+  #sndAsk { position: absolute; right: 12px; bottom: 66px; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; z-index: 7; background: #fffbf2; opacity: 0; transform: translateY(8px); transition: opacity .6s, transform .6s; pointer-events: none; }
+  #sndAsk.in { opacity: 1; transform: none; pointer-events: auto; } #sndAsk svg.ic { width: 26px; height: 26px; flex: none; }
+  #sndAsk span { font-weight: 600; font-size: 14px; display: flex; flex-direction: column; line-height: 1.1; } #sndAsk small { font-weight: 500; font-size: 11px; color: #5d567a; }
+  #sndAsk .big { font-size: 15px; padding: 5px 12px; } #sndAsk .ghost { font-size: 12px; }
+  body.visit #sndBtn { bottom: 90px; } body.visit #sndAsk { bottom: 142px; } body.visit #sndCard { bottom: 142px; }
+  body.phone #sndBtn { right: 8px; bottom: auto; top: 92px; width: 38px; height: 38px; } body.phone #sndBtn svg.ic { width: 22px; height: 22px; }
+  body.phone #sndCard { right: 8px; left: 8px; width: auto; bottom: auto; top: 136px; }
+  body.phone #sndAsk { right: 8px; bottom: 144px; top: auto; padding: 4px 6px 4px 8px; gap: 6px; } body.phone #sndAsk span { font-size: 13px; } body.phone #sndAsk .big { font-size: 13px; padding: 4px 8px; }
   body.phone #visPanel { bottom: 78px; } body.phone .gopts { grid-template-columns: repeat(3, 1fr); } body.phone #visHint { white-space: normal; width: 80%; bottom: 84px; text-align: center; }
 </style>
 </head>
@@ -420,7 +437,7 @@
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

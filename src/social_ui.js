@@ -260,7 +260,7 @@
         if (t.id === 'vNoteGo') {
           const c = window.Social.noteCheck($('vNoteT').value); if (!c.ok) { $('vNoteWhy').textContent = c.why; return; }
           const r = await net.note(V.island.id, c.v); if (!r.ok) { $('vNoteWhy').textContent = r.why; return; }
-          $('vNoteT').value = ''; $('vNoteWhy').textContent = ''; toast(`${IX.note} You signed the guestbook`, 2000); loadVisitGb(); return;
+          $('vNoteT').value = ''; $('vNoteWhy').textContent = ''; toast(`${IX.note} You signed the guestbook`, 2000); if (window.__snd) window.__snd.sfx('note'); loadVisitGb(); return;
         }
         if (t.dataset.rep) { const r = await net.report('note', t.dataset.rep, 'unkind note'); toast(r.ok ? 'Thanks, the note was reported' : 'Could not report', 2400); return; }
         if (t.id === 'vRepIsl') { const r = await net.report('island', V.island.id, 'reported from a visit'); toast(r.ok ? 'Thanks, the island was reported' : 'Could not report', 2400); return; }

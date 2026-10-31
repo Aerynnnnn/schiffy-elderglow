@@ -48,6 +48,10 @@
   }
   // ?season=spring|summer|autumn|winter (tests / screenshots only, never saved): force the season everywhere
   { const sq = Seasons.NAMES.indexOf(Q.get('season') || ''); if (sq >= 0) Seasons.fix = sq; }
+  // ---- Round 2 step 1: sound (src/audio.js). Off until the player says yes (prefs in localStorage, not the save); ?mute=1 =
+  // silent test mode (output gain 0, own prefs key). Never touches the sim: the game only calls snd.sfx* + snd.update (4x/s).
+  const snd = ElderSound.make({ silent: Q.get('mute') === '1' || window.__ELDER_SILENT === true });
+  let sndUI = null, sndWater = null;
   const $ = id => document.getElementById(id);
   const app = $('app');
   if (FIX) document.body.classList.add('fix');
@@ -414,7 +418,7 @@
     $('side').hidden = false; $('topBtns').hidden = false; $('resbar').hidden = false;
   }
   function setJob(i, job, quiet) {
-    if (Sim.assign(S, i, job, nav)) { if (!quiet) toast(`${esc(S.pups[i].name)}: ${IC[job]} ${JOB_NAMES[job]}`, 1600); save(); hintDone(); }
+    if (Sim.assign(S, i, job, nav)) { snd.sfx('assign'); if (!quiet) toast(`${esc(S.pups[i].name)}: ${IC[job]} ${JOB_NAMES[job]}`, 1600); save(); hintDone(); }
     refreshRoster(true);
   }
   const jobOpen = j => Needs.jobOpen(S, j);
@@ -641,7 +645,7 @@
   function claimGift() {
     if (!Daily.status(S, new Date()).can) { closeGift(); return; }
     const g = Daily.claim(S, new Date()); if (!g) { closeGift(); return; }
-    giftJust = g; save(); renderGift(); refreshTree();
+    giftJust = g; save(); renderGift(); refreshTree(); snd.sfx('sting_gift');
     toast(`${IC.gift} Daily gift: ${giftItems(g).join(' ')}`, 3200);
   }
   function giftCheck(auto) {
@@ -852,6 +856,7 @@
     $('hSack').classList.remove('open'); void $('hSack').offsetWidth; $('hSack').classList.add('open');
     $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0);
     $('haul').hidden = false;
+    snd.sfx('sting_haul'); items.forEach((x, m) => snd.sfx('pop', { delay: 0.5 + m * 0.32, rate: 1 + m * 0.07, gain: x.rare ? 1 : 0.8, force: true }));   // the items pop in (CSS delays)
   }
   function closeHaul() { if (haulK >= 0) { S.exp.hauls.splice(haulK, 1); haulK = -1; save(); } $('haul').hidden = true; refreshExpBtn(); }
   function refreshExpBtn() {
@@ -860,7 +865,7 @@
   }
   function placeDecor(id) {
     const k = Exped.place(S, nav, id); if (k < 0) { toast('No free decoration spot left', 2200); return; }
-    save(); const p = expFx.decorPos(k);
+    save(); snd.sfx('built'); const p = expFx.decorPos(k);
     toast(`${IC.decor} ${decorName(id)} placed!`, 2200);
     if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 3, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; pups.select(-1); flyTo(tgt.clone().add(out.multiplyScalar(38)).add(new THREE.Vector3(0, 20, 0)), tgt, 1.2); }
   }
@@ -943,7 +948,7 @@
   }
   function collectFruit(f) {
     const r = Events.collect(S, f.id, f.j); if (!r) return;
-    nfx.sparkle(f.p); floater(f.p, `+${r.food}${IC.food}${r.nourish ? ` +${r.nourish}${IC.nourish}` : r.light ? ` +${r.light}${IC.light}` : ''}${r.seed ? ` +1${IC.seed}` : ''}`);
+    nfx.sparkle(f.p); snd.sfx('pop', { rate: 1.1 }); floater(f.p, `+${r.food}${IC.food}${r.nourish ? ` +${r.nourish}${IC.nourish}` : r.light ? ` +${r.light}${IC.light}` : ''}${r.seed ? ` +1${IC.seed}` : ''}`);
     save(); refreshTree(); renderEvents(true); refreshEvBtn();
   }
   function fruitCam() {
@@ -1015,7 +1020,7 @@
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
       if (x === 'assign') setJob(+b.dataset.i, needK);
       else if (x === 'pup') focusPup(+b.dataset.i);
-      else if (x === 'ward') { const k = Needs.placeWard(S, nav); if (k >= 0) { save(); toast(`${IC.ward} A crystal ward glows by the roots`, 2400); const p = nfx.wardPos(k); if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 4, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2); } } }
+      else if (x === 'ward') { const k = Needs.placeWard(S, nav); if (k >= 0) { save(); snd.sfx('lantern'); toast(`${IC.ward} A crystal ward glows by the roots`, 2400); const p = nfx.wardPos(k); if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 4, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2); } } }
       else if (x === 'blight') { const p = nfx.blightPos(+b.dataset.k); if (p) { const tgt = new THREE.Vector3(p[0], p[1], p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(40)).add(new THREE.Vector3(0, 26, 0)), tgt, 1.2); } }
       else if (x === 'plot') { closeNeed(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
       renderNeed(true);
@@ -1127,7 +1132,7 @@
     }
   }
   function levelUp(lv) {
-    const newStage = Growth.STAGES.some(st => st.from === lv);
+    const newStage = Growth.STAGES.some(st => st.from === lv); snd.sfx('sting_level');
     toast(`${IC.star} The Elder Tree grew! <b>Level ${lv}</b>${newStage ? ` &middot; a new stage: <b>${Growth.stageName(lv)}</b>` : ''}`, 4200);
     const back = { e: camera.position.clone(), t: controls.target.clone() }, wasFollow = follow;
     const s = Sim.C.SCALE[lv - 1], TP = nav.TP;
@@ -1173,6 +1178,7 @@
     // ward spot lists (saves store indices into them) are identical in the game and in the sim check
     const water = await fetch('data/water_cells.json').then(r => r.ok ? r.json() : null).catch(() => null);
     if (!water) console.warn('data/water_cells.json missing: spot lists ignore water');
+    if (water && water.runs) { const cs = water.cell || 3; sndWater = water.runs.map(([i, j0, j1]) => [i * cs + cs / 2, j0 * cs, (j1 + 1) * cs]); }   // sound: river near the camera
     nav = Nav(m.layout, { water }); ground = buildGround(m);
     const clr = treeClear(m, nav); if (clr) nav.setClear(clr);
     if (PHONE) m.cull.coverK = 0.7;
@@ -1180,9 +1186,9 @@
     soc = SocialUI({ Q, SLOT, SAVE_KEY, IC, esc, toast, nav, net: NET, mode: VISIT ? 'visit' : 'home', get S() { return S; }, save, showAway: s => showAway(s || null), lastSum: () => bootSum,
       touch: () => { if (cloud) cloud.touch(); }, openSafe: v => { if (cloudUI) cloudUI.openSafe(v); }, cloudStatus: () => cloudUI ? cloudUI.statusHtml() : '',
       refresh: () => { refreshTree(); refreshBuild(true); },
-      onWater: () => { S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
-      onGift: () => { const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
-      onLike: () => { const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); } });
+      onWater: () => { snd.sfx('water'); S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
+      onGift: () => { snd.sfx('gift'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
+      onLike: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); } });
     let ld;
     if (VISIT) {
       const vs = await soc.visitLoad(VISIT);
@@ -1248,9 +1254,11 @@
       if (CLOUD_ON) setInterval(() => cloud.tick(), 5000);
     }
     $('loading').remove(); booted = true; m.readyAt = performance.now() - t0;
+    sndUI = ElderSound.ui(snd, {});
     save();
     giftCheck(true);
-    window.__game = { renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
+    window.__snd = snd;
+    window.__game = { snd, get sndUI() { return sndUI; }, sndState, renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
       snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
       // day / night (tests): setTime('21:30' | hours | null = back to the real clock), clock() = island HH:MM, dn = DayNight
       dn, setTime(x) { TIME_FIX = parseT(x); anchorClock(0); refreshTree(); return this.clock(); },
@@ -1281,6 +1289,7 @@
   const STEP = Sim.C.STEP;
   const onEv = e => {
     if (cloud && (e.type === 'level' || e.type === 'built' || e.type === 'exp-back' || e.type === 'arrive')) cloud.soon();   // big moments reach the cloud within seconds
+    if (snd.live) sndEv(e);   // sound: soft, positional, rate-limited (src/audio.js)
     if (e.type === 'deliver') {
       const P = pups.list[e.pup]; if (!P) return;
       const hp = P.holder.position;
@@ -1320,6 +1329,45 @@
       refreshEvBtn(); renderEvents(true);
     }
   };
+  // ---- sound: sim events -> cozy sounds (never the other way round); a pup's tiny yip is rare (audio.js rate-limits it to one / 20 s)
+  let lastYip = 0;
+  function sndEv(e) {
+    const at = (i, name, o) => { const P = pups.list[i]; if (!P) return false; const p = P.holder.position; return snd.sfx3(name, p.x, p.y, p.z, o); };
+    if (e.type === 'deliver') {
+      const j = e.job;
+      if (j === 'water' || j === 'nourish') at(e.pup, 'pour', { gain: j === 'water' ? 0.7 : 0.5 });
+      else if (j === 'light') at(e.pup, 'lantern', { gain: 0.7 });
+      else if (j === 'protect') at(e.pup, 'shimmer', { gain: 0.6 });
+      else if (j === 'spirit') at(e.pup, 'notify', { gain: 0.4 });
+      else at(e.pup, j === 'food' ? 'pop' : 'tok', { gain: 0.45, rate: j === 'stone' ? 0.8 : 1 });
+      const now = performance.now(); if (now - lastYip > 45000 && Math.random() < 0.05 && at(e.pup, 'yip', { gain: 0.55, rate: 0.9 + Math.random() * 0.25 })) lastYip = now;
+    } else if (e.type === 'built') snd.sfx('built');
+    else if (e.type === 'exp-go' || e.type === 'exp-back') snd.sfx('whoosh', { gain: 0.8 });
+    else if (e.type === 'arrive') snd.sfx('sting_arrive');
+    else if (e.type === 'wake') snd.sfx('notify');
+    else if (e.type === 'cleared') at(e.pup, 'shimmer', { gain: 0.8 });
+    else if (e.type === 'event' && e.k === 'start' && e.e.type !== 'shower') snd.sfx('notify', { gain: 0.8 });
+    else if (e.type === 'event' && e.out === 'done' && e.e.type === 'wish') snd.sfx('gift', { gain: 0.7 });
+  }
+  // the sound's view of the world, 4x a second (cheap: a few distances; the river = nearest water run of data/water_cells.json)
+  const sv = new THREE.Vector3();
+  function sndState() {
+    const cam = camera.position, tg = controls.target, TP = nav.TP;
+    let wd = 1e9; if (sndWater) for (const [x, z0, z1] of sndWater) { const dx = tg.x - x, dz = tg.z < z0 ? z0 - tg.z : tg.z > z1 ? tg.z - z1 : 0, d = dx * dx + dz * dz; if (d < wd) wd = d; }
+    const camD = cam.distanceTo(tg), close = clamp01((520 - camD) / 380);
+    const river = clamp01(1 - (Math.sqrt(wd) - 8) / 110) * (0.35 + 0.65 * close);
+    const tree = clamp01(1 - (Math.hypot(cam.x - TP[0], cam.y - (TP[1] + 20), cam.z - TP[2]) - 60) / 260);
+    sv.set(1, 0, 0).applyQuaternion(camera.quaternion); const right = [sv.x, sv.y, sv.z];
+    const pos = (list, R) => { if (!list.length) return null; let x = 0, y = 0, z = 0; for (const P of list) { x += P.holder.position.x; y += P.holder.position.y; z += P.holder.position.z; } x /= list.length; y /= list.length; z /= list.length;
+      const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z, d = Math.hypot(dx, dy, dz) || 1; return { g: Math.pow(clamp01(1 - (d - 30) / R), 1.4), pan: clamp(-1, 1, (dx * sv.x + dz * sv.z) / d * 0.8) }; };
+    const players = [], builders = [];
+    S.pups.forEach((p, i) => { if (!pups.list[i]) return; if ((p.task === 'stage' || p.task === 'busk') && p.phase === 'play') players.push(pups.list[i]); else if (p.task === 'site' && p.phase === 'build') builders.push(pups.list[i]); });
+    const B = pos(builders, 300);
+    return { night: dn.state.night, dawn: dn.state.dawn, dusk: dn.state.dusk, sw: sndSW, rain: S.events.active.some(x => x.type === 'shower') ? 1 : 0, river, tree, health: hs, camD,
+      cam: [cam.x, cam.y, cam.z], right, stage: pos(players, 380), build: B ? { g: B.g * Math.min(1, 0.5 + builders.length * 0.25) * 0.5, pan: B.pan } : null };
+  }
+  const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x, clamp = (a, b, x) => x < a ? a : x > b ? b : x;
+  let sndSW = [0, 0, 1, 0];
   // step 7: hidden = save + cloud upload now (phones often never fire pagehide); back after > 30 s = compare with the cloud
   // (another device may have played meanwhile: the choice card, never a silent swap)
   let hiddenAt = 0;
@@ -1367,7 +1415,7 @@
     // step 5: season (weights fade over the first night hours of a new week) -> map tints, sky, weather, tree petals / leaves;
     // the sky reads the season-warped hour (summer long days, winter short)
     const sw = Seasons.weights(S.ep0 !== null ? S.ep0 + S.time : Seasons.localNow());
-    dn.season = sw; fx.season = sw; fx.level = S.level;
+    dn.season = sw; fx.season = sw; fx.level = S.level; sndSW = sw;
     dn.update(Sim.dayH(S), t, dt, sick, fx.scale);
     { const fe = S.events.active.find(e => e.type === 'fest'); seaFx.fest = fe ? 1 : 0; seaFx.festSea = fe ? fe.sea : -1; }
     seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
@@ -1405,7 +1453,7 @@
       L.l.style.left = L.x + 'px'; L.l.style.top = y + 'px';
     }
     expLabels();
-    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
+    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (snd.live) snd.update(sndState()); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
     if (now - lastSave > 5000) save();
     cpu += performance.now() - c0; frames++; pacc += real;
     if (pacc >= 0.5) {
