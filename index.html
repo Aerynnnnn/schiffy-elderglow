@@ -332,6 +332,39 @@
   .gopts button small { font-size: 10px; font-weight: 500; color: #5d567a; } .gopts button:hover:not(:disabled) { background: #fff6d6; } .gopts button:disabled { opacity: .4; cursor: default; }
   #visHint { position: absolute; bottom: 104px; left: 50%; transform: translateX(-50%); padding: 5px 12px; font-size: 13px; z-index: 5; pointer-events: none; transition: opacity .8s; white-space: nowrap; }
   @media (max-width: 1100px) { body:not(.phone) #topBtns { gap: 4px; } body:not(.phone) #topBtns button { padding: 4px 8px; font-size: 13.5px; border-width: 2.5px; } }
+  /* step 7: cloud save (src/cloud_ui.js): Keep my island safe card + the Which island? choice card */
+  #safeCard { background: #fffbf2; position: absolute; top: 64px; right: 12px; width: 380px; max-height: calc(100% - 80px); overflow-y: auto; z-index: 13; padding: 0 12px 12px; }
+  #safeCard .pch { background: #fffbf2; } #safeTitle { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } #safeTitle svg.ic { width: 24px; height: 24px; }
+  #safeBody .sub { font-size: 12.5px; color: #5d567a; margin: 4px 0 8px; } #safeBody .small { font-size: 11.5px; } #safeBody h4 { display: flex; align-items: center; gap: 5px; }
+  #safeBody .fl input { font-size: 16px; } #safeBody .go { display: flex; align-items: center; gap: 4px; } #safeBody .go svg.ic { width: 18px; height: 18px; }
+  #safeBody input.code { font: 400 24px var(--disp); letter-spacing: 6px; text-align: center; width: 100%; }
+  #safeBody .srch { display: flex; gap: 6px; } #safeBody .srch input { flex: 1; }
+  .cst { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #3c5a6e; background: #eaf6ff; border: 2px solid #b9dcf2; border-radius: 10px; padding: 4px 8px; margin: 4px 0 8px; }
+  .cst.warn { background: #fff4d6; border-color: #f0cf7a; color: #6a5220; } .cst svg.ic { width: 20px; height: 20px; flex: none; } .cst u { cursor: pointer; }
+  .cmsg { font-size: 12.5px; font-weight: 600; color: #2f6a3a; margin: 4px 0 !important; } .cmsg.bad { color: #b03a2e; }
+  .cor { display: flex; align-items: center; gap: 8px; color: #8a83a6; font-size: 12px; margin: 10px 0 2px; } .cor::before, .cor::after { content: ''; flex: 1; height: 2px; background: #e6dcc8; border-radius: 2px; }
+  .safeok { display: flex; gap: 10px; align-items: center; background: #eaf8e2; border: 2.5px solid var(--ink); border-radius: 14px; padding: 8px 10px; margin: 6px 0 8px; }
+  .safeok svg.ic { width: 40px; height: 40px; flex: none; } .safeok b.disp { font-size: 20px; display: block; } .safeok small { font-size: 12.5px; color: #3d5a36; word-break: break-all; }
+  .sent { display: flex; gap: 10px; align-items: center; background: #eaf6ff; border: 2.5px solid var(--ink); border-radius: 14px; padding: 8px 10px; margin: 6px 0 8px; }
+  .sent svg.ic { width: 40px; height: 40px; flex: none; } .sent b.disp { font-size: 20px; display: block; } .sent small { font-size: 12.5px; color: #3c5a6e; word-break: break-all; }
+  #safeBody .inapp { display: flex; gap: 6px; align-items: flex-start; background: #fff8dc; border-radius: 10px; padding: 5px 8px; } #safeBody .inapp svg.ic { width: 18px; height: 18px; flex: none; }
+  .codebox { margin: 10px 0 0; font-size: 12px; color: #5d567a; } .codebox summary { cursor: pointer; } .codebox .srch { margin-top: 6px; } #safeBody .codebox input.code { font-size: 18px; letter-spacing: 4px; }
+  .bkr { display: flex; align-items: center; gap: 8px; background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 5px 8px; margin: 4px 0; font-size: 13px; }
+  .bkr > div { flex: 1; min-width: 0; } .bkr small { display: block; font-size: 11px; color: #5d567a; }
+  .acctrow { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; } .acctrow button { display: flex; align-items: center; gap: 4px; } .acctrow svg.ic { width: 16px; height: 16px; }
+  #pickCard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #2a244277; z-index: 24; }
+  #pickCard[hidden] { display: none; }
+  #pickCard > .card { padding: 14px 18px 12px; width: min(560px, 92%); max-height: 92%; overflow-y: auto; background: #fffbf2; }
+  #pickBody h2 { margin: 0 0 4px; font-family: var(--disp); font-weight: 400; font-size: 25px; display: flex; align-items: center; gap: 6px; } #pickBody h2 svg.ic { width: 30px; height: 30px; }
+  #pickBody .sub { font-size: 13px; color: #5d567a; margin: 2px 0 10px; } #pickBody .pfoot { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12px; margin: 10px 0 0; } #pickBody .pfoot svg.ic { width: 18px; height: 18px; } #pickBody u { cursor: pointer; }
+  .ptiles { display: flex; gap: 10px; } .ptile { flex: 1; position: relative; background: #fff; border: 3px solid var(--ink); border-radius: 16px; padding: 10px 10px 10px; display: flex; flex-direction: column; }
+  .ptile.rec { background: #f3fbe9; box-shadow: 0 0 0 3px #7fd36a; } .prec { position: absolute; top: -11px; right: 10px; background: #7fd36a; border: 2px solid var(--ink); border-radius: 999px; font-size: 11px; font-weight: 700; padding: 0 8px; }
+  .pth { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #5d567a; } .pth svg.ic { width: 22px; height: 22px; }
+  .ptile .pin { font-size: 21px; margin: 4px 0 2px; word-break: break-word; } .ptile ul { list-style: none; margin: 2px 0 10px; padding: 0; flex: 1; }
+  .ptile li { display: flex; align-items: center; gap: 4px; font-size: 13.5px; font-weight: 600; margin: 3px 0; } .ptile li svg.ic { width: 18px; height: 18px; }
+  .ptile .big { font-size: 16px; padding: 6px 10px; }
+  body.phone #safeCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 78%; border-radius: 18px 18px 0 0; border-bottom: none; }
+  body.phone .ptiles { flex-direction: column; } body.phone #pickBody h2 { font-size: 22px; } body.phone .ptile { padding: 8px 10px; } body.phone .ptile ul { margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 0 10px; } body.phone .ptile .pin { font-size: 19px; margin: 2px 0 0; } body.phone .ptile li { margin: 2px 0; }
   body.phone #socCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 72%; border-radius: 18px 18px 0 0; border-bottom: none; z-index: 12; }
   body.phone #visBan { top: 8px; left: 8px; right: 8px; padding: 4px 8px; } body.phone #visBan b { font-size: 18px; } body.phone #visBan .isw { width: 34px; height: 34px; }
   body.phone #visBar { bottom: 10px; gap: 4px; padding: 4px; } body.phone #visBar button { min-width: 56px; padding: 3px 4px; font-size: 12px; } body.phone #visBar button svg.ic { width: 22px; height: 22px; }
@@ -387,7 +420,7 @@
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/net_config.js', 'src/net.js', 'src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

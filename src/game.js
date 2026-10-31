@@ -17,7 +17,21 @@
   const SAVE_KEY = 'schiffy-elderglow.save.v2' + SLOT, OLD_KEY = 'schiffy-elderglow.save.v1' + SLOT;
   // step 6: ?visit=<island id> = someone else's island, read-only (src/social_ui.js): never saved, the visitor walks as Schiffy
   const VISIT = /^[A-Za-z0-9_-]{1,64}$/.test(Q.get('visit') || '') ? Q.get('visit') : null;
-  let soc = null, walker = null, bootSum = null;
+  let soc = null, walker = null, bootSum = null, cloudUI = null, noSaves = false;
+  // ---- step 7: ONE backend (src/net.js) for the social side and the cloud save; the cloud check starts NOW (sign-in +
+  // fetch run while the map loads) so a newer cloud copy is in place before load() reads the save. Off for visits (never
+  // saved), ?nosave=1, ?reset=1 (test sessions) and ?cloud=0. ?mockdb=NAME = a separate pretend server.
+  const MOCKDB = /^[a-z0-9]{1,12}$/.test(Q.get('mockdb') || '') ? Q.get('mockdb') : '';
+  const NET = Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: MOCKDB, samples: () => Social.samples(nav), offline: () => window.__netOffline === true });
+  const CLOUD_ON = !VISIT && Q.get('nosave') !== '1' && Q.get('reset') !== '1' && Q.get('cloud') !== '0';
+  const cloud = VISIT ? null : Cloud.Sync({ net: NET, key: SAVE_KEY, storage: localStorage, save: () => save(), device: Cloud.device(navigator.userAgent, PHONE),
+    on: { conflict: i => { if (cloudUI) cloudUI.showPick(i); else pendingPick = i; }, status: () => { if (cloudUI) cloudUI.status(); } } });
+  let pendingPick = null;
+  const cloudBoot = cloud && CLOUD_ON ? cloud.boot() : Promise.resolve(null);
+  { // an email link that failed (expired / used) comes back as #error=...: say so kindly, then tidy the address bar
+    const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+    if (h.get('error')) { window.__linkError = h.get('error_code') || h.get('error'); history.replaceState(null, '', location.pathname + location.search); }
+  }
   // ---- the clock: the island's hours follow the player's local time (Sim.tod(S) = (S.clock0 + S.time) mod 24 h).
   // ?time=HH:MM (tests only) starts the island at that hour and lets it run (x ?speed); __game.setTime('21:30') scrubs;
   // __game.setTime(null) goes back to the real clock. No toggle in the UI by design.
@@ -262,14 +276,17 @@
   // ---- save / load
   let lastSave = 0;
   function save() {
-    if (!S || Q.get('nosave') === '1' || VISIT) return;   // a visit never writes anything to the visitor's own save
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ savedAt: Date.now(), state: S })); lastSave = performance.now(); } catch (e) { /* storage full / private mode: keep playing */ }
+    if (!S || Q.get('nosave') === '1' || VISIT || noSaves) return;   // a visit never writes anything to the visitor's own save
+    // step 7: sync = the cloud bookkeeping (src/cloud.js: save counter, last matched cloud copy); state is unchanged (v7)
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ savedAt: Date.now(), state: S, sync: cloud ? cloud.stamp() : undefined })); lastSave = performance.now(); } catch (e) { /* storage full / private mode: keep playing */ }
   }
   function load() {
+    if (cloud) cloud.setMeta(null);
     if (Q.get('reset') === '1') { try { if (Q.get('nosave') !== '1') { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(OLD_KEY); } } catch (e) {} return { state: Sim.create(nav, newSeed()), away: 0, fresh: true }; }
     let raw = null, migrated = false; try { raw = localStorage.getItem(SAVE_KEY); if (!raw) { raw = localStorage.getItem(OLD_KEY); migrated = !!raw; } } catch (e) {}
     if (!raw) return { state: Sim.create(nav, newSeed()), away: 0, fresh: true };
     let obj = null; try { obj = JSON.parse(raw); } catch (e) {}
+    if (cloud && obj && !migrated) cloud.setMeta(obj.sync);
     const st = obj && Sim.sanitize(obj.state, nav);
     if (!st) { try { if (Q.get('nosave') !== '1') localStorage.setItem(SAVE_KEY + '.corrupt', raw); } catch (e) {} return { state: Sim.create(nav, newSeed()), away: 0, fresh: true, corrupt: true }; }
     let away = (Date.now() - (+obj.savedAt || Date.now())) / 1000 + (+Q.get('away') || 0);
@@ -277,8 +294,29 @@
     return { state: st, away, migrated, fromV: obj.state.v };
   }
 
+  // ---- step 7: account changes + reloads that must not re-save the island being replaced
+  function reloadClean(text, after) {
+    noSaves = true; if (text) toast(text, 3000);
+    try { if (after) sessionStorage.setItem('schiffy-elderglow.after' + SLOT, after); } catch (e) {}   // a toast for the next start
+    setTimeout(() => location.replace(location.pathname + location.search), 300);
+  }
+  async function onAccount(id) {
+    if (!id) return;
+    if (soc && soc.accountChanged) soc.accountChanged();
+    if (!cloud || !CLOUD_ON) return;
+    const r = await cloud.accountChanged(id);
+    if (r && r.d === 'upload') toast(`${cloudUI.IX.cloud} Signed in! This island is now saved to your account.`, 4200);
+    else if (r && r.d === 'same') toast(`${cloudUI.IX.cloud} Signed in!`, 2400);
+  }
+  async function cloudSignOut() {
+    if (!cloud || !CLOUD_ON) { await NET.signOut(); toast('Signed out (test window: the island stays)', 3000); if (cloudUI) cloudUI.closeSafe(); return; }
+    save(); if (cloud.dirty) await cloud.flush('sign-out');
+    noSaves = true; await cloud.signOut();
+    reloadClean('Signed out. A fresh island is waking up here...', 'Signed out. Your island is safe in the cloud: Explore > I already have an island brings it back.');
+  }
+
   // ---- UI helpers
-  const fmtT = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h${m ? ' ' + m + ' min' : ''}` : m ? `${m} min` : `${s} s`; };
+  const fmtT =s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h${m ? ' ' + m + ' min' : ''}` : m ? `${m} min` : `${s} s`; };
   const fmtN = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'k' : Math.floor(v).toLocaleString();
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function toast(html, ms, onClick) {
@@ -1139,7 +1177,8 @@
     const clr = treeClear(m, nav); if (clr) nav.setClear(clr);
     if (PHONE) m.cull.coverK = 0.7;
     // step 6: social (Explore, publishing, gifts, visits) through one backend interface (src/net.js: mock or Supabase)
-    soc = SocialUI({ Q, SLOT, SAVE_KEY, IC, esc, toast, nav, mode: VISIT ? 'visit' : 'home', get S() { return S; }, save, showAway: s => showAway(s || null), lastSum: () => bootSum,
+    soc = SocialUI({ Q, SLOT, SAVE_KEY, IC, esc, toast, nav, net: NET, mode: VISIT ? 'visit' : 'home', get S() { return S; }, save, showAway: s => showAway(s || null), lastSum: () => bootSum,
+      touch: () => { if (cloud) cloud.touch(); }, openSafe: v => { if (cloudUI) cloudUI.openSafe(v); }, cloudStatus: () => cloudUI ? cloudUI.statusHtml() : '',
       refresh: () => { refreshTree(); refreshBuild(true); },
       onWater: () => { S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
       onGift: () => { const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
@@ -1149,7 +1188,10 @@
       const vs = await soc.visitLoad(VISIT);
       if (!vs) { $('loading').innerHTML = `<div class="card">That island could not be found (it may be private now). <a href="${soc.homeUrl()}">Back home</a></div>`; return; }
       ld = { state: vs, away: 0, visit: true };
-    } else ld = load();
+    } else {
+      const cb = await cloudBoot;   // <= Cloud.C.BOOT_WAIT; a newer cloud copy is already in SAVE_KEY: the normal load / migrate / catch-up runs on it
+      ld = load(); ld.cloud = cb;
+    }
     S = ld.state;
     fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S));
     plots = Plots(scene, m, nav, ground);
@@ -1188,11 +1230,27 @@
       const ox = wp[0] - TP[0], oz = wp[2] - TP[2], ol = Math.hypot(ox, oz) || 1, back = (36 + 24 * fx.scale) * (W() < H() ? 1.35 : 1);
       controls.target.set(wp[0], wp[1] + 6, wp[2]); camera.position.set(wp[0] + ox / ol * back, wp[1] + 16 + 10 * fx.scale, wp[2] + oz / ol * back); controls.update();
       soc.startVisit();
-    } else soc.startHome();
+    } else {
+      soc.startHome();
+      // step 7: cloud save cards + account changes (email code, magic link landing, sign-out)
+      cloudUI = CloudUI({ net: NET, cloud: CLOUD_ON ? cloud : null, esc, toast, IC, closeOthers: () => soc.close(), onAccount, signOut: cloudSignOut, reloadClean });
+      NET.onAuth && NET.onAuth((ev, id) => { if (ev === 'switched') onAccount(id); else if (cloudUI.safeOpen) cloudUI.openSafe('main'); });
+      if (pendingPick) { cloudUI.showPick(pendingPick); pendingPick = null; }
+      if (ld.cloud && ld.cloud.loaded) setTimeout(() => toast(`${CloudUI && cloudUI.IX.cloud} Welcome back! Your island came from the cloud${ld.cloud.from ? ` (saved on ${esc(ld.cloud.from)})` : ''}.`, 5000), 600);
+      { let a = null; try { a = sessionStorage.getItem('schiffy-elderglow.after' + SLOT); sessionStorage.removeItem('schiffy-elderglow.after' + SLOT); } catch (e) {} if (a) setTimeout(() => toast(`${cloudUI.IX.cloud} ${esc(a)}`, 5000), 700); }
+      // step 7: this page was opened from an email link (sign-in link, or the "confirm your email" link on another device)
+      { const L = NET.landed; if (L) setTimeout(() => {
+        if (!L.ok) toast(`${cloudUI.IX.mail} That email link has expired or was already used. Ask for a new one in <u>Keep my island safe</u>.`, 9000, () => cloudUI.openSafe('main'));
+        else if (cloud && cloud.conflict) {}   // the choice card says it all
+        else toast(`${cloudUI.IX.shield} ${L.kind === 'confirm' ? 'Email confirmed: your island is safe!' : 'Signed in! This is your island.'}`, 5000);
+      }, 800); }
+      if (window.__linkError) setTimeout(() => toast(`${cloudUI.IX.mail} That email link has expired or was already used. Ask for a new code in <u>Keep my island safe</u>.`, 9000, () => cloudUI.openSafe('main')), 900);
+      if (CLOUD_ON) setInterval(() => cloud.tick(), 5000);
+    }
     $('loading').remove(); booted = true; m.readyAt = performance.now() - t0;
     save();
     giftCheck(true);
-    window.__game = { renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get walker() { return walker; }, VISIT,
+    window.__game = { renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
       snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
       // day / night (tests): setTime('21:30' | hours | null = back to the real clock), clock() = island HH:MM, dn = DayNight
       dn, setTime(x) { TIME_FIX = parseT(x); anchorClock(0); refreshTree(); return this.clock(); },
@@ -1222,6 +1280,7 @@
   let acc = 0, hs = 80, hl = 80, last = performance.now(), frames = 0, pacc = 0, cpu = 0, uiAcc = 0, clockAcc = 0;
   const STEP = Sim.C.STEP;
   const onEv = e => {
+    if (cloud && (e.type === 'level' || e.type === 'built' || e.type === 'exp-back' || e.type === 'arrive')) cloud.soon();   // big moments reach the cloud within seconds
     if (e.type === 'deliver') {
       const P = pups.list[e.pup]; if (!P) return;
       const hp = P.holder.position;
@@ -1261,8 +1320,15 @@
       refreshEvBtn(); renderEvents(true);
     }
   };
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else if (booted) giftCheck(true); });
-  addEventListener('pagehide', save);
+  // step 7: hidden = save + cloud upload now (phones often never fire pagehide); back after > 30 s = compare with the cloud
+  // (another device may have played meanwhile: the choice card, never a silent swap)
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); save(); if (booted && CLOUD_ON && cloud) cloud.flush('hide'); }
+    else if (booted) { giftCheck(true); if (CLOUD_ON && cloud && !cloud.busy && Date.now() - hiddenAt > 30000) cloud.check('visible'); }
+  });
+  addEventListener('pagehide', () => { save(); if (booted && CLOUD_ON && cloud) cloud.flush('pagehide'); });
+  addEventListener('online', () => { if (booted && CLOUD_ON && cloud) cloud.soon(); });
   addEventListener('resize', () => { setLayout(); camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); });
   const poses = [], airY = (x, z, y) => y;   // pups in a sky boat / hopping: no ground snap
   renderer.setAnimationLoop(() => {
@@ -1275,6 +1341,7 @@
       const sum = Sim.catchUp(S, real * SPEED, nav); syncPups(); if (real >= 60 && !VISIT) showAway(sum); acc = 0;
     } else {
       acc += real * SPEED; let n = 0;
+      if (cloud && !VISIT) cloud.played();   // real play since the last save: the save counter moves on (src/cloud.js)
       while (acc >= STEP && n < 4000) { Sim.step(S, STEP, nav, ev); acc -= STEP; n++; }
       if (acc >= STEP) acc = 0;
     }

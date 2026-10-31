@@ -8,7 +8,13 @@
 // Interface: kind, uid, signIn(), profile(), saveProfile({island, host}), publish({snap, pub}), setPublic(pub),
 //   deleteIsland() (owner only; no UI yet, tests clean up with it), myIsland(), browse({sort: 'recent'|'liked'|'random', q, limit}), getIsland(id), visit(id), water(id),
 //   gift(id, {kind, item, n}), like(id), liked(id), note(id, text), guestbook(id), report(kind, id, reason),
-//   inbox(), claim(ids), news(sinceMs), linkEmail(email) (stub), onChange(fn)
+//   inbox(), claim(ids), news(sinceMs), onChange(fn)
+// Step 7 (cloud save + email, server/patch_2.sql): cloudGet() -> { ok, row: { state, save_v, gen, rev, device, saved } | null },
+//   cloudPut({ state, saveV, gen, rev, baseRev, device }) -> { ok, saved } | { ok: false, conflict: true, row } (compare-and-swap
+//   on rev) | { ok: false, setup: true } (table missing), cloudDelete(); account() -> { anon, email, pending }, linkEmail(email)
+//   (this anonymous user gets an email: same uid), verifyLink(email, code), sendCode(email) (new device; never creates a user),
+//   verifyCode(email, code) -> { uid } (now signed in as that account), signOut() -> a fresh anonymous uid, onAuth(fn('switched'|'updated', uid)).
+//   Auth failures carry code: rate | badcode | exists | nouser | bademail | offline | setup | other. The mock shows its pretend code as mockCode.
 (function () {
   'use strict';
   const SB_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
@@ -33,7 +39,7 @@
     }
     function write(o) { localStorage.setItem(KEY, JSON.stringify(o)); if (bc) bc.postMessage(1); }
     const nid = (o, p) => p + pad(++o.seq, 8);
-    let uid = null;
+    let uid = null, landed = null;   // landed = the result of a pretend email link this page was opened with
     const me = o => o.users[uid] || null;
     const mine = o => Object.values(o.islands).find(i => i.owner === uid) || null;
     const today = () => DAY(Date.now());
@@ -42,8 +48,13 @@
     const canVisitorAct = (o, id) => { if (!uid) return 'not signed in'; if (!me(o)) return 'no profile'; const i = pubIsland(o, id); if (!i) return 'island not found'; if (i.owner === uid) return 'your own island'; return null; };
     const api = {
       kind: 'mock', get uid() { return uid; },
-      async signIn() { try { uid = localStorage.getItem(UIDK); if (!uid) { uid = 'mock-' + Math.random().toString(36).slice(2, 12); localStorage.setItem(UIDK, uid); } db(); return { ok: true, uid }; } catch (e) { return { ok: false, why: 'storage' }; } },
-      async profile() { const o = db(); const u = me(o); return u ? { island: u.island, host: u.host } : null; },
+      // no db() here: the cloud save signs in before the map (and the sample islands' nav) exist
+      async signIn() { try {
+        uid = localStorage.getItem(UIDK);
+        if (typeof location !== 'undefined' && /mock_(confirm|login)=/.test(location.hash)) { landed = api.landLink(location.hash); history.replaceState(null, '', location.pathname + location.search); }
+        if (!uid) { uid = 'mock-' + Math.random().toString(36).slice(2, 12); localStorage.setItem(UIDK, uid); } return { ok: true, uid, landed }; } catch (e) { return { ok: false, why: 'storage' }; } },
+      get landed() { return landed; },
+      async profile() { const o = db(); const u = uid && o.users[uid]; return u ? { island: u.island, host: u.host } : null; },
       async saveProfile(p) {
         const a = Soc().nameCheck(p.island, 'island'), b = Soc().nameCheck(p.host, 'host'); if (!a.ok) return { ok: false, why: 'Island name: ' + a.why }; if (!b.ok) return { ok: false, why: 'Pup name: ' + b.why };
         const o = db(); o.users[uid] = { island: a.v, host: b.v, created: (me(o) || {}).created || Date.now() };
@@ -119,32 +130,105 @@
           notes: o.notes.filter(n => n.island === i.id && n.at > since && !n.hidden).map(n => ({ id: n.id, from: n.from, text: n.text, at: n.at })), likes: i.likes,
           likesNew: o.likes.filter(l => l.island === i.id && l.at > since).length };
       },
-      async linkEmail() { return { ok: false, stub: true, why: 'Linking an email comes later (the mock server has no email).' }; },
+      // ---- cloud save (= server/patch_2.sql): one row per account, compare-and-swap on rev, counter only goes up, <= 512 KB
+      async cloudGet() {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const r = rdS().saves[uid]; return { ok: true, row: r ? JSON.parse(JSON.stringify(r)) : null };
+      },
+      async cloudPut(p) {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        if (opt.offline && opt.offline()) return { ok: false, why: 'network' };
+        const o = rdS(), cur = o.saves[uid], body = JSON.stringify(p.state || null);
+        if (!p.state || typeof p.state !== 'object' || body.length > 524288) return { ok: false, why: 'save too big or bad' };
+        if (!/^[A-Za-z0-9]{6,32}$/.test(p.rev || '') || String(p.device || '').length > 40) return { ok: false, why: 'bad rev / device' };
+        if (cur && (!p.baseRev || p.baseRev !== cur.rev)) return { ok: false, conflict: true, row: JSON.parse(JSON.stringify(cur)) };   // insert over a row / update over a rev it no longer has
+        if (!cur && p.baseRev) { /* the row is gone: insert, like the SQL client does */ }
+        if (cur && !(p.gen > cur.gen)) return { ok: false, conflict: true, row: JSON.parse(JSON.stringify(cur)) };   // stale counter
+        o.saves[uid] = { state: JSON.parse(body), save_v: p.saveV, gen: p.gen, rev: p.rev, device: String(p.device || ''), saved: Date.now() };
+        wrS(o); return { ok: true, saved: o.saves[uid].saved };
+      },
+      async cloudDelete() { const o = rdS(); const had = !!o.saves[uid]; delete o.saves[uid]; wrS(o); return { ok: had }; },
+      // ---- email (pretend: no mail is sent; the code comes back as mockCode and the game shows it in a toast)
+      async account() { if (!uid) return { ok: false, why: 'not signed in' }; const a = rdA().users[uid] || {}; return { ok: true, uid, anon: !a.email, email: a.email || null, pending: a.pend ? a.pend.email : null }; },
+      async linkEmail(email) {
+        const o = rdA(), e = String(email || '').trim().toLowerCase(); if (!EMAIL_RE.test(e)) return { ok: false, code: 'bademail' };
+        if (mailRate(o)) return { ok: false, code: 'rate' };
+        if (Object.keys(o.users).some(k => k !== uid && o.users[k].email === e)) return { ok: false, code: 'exists' };
+        const u = o.users[uid] = o.users[uid] || {}; u.pend = { email: e, code: code6(), tok: tok16(), at: Date.now() }; o.mails.push(Date.now()); wrA(o);
+        return { ok: true, sent: true, mockCode: u.pend.code, mockLink: linkOf('confirm', u.pend.tok) };
+      },
+      async verifyLink(email, code) {
+        const o = rdA(), u = o.users[uid], e = String(email || '').trim().toLowerCase();
+        if (!u || !u.pend || u.pend.email !== e || u.pend.code !== String(code).trim() || Date.now() - u.pend.at > 3600000) return { ok: false, code: 'badcode' };
+        u.email = e; delete u.pend; wrA(o); return { ok: true, uid };
+      },
+      async sendCode(email) {
+        const o = rdA(), e = String(email || '').trim().toLowerCase(); if (!EMAIL_RE.test(e)) return { ok: false, code: 'bademail' };
+        if (mailRate(o)) return { ok: false, code: 'rate' };
+        const k = Object.keys(o.users).find(x => o.users[x].email === e); if (!k) return { ok: false, code: 'nouser' };
+        o.users[k].login = { code: code6(), tok: tok16(), at: Date.now() }; o.mails.push(Date.now()); wrA(o); return { ok: true, sent: true, mockCode: o.users[k].login.code, mockLink: linkOf('login', o.users[k].login.tok) };
+      },
+      // a pretend email link opened on this device (= Supabase's verify link: server-side confirm, then this device is signed
+      // in as that account). hash = '#mock_confirm=TOKEN' | '#mock_login=TOKEN'
+      landLink(hash) {
+        const m = /mock_(confirm|login)=([a-z0-9]{16})/.exec(String(hash || '')); if (!m) return null;
+        const o = rdA(), now = Date.now();
+        const k = Object.keys(o.users).find(x => { const u = o.users[x]; return m[1] === 'confirm' ? u.pend && u.pend.tok === m[2] && now - u.pend.at < 3600000 : u.login && u.login.tok === m[2] && now - u.login.at < 3600000; });
+        if (!k) return { ok: false, code: 'badcode' };
+        const u = o.users[k]; if (m[1] === 'confirm') { u.email = u.pend.email; delete u.pend; } else delete u.login; wrA(o);
+        const prev = uid; uid = k; try { localStorage.setItem(UIDK, uid); } catch (e) {}
+        if (prev && prev !== uid) authSubs.forEach(f => f('switched', uid));
+        return { ok: true, kind: m[1], uid };
+      },
+      async verifyCode(email, code) {
+        const o = rdA(), e = String(email || '').trim().toLowerCase(), k = Object.keys(o.users).find(x => o.users[x].email === e), u = k && o.users[k];
+        if (!u || !u.login || u.login.code !== String(code).trim() || Date.now() - u.login.at > 3600000) return { ok: false, code: 'badcode' };
+        delete u.login; wrA(o); uid = k; try { localStorage.setItem(UIDK, uid); } catch (x) {} authSubs.forEach(f => f('switched', uid)); return { ok: true, uid };
+      },
+      async signOut() { uid = 'mock-' + Math.random().toString(36).slice(2, 12); try { localStorage.setItem(UIDK, uid); } catch (e) {} return { ok: true, uid }; },
+      onAuth(fn) { authSubs.push(fn); },
       onChange(fn) { subs.push(fn); },
     };
+    const SKEY = KEY + '.saves', AKEY = KEY + '.auth', authSubs = [];
+    const rdS = () => { try { const o = JSON.parse(localStorage.getItem(SKEY) || 'null'); if (o && o.saves) return o; } catch (e) {} return { saves: {} }; };
+    const wrS = o => localStorage.setItem(SKEY, JSON.stringify(o));
+    const rdA = () => { try { const o = JSON.parse(localStorage.getItem(AKEY) || 'null'); if (o && o.users && Array.isArray(o.mails)) return o; } catch (e) {} return { users: {}, mails: [] }; };
+    const wrA = o => { o.mails = o.mails.filter(t => Date.now() - t < 3600000); localStorage.setItem(AKEY, JSON.stringify(o)); };
+    const mailRate = o => o.mails.filter(t => Date.now() - t < 3600000).length >= (opt.mailsPerHour || 4);   // like Supabase's built-in sender: a few per hour
+    const code6 = () => String(Math.floor(100000 + Math.random() * 900000));
+    const tok16 = () => { let s = ''; for (let i = 0; i < 16; i++) s += 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]; return s; };
+    const linkOf = (kind, tok) => (typeof location !== 'undefined' ? location.origin + location.pathname + location.search : '') + '#mock_' + kind + '=' + tok;
     return api;
   }
+  const EMAIL_RE = /^[^\s@<>()",;:]{1,64}@[^\s@<>()",;:]{1,190}\.[A-Za-z]{2,24}$/;
 
   // ================= supabase =================
   function loadScript(src) { return new Promise((res, rej) => { if (window.supabase && window.supabase.createClient) return res(); const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = () => rej(new Error('could not load supabase-js')); document.head.appendChild(s); }); }
   const gid = n => 'g' + pad(n, 12);   // bigint id -> sortable string id (Social.applyGifts sorts by id)
   function Supa(opt, cfg) {
-    let sb = null, uid = null, myId = null;
+    let sb = null, uid = null, myId = null, landed = null;
     // 42501 = the database role lacks a GRANT (server/patch_1.sql): say so plainly instead of "permission denied for table x"
     const fail = (e, d) => ({ ok: false, why: e && e.code === '42501' && /^permission denied for/.test(e.message || '') ?'the island server is not set up yet (missing rights: server/patch_1.sql)' : (e && (e.message || e.hint)) || d || 'network' });
     const ready = async () => {
       if (sb) return sb;
       await loadScript(SB_URL);
-      sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'schiffy-elderglow.sb' + (opt.slot || '') } });
+      // keepalive: the last upload when the tab closes still arrives (browsers cap keepalive bodies at 64 KB, so only small ones)
+      const kfetch = (u, o) => fetch(u, Object.assign({}, o, { keepalive: !!(o && typeof o.body === 'string' && o.body.length < 60000) }));
+      sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'schiffy-elderglow.sb' + (opt.slot || ''), flowType: 'implicit' }, global: { fetch: kfetch } });
       return sb;
     };
     const api = {
-      kind: 'supabase', get uid() { return uid; },
+      kind: 'supabase', get uid() { return uid; }, get landed() { return landed; },
       async signIn() {
         try {
+          // an email link lands here as #access_token=...&type=magiclink|email_change|signup (implicit flow: works on ANY device,
+          // unlike PKCE which needs the browser that asked). supabase-js reads it on createClient; we note what it was + tidy the URL
+          const h = new URLSearchParams(location.hash.replace(/^#/, '')), lt = h.get('access_token') ? (h.get('type') || 'magiclink') : null;
           await ready(); let { data } = await sb.auth.getSession();
+          if (lt || location.hash === '#' || /access_token|refresh_token/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+          if (lt) landed = { ok: !!(data && data.session), kind: /email_change|signup/.test(lt) ? 'confirm' : 'login' };
           if (!data || !data.session) { const r = await sb.auth.signInAnonymously(); if (r.error) return fail(r.error, 'sign-in'); data = r.data; }
-          uid = data.session ? data.session.user.id : data.user.id; return { ok: true, uid };
+          uid = data.session ? data.session.user.id : data.user.id; return { ok: true, uid, landed };
         } catch (e) { return fail(e); }
       },
       async profile() { const r = await sb.from('profiles').select('island_name, host_name').eq('id', uid).maybeSingle(); return r.data ? { island: r.data.island_name, host: r.data.host_name } : null; },
@@ -200,12 +284,82 @@
         return { visits: (v.data || []).map(x => ({ from: x.visitor_name, island: x.visitor_island, at: Date.parse(x.created_at) })), notes: (n.data || []).map(x => ({ id: String(x.id), from: x.author_name, text: x.body, at: Date.parse(x.created_at) })),
           likes: i.data ? i.data.likes : 0, likesNew: l.count || 0 };
       },
-      // upgrade the anonymous account later (sb.auth.updateUser({ email }) sends a confirm link); a stub until email is set up in the project
-      async linkEmail() { return { ok: false, stub: true, why: 'Linking an email comes in a later update.' }; },
+      // ---- cloud save (server/patch_2.sql): compare-and-swap on rev; a missing table = patch_2 not run yet -> { setup: true }
+      async cloudGet() {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const r = await sb.from('saves').select('state, save_v, gen, rev, device, saved_at').eq('owner', uid).maybeSingle();
+        if (r.error) return failS(r.error);
+        return { ok: true, row: r.data ? { state: r.data.state, save_v: r.data.save_v, gen: +r.data.gen, rev: r.data.rev, device: r.data.device, saved: Date.parse(r.data.saved_at) } : null };
+      },
+      async cloudPut(p) {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const row = { state: p.state, save_v: p.saveV, gen: p.gen, rev: p.rev, device: String(p.device || '').slice(0, 40) };
+        const conflict = async () => { const g = await api.cloudGet(); return g.ok ? { ok: false, conflict: !!g.row, why: g.row ? 'changed' : 'gone', row: g.row } : g; };
+        if (p.baseRev) {
+          const r = await sb.from('saves').update(row).eq('owner', uid).eq('rev', p.baseRev).select('saved_at');
+          if (r.error) return /stale save/.test(r.error.message || '') ? conflict() : failS(r.error);
+          if (r.data && r.data.length) return { ok: true, saved: Date.parse(r.data[0].saved_at) };
+          const c = await conflict(); if (c.conflict || !c.ok) return c;   // the rev moved on (another device) -> card; the row is gone -> insert
+        }
+        const r = await sb.from('saves').insert(row).select('saved_at').single();
+        if (r.error) return r.error.code === '23505' ? conflict() : failS(r.error);
+        return { ok: true, saved: Date.parse(r.data.saved_at) };
+      },
+      async cloudDelete() { const r = await sb.from('saves').delete().eq('owner', uid).select('owner'); return r.error ? failS(r.error) : { ok: r.data.length > 0 }; },
+      // ---- email (Supabase Auth, passwordless). Codes: rate | badcode | exists | nouser | bademail | offline | setup | other
+      async account() {
+        const { data, error } = await sb.auth.getUser(); if (error) return authFail(error); const u = data && data.user; if (!u) return { ok: false, why: 'not signed in' };
+        return { ok: true, uid: u.id, anon: !!u.is_anonymous || !u.email, email: u.email || null, pending: u.new_email || null };
+      },
+      // link the CURRENT (anonymous) user to an email: same user id, so the island, profile and likes stay. The email holds a
+      // 6-digit code ({{ .Token }}, SETUP.md) -> verifyLink(), or a link back to the game (handled by supabase-js on load)
+      async linkEmail(email) {
+        const e = String(email || '').trim().toLowerCase(); if (!EMAIL_RE.test(e)) return { ok: false, code: 'bademail' };
+        const r = await sb.auth.updateUser({ email: e }, { emailRedirectTo: redirect() }); return r.error ? authFail(r.error) : { ok: true, sent: true };
+      },
+      // linking an anonymous user is an "email change" in Supabase; 'email' is tried too in case the project sends it as a signup confirmation
+      async verifyLink(email, code) {
+        const e = String(email).trim().toLowerCase(), t = String(code).trim();
+        let r = await sb.auth.verifyOtp({ email: e, token: t, type: 'email_change' });
+        if (r.error && authFail(r.error).code === 'badcode') { const r2 = await sb.auth.verifyOtp({ email: e, token: t, type: 'email' }); if (!r2.error) r = r2; }
+        if (r.error) return authFail(r.error);
+        const id = r.data && r.data.user ? r.data.user.id : uid; if (id && uid && id !== uid) { uid = id; myId = null; }
+        return { ok: true, uid: id };
+      },
+      // a NEW device: a code to an email that already has an island (never creates an account)
+      async sendCode(email) {
+        const e = String(email || '').trim().toLowerCase(); if (!EMAIL_RE.test(e)) return { ok: false, code: 'bademail' };
+        const r = await sb.auth.signInWithOtp({ email: e, options: { shouldCreateUser: false, emailRedirectTo: redirect() } }); return r.error ? authFail(r.error) : { ok: true, sent: true };
+      },
+      async verifyCode(email, code) {
+        const r = await sb.auth.verifyOtp({ email: String(email).trim().toLowerCase(), token: String(code).trim(), type: 'email' }); if (r.error) return authFail(r.error);
+        const id = r.data && r.data.user ? r.data.user.id : null; if (!id) return { ok: false, code: 'badcode' };
+        uid = id; myId = null; return { ok: true, uid: id };
+      },
+      async signOut() { await sb.auth.signOut({ scope: 'local' }); uid = null; myId = null; return api.signIn(); },
+      onAuth(fn) {   // a magic link opened in this tab / another tab signed in: tell the game (deferred: no supabase calls inside the callback)
+        ready().then(() => sb.auth.onAuthStateChange((ev, ses) => { const id = ses && ses.user ? ses.user.id : null; if (id && uid && id !== uid) { uid = id; myId = null; setTimeout(() => fn('switched', id), 0); } else if (ev === 'USER_UPDATED') setTimeout(() => fn('updated', id), 0); })).catch(() => {});
+      },
       onChange() {},
     };
+    // the page the email link returns to (Supabase -> Authentication -> URL Configuration must allow it: SETUP.md step 6)
+    const redirect = () => location.origin + location.pathname + (opt.slot ? '?slot=' + encodeURIComponent(opt.slot) : '');
+    const failS = e => (e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table|relation .*saves.* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'cloud save is not switched on on the server yet (server/patch_2.sql)' } : fail(e);
+    function authFail(e) {
+      const c = (e && e.code) || '', m = String((e && e.message) || ''), st = e && e.status;
+      let code = 'other';
+      if (st === 429 || /rate_limit|rate limit|too many/i.test(c + ' ' + m)) code = 'rate';
+      else if (/otp_expired|expired|invalid.*(token|otp)|token.*invalid/i.test(c + ' ' + m)) code = 'badcode';
+      else if (/email_exists|already (been )?registered|already in use|identity_already_exists/i.test(c + ' ' + m)) code = 'exists';
+      else if (/otp_disabled|signups? not allowed|user_not_found|not found/i.test(c + ' ' + m)) code = 'nouser';
+      else if (/email_address_invalid|validation_failed|invalid.*email|unable to validate email/i.test(c + ' ' + m)) code = 'bademail';
+      else if (/email_provider_disabled|email_address_not_authorized|provider.*disabled/i.test(c + ' ' + m)) code = 'setup';
+      else if ((e && (e.name === 'AuthRetryableFetchError' || e.name === 'TypeError')) || st === 0 || /fetch|network|offline/i.test(m)) code = 'offline';
+      return { ok: false, code, why: m || code };
+    }
     // wrap: a network error never throws into the game
-    for (const k of Object.keys(api)) if (typeof api[k] === 'function' && k !== 'onChange') { const f = api[k]; api[k] = async (...a) => { try { if (!sb && k !== 'signIn') await ready(); return await f(...a); } catch (e) { return fail(e); } }; }
+    const AUTH = ['account', 'linkEmail', 'verifyLink', 'sendCode', 'verifyCode', 'signOut'];
+    for (const k of Object.keys(api)) if (typeof api[k] === 'function' && k !== 'onChange' && k !== 'onAuth') { const f = api[k]; api[k] = async (...a) => { try { if (!sb && k !== 'signIn') await ready(); return await f(...a); } catch (e) { return AUTH.includes(k) ? authFail(e) : fail(e); } }; }
     return api;
   }
 
@@ -213,7 +367,8 @@
     SB_URL,
     make(opt) {
       const cfg = window.NET_CONFIG || {};
-      return cfg.url && cfg.anonKey ? Supa(opt || {}, cfg) : Mock(opt || {});
+      // ?mockdb=NAME always means the pretend server (tests never touch the live project by accident)
+      return cfg.url && cfg.anonKey && !(opt && opt.mockdb) ? Supa(opt || {}, cfg) : Mock(opt || {});
     },
     Mock, Supa,
   };

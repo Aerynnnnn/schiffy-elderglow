@@ -23,7 +23,8 @@
   function SocialUI(g) {
     const { Q, SLOT, IC, esc, toast, nav } = g;
     const IIC = Object.assign({}, IC, IX);
-    const net = window.Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: /^[a-z0-9]{1,12}$/.test(Q.get('mockdb') || '') ? Q.get('mockdb') : '', samples: () => window.Social.samples(nav) });
+    // step 7: the game passes its one backend (shared with the cloud save: one supabase-js client per page)
+    const net = g.net || window.Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: /^[a-z0-9]{1,12}$/.test(Q.get('mockdb') || '') ? Q.get('mockdb') : '', samples: () => window.Social.samples(nav) });
     let signed = false, prof = null, tab = 'recent', query = '', list = null, mine = null, news = null, busy = false;
     const S = () => g.S;
     const seasonNow = () => { const k = window.Seasons.of(S()); return k === null ? -1 : k; };
@@ -49,12 +50,12 @@
     async function homeSync(showCard) {
       const s = S(); if (g.mode !== 'home' || !s) return;
       const box = readBox(SLOT);
-      if (box.length) { window.Social.applySent(s, box); g.save(); writeBox(SLOT, box.filter(x => !s.social.sent.includes(x.id))); }
+      if (box.length) { window.Social.applySent(s, box); if (g.touch) g.touch(); g.save(); writeBox(SLOT, box.filter(x => !s.social.sent.includes(x.id))); }
       if (!s.social.acct) return;
       if (!(await ensureSignIn())) return;
       if (net.uid !== s.social.acct) { s.social.acct = net.uid; }
       const gifts = await net.inbox(), got = Array.isArray(gifts) ? window.Social.applyGifts(s, gifts) : [];
-      if (Array.isArray(gifts) && gifts.length) { g.save(); await net.claim(gifts.map(x => x.id)); }   // claimed AFTER the save: a crash in between re-delivers, the ids make it a no-op
+      if (Array.isArray(gifts) && gifts.length) { if (g.touch) g.touch(); g.save(); await net.claim(gifts.map(x => x.id)); }   // claimed AFTER the save: a crash in between re-delivers, the ids make it a no-op
       const nw = await net.news(s.social.seenAt || 0);
       const nn = { got, visits: (nw && nw.visits) || [], notes: (nw && nw.notes) || [], likesNew: (nw && nw.likesNew) || 0, likes: (nw && nw.likes) || 0 };
       if (got.length || nn.visits.length || nn.notes.length || nn.likesNew) {
@@ -91,7 +92,8 @@
         <label class="fl">Your pup name (shown as the host)<input id="socHost" maxlength="14" value="${esc(host)}" placeholder="e.g. Schiffy"></label>
         <p id="socWhy" class="why2"></p>
         <label class="tog"><input type="checkbox" id="socPub0" ${!s || s.social.pub ? 'checked' : ''}><i></i>Public island (anyone can visit)</label>
-        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Offline test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : 'Share my island'}</button></div>`;
+        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Offline test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : 'Share my island'}</button></div>
+        ${g.mode === 'home' && g.openSafe && !prof ? `<div class="acctrow"><button class="ghost" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>` : ''}`;
     };
     function render() {
       const b = $('socBody'); if (!b) return;
@@ -121,8 +123,9 @@
         <p class="sub small">Your island is shared every 10 minutes while you play and when you leave (layout, pups, tree; never your resources).</p>
         <div class="pf"><button class="ghost" id="socEdit">Change names</button><button class="go sm" id="socPubNow">Share now</button></div>
         <h4>${IX.note} Your guestbook</h4><div id="socGb"><p class="sub">...</p></div>
-        <h4>${IX.lock} Account</h4><p class="sub small">You play without an email (an anonymous account on this device). Link an email to keep your island if you change devices.</p>
-        <div class="pf"><input id="socMail" type="email" placeholder="you@example.com" maxlength="80"><button class="ghost" id="socLink">Link email</button></div>`;
+        <h4>${IX.lock} Keep my island safe</h4><div id="socCloud">${g.cloudStatus ? g.cloudStatus() : ''}</div>
+        <p class="sub small">Add your email to open this island on your phone or another computer (no password, a 6-digit code).</p>
+        <div class="acctrow"><button class="go sm" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>`;
       setTimeout(loadGb, 0); return h;
     }
     async function loadGb() {
@@ -168,7 +171,8 @@
         if (t.id === 'socGo') { query = ($('socQ').value || '').trim(); list = null; render(); return; }
         if (t.id === 'socEdit') { prof = Object.assign({}, prof); $('socBody').innerHTML = setupForm('Change your island or host name.'); return; }
         if (t.id === 'socPubNow') { const r = await publish(true); toast(r && r.ok ? `${IX.globe} Island shared` : 'Could not share: ' + esc(r ? r.why : 'no account'), 2600); render(); return; }
-        if (t.id === 'socLink') { const r = await net.linkEmail(($('socMail').value || '').trim()); toast(esc(r.why || 'Email linked'), 3600); return; }
+        if (t.id === 'cuOpenSafe' && g.openSafe) { g.openSafe('main'); return; }
+        if (t.id === 'cuOpenHave' && g.openSafe) { g.openSafe('have'); return; }
       });
       $('socBody').addEventListener('change', async e => {
         if (e.target.id === 'socPub') { const s = S(); s.social.pub = e.target.checked; g.save(); const r = await net.setPublic(s.social.pub); if (!r.ok) await publish(true); render(); }
@@ -275,7 +279,9 @@
       return homeSync(true);
     }
     function startVisit() { bind(); bindVisit(); document.body.classList.add('visit'); visitHud(); }
-    return { net, open, close, render, publish, homeSync, awayHtml, awayDone, visitLoad, startHome, startVisit, homeUrl, visitUrl, goVisit, get V() { return V; }, get prof() { return prof; }, get news() { return news; }, readBox: () => readBox(SLOT) };
+    // step 7: signed in as another account (email code / magic link): forget the old account's profile + island
+    function accountChanged() { signed = false; prof = null; mine = null; list = null; if (!$('socCard').hidden) { render(); ensureSignIn().then(render); } }
+    return { net, open, close, render, publish, homeSync, accountChanged, awayHtml, awayDone, visitLoad, startHome, startVisit, homeUrl, visitUrl, goVisit, get V() { return V; }, get prof() { return prof; }, get news() { return news; }, readBox: () => readBox(SLOT) };
   }
   window.SocialUI = SocialUI;
 })();
