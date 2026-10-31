@@ -1,0 +1,1350 @@
+// Schiffy Elderglow - the game. Boot: map (ElderMap) -> start-state roles -> nav + height grid -> save/offline
+// -> pups + plots -> loop. The sim (src/sim.js) runs in fixed STEP ticks from real time; the renderer only reads it.
+// URL: ?debug=1 map debug view (index.html)  ?phone=1 phone preset (375x812, ratio 1.5, no ink)  ?speed=N sim speed
+//      ?away=SEC pretend the save is SEC older (offline test)  ?reset=1 fresh island  ?nosave=1 never write the save
+//      ?lib=<url of the library's glb/>  ?cam=pup0..N  ?slot=NAME separate save slot (tests)
+(function () {
+  'use strict';
+  const Q = new URLSearchParams(location.search);
+  const FIX = Q.get('phone') === '1';
+  const PHONE = FIX || matchMedia('(pointer: coarse)').matches;
+  const LIB = Q.get('lib') || window.ELDER_LIB || '../Schiffy%20Asset%20Library/glb/';   // ELDER_LIB: set by publish_pages.ps1
+  const SPEED = Math.max(0, Math.min(3600, +Q.get('speed') || 1));
+  // v1 is read once + migrated, then left as a backup. ?slot=NAME = a separate save (tests never touch the real island)
+  // lower-cased: ?slot=liveA used to fail the test silently and run on the REAL save (2026-10-31 live test)
+  const SLOT0 = (Q.get('slot') || '').toLowerCase(), SLOT = /^[a-z0-9]{1,12}$/.test(SLOT0) ? '.' + SLOT0 : '';
+  if (Q.get('slot') && !SLOT) console.warn('?slot= must be 1-12 letters / digits: using the REAL save');
+  const SAVE_KEY = 'schiffy-elderglow.save.v2' + SLOT, OLD_KEY = 'schiffy-elderglow.save.v1' + SLOT;
+  // step 6: ?visit=<island id> = someone else's island, read-only (src/social_ui.js): never saved, the visitor walks as Schiffy
+  const VISIT = /^[A-Za-z0-9_-]{1,64}$/.test(Q.get('visit') || '') ? Q.get('visit') : null;
+  let soc = null, walker = null, bootSum = null;
+  // ---- the clock: the island's hours follow the player's local time (Sim.tod(S) = (S.clock0 + S.time) mod 24 h).
+  // ?time=HH:MM (tests only) starts the island at that hour and lets it run (x ?speed); __game.setTime('21:30') scrubs;
+  // __game.setTime(null) goes back to the real clock. No toggle in the UI by design.
+  const parseT = v => { if (v === null || v === undefined || v === '') return null; if (typeof v === 'number') return ((v % 24) + 24) % 24 * 3600;
+    const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(String(v)); return m ? ((+m[1] % 24) * 3600 + (+(m[2] || 0)) * 60) : null; };
+  let TIME_FIX = parseT(Q.get('time'));
+  const realSec = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000; };
+  function anchorClock(ahead, want) {   // so that the island's clock reads `want` (default: now) once `ahead` more sim seconds have run
+    const w = want !== undefined ? want : TIME_FIX !== null ? TIME_FIX : realSec();
+    S.clock0 = Math.round((((w - (S.time + (ahead || 0))) % 86400) + 86400) % 86400 * 1000) / 1000;
+    // step 5: the same anchor for the local timestamp (seasons): today's local date at hour w
+    const ln = Seasons.localNow(), day0 = Math.floor(ln / 86400) * 86400;
+    S.ep0 = Math.round((day0 + w - (S.time + (ahead || 0))) * 1000) / 1000;
+  }
+  // ?season=spring|summer|autumn|winter (tests / screenshots only, never saved): force the season everywhere
+  { const sq = Seasons.NAMES.indexOf(Q.get('season') || ''); if (sq >= 0) Seasons.fix = sq; }
+  const $ = id => document.getElementById(id);
+  const app = $('app');
+  if (FIX) document.body.classList.add('fix');
+  const W = () => app.clientWidth, H = () => app.clientHeight;
+  const setLayout = () => document.body.classList.toggle('phone', FIX || W() < 700);
+  setLayout();
+  const err = msg => { const e = $('err'); e.style.display = 'block'; e.textContent = msg; };
+  addEventListener('error', e => { window.__errors = (window.__errors || []).concat(String(e.message)); });
+
+  // ---- renderer / scene (same look as the map debug view)
+  const renderer = new THREE.WebGLRenderer({ antialias: !PHONE });
+  renderer.setPixelRatio(FIX ? 1.5 : Math.min(devicePixelRatio, PHONE ? 1.5 : 2)); renderer.setSize(W(), H());
+  renderer.outputEncoding = THREE.sRGBEncoding; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  app.insertBefore(renderer.domElement, app.firstChild);
+  const SKY = new THREE.Color(0xc3dcf7), SKY_SICK = new THREE.Color(0xb8b8c4);
+  const scene = new THREE.Scene(); scene.background = SKY.clone(); scene.fog = new THREE.Fog(0xc3dcf7, 600, 1800);
+  const camera = new THREE.PerspectiveCamera(40, W() / H(), 0.5, 4000);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  Object.assign(controls, { enableDamping: true, dampingFactor: 0.09, minDistance: 12, maxDistance: 700, maxPolarAngle: 1.45, screenSpacePanning: false });
+  const hemi = new THREE.HemisphereLight(0xeaf4ff, 0x8a7aa8, 0.75); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff4e0, 0.95); sun.castShadow = true;
+  sun.shadow.mapSize.set(PHONE ? 2048 : 4096, PHONE ? 2048 : 4096); sun.shadow.bias = -0.0006; scene.add(sun);
+
+  // ---- icons (inline SVG, ink outlined)
+  const SV = (body, vb) => `<svg class="ic" viewBox="${vb || '0 0 24 24'}" stroke="#2a2442" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">${body}</svg>`;
+  const IC = {
+    water: SV('<path d="M12 2.5C9 7 5.5 10.5 5.5 15a6.5 6.5 0 0 0 13 0c0-4.5-3.5-8-6.5-12.5z" fill="#4fc3ff"/>'),
+    light: SV('<path d="M9 4h6M10 4v2M14 4v2" fill="none"/><path d="M7.5 7h9l-1 11h-7z" fill="#ffd36a"/><path d="M8 20h8" fill="none"/>'),
+    rest: SV('<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.3 6.3 0 0 0 10 10z" fill="#b9a7ff"/>'),
+    wood: SV('<rect x="3" y="8" width="16" height="8" rx="4" fill="#b07a45"/><ellipse cx="19" cy="12" rx="2.6" ry="4" fill="#f0cf94"/><path d="M8 11h5" fill="none"/>'),
+    stone: SV('<path d="M4 18l2.5-7 5-4 6 2 2.5 9z" fill="#aab3c2"/><path d="M11.5 7l1 5 7 6M6.5 11l6 1" fill="none"/>'),
+    food: SV('<circle cx="8.5" cy="14" r="4" fill="#e0457b"/><circle cx="15.5" cy="14" r="4" fill="#e0457b"/><circle cx="12" cy="9" r="3.6" fill="#ff6f9a"/><path d="M12 5.5c1-2 3-2.5 4.5-2" fill="none"/>'),
+    build: SV('<path d="M4 20l9-9" fill="none" stroke-width="3.4"/><path d="M4 20l9-9" fill="none" stroke="#c98a4b" stroke-width="1.6"/><path d="M10.5 6.5l4-3 6 6-3 4z" fill="#8f97a6"/>'),
+    bed: SV('<path d="M3 18V7M3 13h18v5M21 18v-5" fill="none"/><rect x="3" y="10" width="7" height="3" rx="1.5" fill="#fff"/><path d="M10 13v-2.5h8a3 3 0 0 1 3 3V13z" fill="#ff9fc0"/>'),
+    home: SV('<path d="M3.5 11.5L12 4l8.5 7.5" fill="none"/><path d="M6 10v10h12V10" fill="#ffd9a8"/><rect x="10" y="14" width="4" height="6" fill="#b07a45"/>'),
+    garden: SV('<rect x="3" y="14" width="18" height="6" rx="1" fill="#b07a45"/><circle cx="8" cy="11" r="3" fill="#7fd36a"/><circle cx="16" cy="11" r="3" fill="#7fd36a"/><circle cx="8" cy="11" r="1" fill="#e0457b"/><circle cx="16" cy="11" r="1" fill="#e0457b"/>'),
+    woodshed: SV('<path d="M3 10l9-5 9 5" fill="#c4553e"/><path d="M5 10v10h14V10" fill="#ffe7c2"/><rect x="7" y="14" width="10" height="2.6" rx="1.3" fill="#b07a45"/><rect x="7" y="16.6" width="10" height="2.6" rx="1.3" fill="#b07a45"/>'),
+    quarry: SV('<path d="M2.5 20l4-9 4 3 3-7 8 13z" fill="#aab3c2"/><path d="M13.5 7l2 6" fill="none"/>'),
+    lantern: SV('<path d="M6 21V9M18 21V9" fill="none"/><path d="M4 9h4l-1-3H5zM16 9h4l-1-3h-2z" fill="#ffd36a"/><path d="M8 21c1.5-4 6.5-4 8 0" fill="none" stroke-dasharray="2 2"/>'),
+    lock: SV('<path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none"/><rect x="5.5" y="11" width="13" height="9" rx="2" fill="#b9a7ff"/>'),
+    nourish: SV('<path d="M5 19C5 10 11 4.5 19.5 4.5 19.5 13 14 19 5 19z" fill="#7fd36a"/><path d="M5 19l8-8" fill="none"/>'),
+    protect: SV('<path d="M12 2.5l7.5 3v5.5c0 5-3.3 8.7-7.5 10.5C7.8 19.7 4.5 16 4.5 11V5.5z" fill="#a9c0d6"/>'),
+    spirit: SV('<path d="M9 17.5a2.8 2.8 0 1 1-1.8-2.6V5.5l10-2v11a2.8 2.8 0 1 1-1.8-2.6V7l-6.4 1.3z" fill="#ff9fd0"/>'),
+    sap: SV('<path d="M8 3h8v3l2 3v9a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V9l2-3z" fill="#ffb84a"/><path d="M6 12h12" fill="none"/>'),
+    orb: SV('<path d="M12 2.5l2.6 6.4 6.9.5-5.3 4.5 1.7 6.7L12 17l-5.9 3.6 1.7-6.7-5.3-4.5 6.9-.5z" fill="#ffe066"/>'),
+    heart: SV('<path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.3 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10z" fill="#ff7aa8"/>'),
+    star: SV('<path d="M12 2.5l2.6 6.4 6.9.5-5.3 4.5 1.7 6.7L12 17l-5.9 3.6 1.7-6.7-5.3-4.5 6.9-.5z" fill="#c69bff"/>'),
+    clock: SV('<circle cx="12" cy="12" r="9" fill="#fff"/><path d="M12 7v5l3 2" fill="none"/>'),
+    sun: SV('<circle cx="12" cy="12" r="4.6" fill="#ffd23f"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" fill="none"/>'),
+    moon: SV('<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.3 6.3 0 0 0 10 10z" fill="#ffe9a8"/><circle cx="18.5" cy="5" r="1" fill="#fff"/>'),
+    dusk: SV('<path d="M4 16a8 8 0 0 1 16 0z" fill="#ff9c6a"/><path d="M2.5 16h19M5 19.5h14M12 4v3M5.5 7.5l1.6 1.6M18.5 7.5l-1.6 1.6" fill="none"/>'),
+    seed: SV('<path d="M12 21c-4.2 0-6.5-3.2-6.5-7.2C5.5 9 9 5 12 3c3 2 6.5 6 6.5 10.8 0 4-2.3 7.2-6.5 7.2z" fill="#c9a26a"/><path d="M12 8v9" fill="none"/>'),
+    gift: SV('<rect x="3.5" y="9" width="17" height="11.5" rx="1.5" fill="#ff8fc8"/><rect x="2.5" y="6.5" width="19" height="4" rx="1.2" fill="#ffb3dc"/><path d="M12 6.5v14" fill="none"/><path d="M12 6.5C10 2.5 6.5 3 7 5.2c.4 1.6 3.4 1.3 5 1.3 1.6 0 4.6.3 5-1.3.5-2.2-3-2.7-5 1.3z" fill="#ffd23f"/>'),
+    scarf: SV('<path d="M4 8c5 3 11 3 16 0l-1 4c-4 2.5-10 2.5-14 0z" fill="#9b7bff"/><path d="M14 12.5l1.5 8 3-1-1.5-7.8" fill="#c69bff"/>'),
+    jar: SV('<rect x="6" y="7" width="12" height="13.5" rx="3" fill="#cfe9ff"/><rect x="7.5" y="3.5" width="9" height="3.5" rx="1" fill="#b07a45"/><circle cx="10" cy="12" r="1.3" fill="#ffe066" stroke="none"/><circle cx="14" cy="15.5" r="1.3" fill="#ffe066" stroke="none"/><circle cx="11" cy="17.5" r="1" fill="#c8ff7a" stroke="none"/>'),
+    board: SV('<path d="M3 13.5h18c-1 4-4.5 6.5-9 6.5s-8-2.5-9-6.5z" fill="#c98a4b"/><path d="M12 13.5V8" fill="none"/><path d="M4 8.5C7 3.5 17 3.5 20 8.5c-4-1.5-12-1.5-16 0z" fill="#7fd36a"/>'),
+    crystal: SV('<path d="M12 2.5l5.5 6-5.5 13-5.5-13z" fill="#9fe8ff"/><path d="M6.5 8.5h11M12 2.5l-2 6 2 13 2-13z" fill="none"/>'),
+    decor: SV('<path d="M5 13a7 7 0 0 1 14 0z" fill="#ff8fc8"/><circle cx="9" cy="10.5" r="1.2" fill="#fff" stroke="none"/><circle cx="14.5" cy="9.5" r="1" fill="#fff" stroke="none"/><path d="M10 13v6.5h4V13" fill="#fff6dc"/>'),
+    isle: SV('<path d="M3 11h18l-4 4-2 5-3-3-3 4-2-6z" fill="#aab3c2"/><path d="M3 11c1-3 4-4 9-4s8 1 9 4z" fill="#7fd36a"/><circle cx="16" cy="5.5" r="2" fill="#ffd36a"/>'),
+    paw: SV('<ellipse cx="12" cy="16" rx="5" ry="4" fill="#ffb27a"/><circle cx="6" cy="10" r="2.2" fill="#ffb27a"/><circle cx="10" cy="6.5" r="2.2" fill="#ffb27a"/><circle cx="14" cy="6.5" r="2.2" fill="#ffb27a"/><circle cx="18" cy="10" r="2.2" fill="#ffb27a"/>'),
+    // step 4
+    bell: SV('<path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z" fill="#ffd23f"/><path d="M10 21h4" fill="none"/>'),
+    blight: SV('<path d="M5 15c-1-4 2-7 5-6 1-3 6-3 7 0 3 0 4 4 2 6 1 3-2 5-4 4-2 2-6 2-7 0-3 0-4-2-3-4z" fill="#6a3a8c"/><circle cx="10" cy="13" r="1.2" fill="#d9a8ff" stroke="none"/><circle cx="14.5" cy="11.5" r="1" fill="#d9a8ff" stroke="none"/>'),
+    ward: SV('<path d="M12 2.5l4 5-1.5 11h-5L8 7.5z" fill="#9fe8ff"/><path d="M5 21h14" fill="none"/><path d="M12 2.5v16" fill="none"/>'),
+    fruit: SV('<circle cx="12" cy="14" r="6.5" fill="#ffd45e"/><path d="M12 7.5c0-2 1-3.5 3-4" fill="none"/><path d="M12.5 6.5c2.5-2.5 6-1.5 6.5 0-2 1.5-4.5 1.5-6.5 0z" fill="#7fd36a"/>'),
+    rain: SV('<path d="M6 13a4 4 0 0 1 1-7.8A5 5 0 0 1 17 6a3.5 3.5 0 0 1 1 7z" fill="#cfe4f7"/><path d="M8 16l-1 3M12 16l-1 3M16 16l-1 3" fill="none"/>'),
+    cart: SV('<path d="M3 9h18l-2 7H5z" fill="#ffb347"/><path d="M3 9l2-4h14l2 4" fill="#ff8fc8"/><circle cx="8" cy="19" r="2" fill="#fff"/><circle cx="16" cy="19" r="2" fill="#fff"/>'),
+    wish: SV('<path d="M4 5h16v10H10l-4 4v-4H4z" fill="#fff"/><path d="M12 7.2l1.2 2.4 2.6.3-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.3z" fill="#ffd23f"/>'),
+    friends: SV('<path d="M8.5 18s-5-3-5-6.6A2.9 2.9 0 0 1 8.5 9.6a2.9 2.9 0 0 1 5 1.8c0 3.6-5 6.6-5 6.6z" fill="#ff9fc0"/><path d="M15.5 14.5s-5-3-5-6.6a2.9 2.9 0 0 1 5-1.8 2.9 2.9 0 0 1 5 1.8c0 3.6-5 6.6-5 6.6z" fill="#ff7aa8"/>'),
+    stage: SV('<path d="M3 20h18v-3H3z" fill="#c98a4b"/><path d="M4 17V8l8-4 8 4v9" fill="#ff9fd0"/><path d="M10 13.5a1.6 1.6 0 1 1-1-1.5V8l5-1v5.5a1.6 1.6 0 1 1-1-1.5V9l-3 .6z" fill="#fff"/>'),
+    conserv: SV('<path d="M4 20V11a8 8 0 0 1 16 0v9z" fill="#cdf3e6"/><path d="M12 3v17M4 13h16" fill="none"/><circle cx="8" cy="17" r="2" fill="#7fd36a"/><circle cx="16" cy="17" r="2" fill="#7fd36a"/>'),
+    sprout: SV('<path d="M12 21v-9" fill="none"/><path d="M12 13c-5 0-7-3-7-6 4 0 7 2 7 6zM12 11c0-4 3-6 7-6 0 3-2 6-7 6z" fill="#7fd36a"/><circle cx="12" cy="5" r="2" fill="#ffd45e"/>'),
+    // step 5
+    hall: SV('<path d="M3 10l9-6 9 6" fill="#8ea9c4"/><path d="M5 10v10h14V10" fill="#dfe8f2"/><path d="M12 11.5l3 1.2v2.4c0 2-1.4 3.4-3 4-1.6-.6-3-2-3-4v-2.4z" fill="#a9c0d6"/>'),
+    school: SV('<path d="M3 11l9-6 9 6" fill="#ffb3a0"/><path d="M5 11v9h14v-9" fill="#fff1d6"/><path d="M12 19v-4" fill="none"/><path d="M12 15.5c-2.6 0-3.6-1.6-3.6-3.2 2 0 3.6 1 3.6 3.2zM12 14.5c0-2.2 1.6-3.2 3.6-3.2 0 1.6-1 3.2-3.6 3.2z" fill="#7fd36a"/>'),
+    circus: SV('<path d="M3 19l3-10h12l3 10z" fill="#ff8fc8"/><path d="M6 9l6-6 6 6z" fill="#ffd23f"/><path d="M9 19l1.5-10M15 19l-1.5-10" fill="none"/><path d="M12 3V1.5l3 1-3 1" fill="#ff5f8f"/>'),
+    anvil: SV('<path d="M4 8h13c0 2.5 2 3 3.5 3-1 2-3 2.5-5 2.5H11c-1 0-2-1-2-2.5H6C4.5 11 4 9.5 4 8z" fill="#8f97a6"/><path d="M9 13.5h6l1 4H8z" fill="#6a7180"/><path d="M6 20h12" fill="none"/>'),
+    fest: SV('<path d="M4 6c5 3 11 3 16 0" fill="none"/><path d="M6 7l-1 5 3-1zM12 9l-1 5 3-1zM18 7l-1 5 3-1z" fill="#ff8fc8"/><circle cx="8.5" cy="18" r="2.5" fill="#ffd23f"/><circle cx="15.5" cy="18" r="2.5" fill="#7fd6ff"/>'),
+    book: SV('<path d="M4 5c3-1 6-1 8 1v14c-2-2-5-2-8-1z" fill="#c69bff"/><path d="M20 5c-3-1-6-1-8 1v14c2-2 5-2 8-1z" fill="#ffd9a8"/>'),
+    spring: SV('<circle cx="12" cy="7" r="3" fill="#ffb3d0"/><circle cx="7.5" cy="11" r="3" fill="#ffb3d0"/><circle cx="16.5" cy="11" r="3" fill="#ffb3d0"/><circle cx="9.5" cy="15.5" r="3" fill="#ffb3d0"/><circle cx="14.5" cy="15.5" r="3" fill="#ffb3d0"/><circle cx="12" cy="12" r="2" fill="#ffd23f"/>'),
+    summer: SV('<circle cx="12" cy="12" r="4.6" fill="#ffb02e"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" fill="none"/>'),
+    autumn: SV('<path d="M12 21v-5M12 3l2 4 4-1-1 4 3 2-4 1 1 3-5-2-5 2 1-3-4-1 3-2-1-4 4 1z" fill="#f2832d"/>'),
+    winter: SV('<path d="M12 2.5v19M4 7l16 10M20 7L4 17M9.5 4l2.5 2 2.5-2M9.5 20l2.5-2 2.5 2" fill="none" stroke="#5aa8e0"/><circle cx="12" cy="12" r="2" fill="#dff1ff"/>'),
+    memory: SV('<path d="M12 2.5c4 3 6.5 6.3 6.5 10a6.5 6.5 0 0 1-13 0c0-3.7 2.5-7 6.5-10z" fill="#9fe8ff"/><path d="M12 8.5v8M9 12.5l3 3 3-3" fill="none"/>'),
+  };
+  const NEED_NAMES = { water: 'Water', light: 'Light', nourish: 'Nourish', protect: 'Protect', spirit: 'Spirit' };
+  const JOB_NAMES = { water: 'Water', light: 'Light', wood: 'Wood', stone: 'Stone', food: 'Berries', build: 'Build', rest: 'Rest', nourish: 'Garden', protect: 'Guard', spirit: 'Music' };
+  const JOB_WHO = { nourish: 'Gardeners', protect: 'Guardians', spirit: 'Performers' };
+  const B_ICON = { home: 'home', garden: 'garden', woodshed: 'woodshed', quarry: 'quarry', lantern: 'lantern', board: 'board', stage: 'stage', conserv: 'conserv',
+    hush: 'hall', sprout: 'school', market: 'cart', greenhold: 'conserv', circus: 'circus', forge: 'anvil' };
+  const STATUS = {
+    water: { idle: 'getting ready', go: 'off to the river', fill: 'filling the bucket', carry: 'carrying water', pour: 'watering the tree' },
+    light: { idle: 'getting ready', go: 'to the shrine', light: 'lighting the lantern', carry: 'off to an orb', tend: 'tending an orb' },
+    rest: { idle: 'yawning', go: 'off for a nap', rest: 'napping' },
+    wood: { idle: 'getting ready', go: 'off to the woods', work: 'chopping wood', carry: 'carrying logs', drop: 'stacking logs' },
+    stone: { idle: 'getting ready', go: 'off to the rocks', work: 'chipping stone', carry: 'hauling stone', drop: 'piling stone' },
+    food: { idle: 'getting ready', go: 'off berry picking', work: 'picking berries', carry: 'bringing berries', drop: 'filling the pantry' },
+  };
+  function statusOf(p) {
+    if (p.exp) {
+      const tr = S.exp.trips.find(x => x.id === p.exp), d = tr && Exped.DEST[tr.dest]; if (!tr) return 'on a sky trip';
+      if (p.phase === 'go') return 'off to the dock';
+      if (p.phase === 'board') return 'aboard, waiting for the team';
+      return `exploring ${d.name} (${fmtT(Math.max(0, tr.dep + tr.dur - S.time))} left)`;
+    }
+    if (p.phase === 'arrive') return p.parents ? 'a brand-new puppy!' : 'crossing the bridge';
+    if (p.task === 'garden') return { go: p.tgt >= 0 ? 'off to the garden' : 'off to the root beds', plant: S.inv.seeds > 0 ? 'planting a seed' : 'tending the beds', carry: S.garden.sprouts.length ? 'bringing glow fruit' : 'bringing compost', feed: 'feeding the tree' }[p.phase] || 'gardening';
+    if (p.task === 'blight') return p.phase === 'clear' ? 'sweeping away blight' : 'off to a blight patch';
+    if (p.task === 'patrol') return p.phase === 'watch' ? 'keeping watch' : 'on patrol';
+    if (p.task === 'stage' || p.task === 'busk') return p.phase === 'play' ? (p.task === 'stage' ? 'playing on the stage' : 'busking on the plaza') : p.task === 'stage' ? 'off to the stage' : 'off to play music';
+    if (p.phase === 'nap') return 'sleepy night nap';
+    if (p.job === 'rest' && p.task === null && Needs.firstBuilt(S, 'stage') !== null && S.pups.some(q => q.job === 'spirit' && !q.exp)) return p.phase === 'rest' ? (S.pups.some(q => q.phase === 'play' && q.task === 'stage') ? 'dancing at the show' : 'waiting for the music') : 'off to the show';
+    if (p.task === 'nap') return 'yawning, off for a nap';
+    if (p.job === 'build') {
+      if (p.task === 'site') return p.phase === 'build' ? 'building' : 'to the building site';
+      if (p.task === 'wood' || p.task === 'stone') return (STATUS[p.task][p.phase] || 'fetching ' + p.task) + ' for a build';
+      if (p.task === 'wait') return S.queue.length ? 'waiting for glow sap' : 'waiting for a blueprint';
+      return 'getting ready';
+    }
+    return (STATUS[p.job] || {})[p.phase] || '';
+  }
+
+  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, booted = false;
+  const newSeed = () => (+Q.get('seed') >>> 0) || ((Math.random() * 4294967296) >>> 0) || 1;   // ?seed=N (tests)   // a fresh island's event seed (the sim itself never uses Math.random)
+  const ev = [];
+
+  // ---- height grid from the ground + path stones meshes (max height per 2 m cell), so pups stand on the terrain
+  function buildGround(m) {
+    const parts = m.batches.filter(b => b.terrain && (b.key === 'terrain:EG_Map_Ground' || b.key === 'terrain:EG_Map_PathStones'));
+    const box = new THREE.Box3(); parts.forEach(b => box.union(b.geo.boundingBox));
+    const C = 2, x0 = box.min.x, z0 = box.min.z, nx = Math.ceil((box.max.x - x0) / C) + 1, nz = Math.ceil((box.max.z - z0) / C) + 1;
+    const g = new Float32Array(nx * nz).fill(-1e9);
+    for (const b of parts) {
+      const P = b.geo.attributes.position.array, I = b.geo.index.array;
+      for (let t = 0; t < I.length; t += 3) {
+        const a = I[t] * 3, bb = I[t + 1] * 3, c = I[t + 2] * 3;
+        const ax = P[a], ay = P[a + 1], az = P[a + 2], bx = P[bb], by = P[bb + 1], bz = P[bb + 2], cx = P[c], cy = P[c + 1], cz = P[c + 2];
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(den) < 1e-9) continue;
+        const i0 = Math.max(0, Math.floor((Math.min(ax, bx, cx) - x0) / C)), i1 = Math.min(nx - 1, Math.ceil((Math.max(ax, bx, cx) - x0) / C));
+        const j0 = Math.max(0, Math.floor((Math.min(az, bz, cz) - z0) / C)), j1 = Math.min(nz - 1, Math.ceil((Math.max(az, bz, cz) - z0) / C));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const px = x0 + i * C, pz = z0 + j * C;
+          const w1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den, w2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den, w3 = 1 - w1 - w2;
+          if (w1 < -0.02 || w2 < -0.02 || w3 < -0.02) continue;
+          const y = w1 * ay + w2 * by + w3 * cy, k = j * nx + i; if (y > g[k]) g[k] = y;
+        }
+        for (const [vx, vy, vz] of [[ax, ay, az], [bx, by, bz], [cx, cy, cz]]) {   // tiny triangles: splat the vertices too
+          const i = Math.round((vx - x0) / C), j = Math.round((vz - z0) / C); if (i >= 0 && j >= 0 && i < nx && j < nz && vy > g[j * nx + i]) g[j * nx + i] = vy;
+        }
+      }
+    }
+    const cell = (i, j) => (i < 0 || j < 0 || i >= nx || j >= nz) ? -1e9 : g[j * nx + i];
+    // step 6 (walker): the plain terrain height, or null off the map (no fallback / bridge rules)
+    const raw = (x, z) => {
+      const fx = (x - x0) / C, fz = (z - z0) / C, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+      const a = cell(i, j), b = cell(i + 1, j), c = cell(i, j + 1), d = cell(i + 1, j + 1);
+      if (a < -1e8 || b < -1e8 || c < -1e8 || d < -1e8) { const mx = Math.max(a, b, c, d); return mx > -1e8 ? mx : null; }
+      return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+    };
+    return Object.assign((x, z, fallback, bridge) => {
+      const fx = (x - x0) / C, fz = (z - z0) / C, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+      const a = cell(i, j), b = cell(i + 1, j), c = cell(i, j + 1), d = cell(i + 1, j + 1);
+      if (a < -1e8 || b < -1e8 || c < -1e8 || d < -1e8) { const mx = Math.max(a, b, c, d); return mx > -1e8 ? (bridge ? Math.max(mx, fallback) : mx) : fallback; }
+      const y = (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+      return bridge ? Math.max(y, fallback) : (Math.abs(y - fallback) > 12 ? fallback : y);
+    }, { raw });
+  }
+
+  // ---- where the water is (rivers, lake, waterfalls): 3 m cells under any water triangle's box; ok(x, z) = no water
+  // within ~8 m (decor spots never land in or on the edge of a river). Since step 4 the game uses the same cells from
+  // data/water_cells.json (nav.js); this mesh version only re-makes / checks that file (__game.waterRuns / spotCheck).
+  function waterRuns(m) {
+    const cells = waterFree(m).cells, pairs = [];
+    for (const k of cells) { let i = Math.round(k / 100003), j = k - i * 100003; if (j > 50000) { j -= 100003; i += 1; } else if (j < -50000) { j += 100003; i -= 1; } pairs.push([i, j]); }
+    pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const runs = []; for (const [i, j] of pairs) { const r = runs[runs.length - 1]; if (r && r[0] === i && r[2] === j - 1) r[2] = j; else runs.push([i, j, j]); }
+    return runs;
+  }
+  function waterFree(m) {
+    const parts = m.batches.filter(b => b.terrain && b.inst[0] && b.inst[0].role === 'water'), C = 3, cells = new Set();
+    for (const geo of parts.flatMap(b => [b.geo].concat(b.see.map(s => s.geo))).filter(x => x && x.index)) {   // water is mostly see-through parts
+      const P = geo.attributes.position.array, I = geo.index.array;
+      for (let t = 0; t < I.length; t += 3) {
+        const a = I[t] * 3, c = I[t + 1] * 3, d = I[t + 2] * 3;
+        const ax = P[a], az = P[a + 2], bx = P[c], bz = P[c + 2], cx = P[d], cz = P[d + 2];
+        for (const [vx, vz] of [[ax, az], [bx, bz], [cx, cz]]) cells.add(Math.floor(vx / C) * 100003 + Math.floor(vz / C));
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(den) < 1e-9) continue;
+        const i0 = Math.floor(Math.min(ax, bx, cx) / C), i1 = Math.floor(Math.max(ax, bx, cx) / C), j0 = Math.floor(Math.min(az, bz, cz) / C), j1 = Math.floor(Math.max(az, bz, cz) / C);
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {   // cell centres inside the triangle (a little slack)
+          const px = (i + 0.5) * C, pz = (j + 0.5) * C, w1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den, w2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den;
+          if (w1 > -0.1 && w2 > -0.1 && 1 - w1 - w2 > -0.1) cells.add(i * 100003 + j);
+        }
+      }
+    }
+    const ok = (x, z) => { const i = Math.floor(x / C), j = Math.floor(z / C); for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) if (cells.has((i + di) * 100003 + j + dj)) return false; return true; };
+    ok.cells = cells; return ok;
+  }
+
+  // ---- where the trunk + roots are: low vertices (piece space y < 14) of the tree batch on a 1 m grid; a nap spot is
+  // clear if no such cell lies within 3.5 m (world) of it at that tree scale
+  function treeClear(m, nav) {
+    const b = m.batches.find(x => x.key === 'EG_ElderTree'); if (!b || !b.geo) return null;
+    const P = b.geo.attributes.position.array, cells = new Set();
+    for (let i = 0; i < P.length; i += 3) if (P[i + 1] < 14) cells.add(Math.round(P[i]) + ',' + Math.round(P[i + 2]));
+    const TP = nav.TP, ry = nav.tree.ry || 0, cs = Math.cos(-ry), sn = Math.sin(-ry);
+    return (x, z, s) => {
+      const wx = (x - TP[0]) / s, wz = (z - TP[2]) / s, lx = wx * cs + wz * sn, lz = -wx * sn + wz * cs, R = 3.5 / s;
+      for (let i = Math.floor(lx - R); i <= Math.ceil(lx + R); i++) for (let j = Math.floor(lz - R); j <= Math.ceil(lz + R); j++)
+        if ((i - lx) * (i - lx) + (j - lz) * (j - lz) <= R * R && cells.has(i + ',' + j)) return false;
+      return true;
+    };
+  }
+
+  // ---- start state of the island: no houses / factions / market / floating isles yet, a thinner forest, no garden plots
+  function startIsland(m) {
+    const L = m.layout;
+    for (const r of ['house', 'faction', 'market', 'isle']) m.setRole(r, false);
+    for (const b of m.batches) for (const i of b.inst) {
+      if (i.pid < 0) continue; const p = L.placements[i.pid]; if (!p) continue;
+      if (i.role === 'forest' && !Nav.keepForest(i.pid)) { i.role = 'later'; i.thin = true; }   // thin: grows back with the tree (growLand)
+      else if (p.piece === 'EG_GardenBox' || p.piece === 'EG_Brazier') i.role = 'plot';
+    }
+    m.invalidate();
+  }
+
+  // ---- save / load
+  let lastSave = 0;
+  function save() {
+    if (!S || Q.get('nosave') === '1' || VISIT) return;   // a visit never writes anything to the visitor's own save
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ savedAt: Date.now(), state: S })); lastSave = performance.now(); } catch (e) { /* storage full / private mode: keep playing */ }
+  }
+  function load() {
+    if (Q.get('reset') === '1') { try { if (Q.get('nosave') !== '1') { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(OLD_KEY); } } catch (e) {} return { state: Sim.create(nav, newSeed()), away: 0, fresh: true }; }
+    let raw = null, migrated = false; try { raw = localStorage.getItem(SAVE_KEY); if (!raw) { raw = localStorage.getItem(OLD_KEY); migrated = !!raw; } } catch (e) {}
+    if (!raw) return { state: Sim.create(nav, newSeed()), away: 0, fresh: true };
+    let obj = null; try { obj = JSON.parse(raw); } catch (e) {}
+    const st = obj && Sim.sanitize(obj.state, nav);
+    if (!st) { try { if (Q.get('nosave') !== '1') localStorage.setItem(SAVE_KEY + '.corrupt', raw); } catch (e) {} return { state: Sim.create(nav, newSeed()), away: 0, fresh: true, corrupt: true }; }
+    let away = (Date.now() - (+obj.savedAt || Date.now())) / 1000 + (+Q.get('away') || 0);
+    if (!isFinite(away) || away < 0) away = 0;   // clock went backwards: no catch-up, nothing lost
+    return { state: st, away, migrated, fromV: obj.state.v };
+  }
+
+  // ---- UI helpers
+  const fmtT = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h${m ? ' ' + m + ' min' : ''}` : m ? `${m} min` : `${s} s`; };
+  const fmtN = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(1) + 'k' : Math.floor(v).toLocaleString();
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function toast(html, ms, onClick) {
+    const d = document.createElement('div'); d.className = 'toast card' + (onClick ? ' click' : ''); d.innerHTML = html; $('toasts').appendChild(d);
+    if (onClick) d.onclick = () => { onClick(); d.remove(); };
+    setTimeout(() => d.remove(), ms || 3200);
+  }
+  const healthWord = h => h >= 80 ? 'Thriving' : h >= 60 ? 'Healthy' : h >= 40 ? 'Struggling' : h >= 20 ? 'Wilting' : 'Withering';
+  const healthCol = h => h >= 80 ? 'linear-gradient(90deg,#5fe0c8,#ffd36a)' : h >= 60 ? 'linear-gradient(90deg,#7fd36a,#b8e86a)' : h >= 40 ? 'linear-gradient(90deg,#ffc53d,#ffa04a)' : 'linear-gradient(90deg,#ff7a59,#c9605a)';
+  const bName = (type, q) => type === 'home' ? (Sim.bedsFor(q) >= 4 ? 'Treehouse' : Sim.bedsFor(q) >= 3 ? 'Big cottage' : 'Cottage') : Sim.C.B[type].name;
+  function gives(type, q) {
+    const b = Sim.C.B[type];
+    if (type === 'home') return `${IC.bed} +${Sim.bedsFor(q)} beds`;
+    if (type === 'garden') return `${IC.food} +${b.food} berries/h`;
+    if (type === 'woodshed') return `${IC.wood} +${b.wood}/h, wood pups +${b.boost * 100}%`;
+    if (type === 'quarry') return `${IC.stone} +${b.stone}/h, stone pups +${b.boost * 100}%`;
+    if (type === 'lantern') return `${IC.light} tree light +${b.light}/h`;
+    if (type === 'board') return `${IC.isle} sky trips to the floating isles`;
+    if (type === 'stage') return `${IC.spirit} performers play at full joy, a light show at night`;
+    if (type === 'conserv') return `${IC.nourish} gardeners +30 %, +2 sprout beds, +3 nourish/h`;
+    // step 5: faction halls + the market
+    if (type === 'hush') return `${IC.protect} guardians +40 % and 30 % faster, blight creeps in 30 % less`;
+    if (type === 'sprout') return `${IC.sprout} school: friendships + explorer xp x1.5, puppies grow up in 3 h, newcomers start happy`;
+    if (type === 'market') return `${IC.cart} the wandering trader comes twice as often`;
+    if (type === 'greenhold') return `${IC.nourish} gardeners +30 % more, +2 sprout beds, +3 nourish/h`;
+    if (type === 'circus') return `${IC.spirit} performers +30 %, music lifts morale more, +3 spirit/h`;
+    if (type === 'forge') return `${IC.build} better tools: gathering + building +25 %`;
+    return '';
+  }
+  const have = k => k === 'sap' ? S.sap : S.res[k];
+  const costHtml = cost => Object.keys(cost).map(k => `<span class="cost${have(k) + 1e-9 < cost[k] ? ' short' : ''}">${IC[k]}${cost[k]}</span>`).join('');
+  const plotName = q => q.faction ? q.faction.name : `Plot ${q.i + 1}`;
+
+  // ---- UI build
+  function buildUI() {
+    const nd = $('needs');
+    for (const k of Object.keys(Sim.C.NEEDS)) {
+      nd.insertAdjacentHTML('beforeend', `<div class="need" data-k="${k}" title="Tap for details">${IC[k]}<span>${NEED_NAMES[k]}</span><div class="bar"><i style="background:var(--${k})"></i></div><span class="tr"></span></div>`);
+    }
+    nd.addEventListener('click', e => { const r = e.target.closest('.need'); if (r) openNeed(r.dataset.k); });
+    $('resbar').innerHTML = [['rB', 'water', 'Buckets of water poured on the tree'], ['rS', 'sap', 'Glow sap from a healthy tree'], ['rW', 'wood', 'Wood'], ['rT', 'stone', 'Stone'],
+      ['rF', 'food', 'Berries (pups eat ' + Sim.C.EAT + '/h each)'], ['rCr', 'crystal', 'Crystals (expeditions; set them as wards against blight)'], ['rSd', 'seed', 'Seeds (gardeners plant them: glow sprouts)'], ['rBd', 'bed', 'Beds used / total']].map(([id, ic, t]) => `<div title="${t}">${IC[ic]}<span id="${id}">0</span></div>`).join('') +
+      `<div id="clockChip" title="Island time: it follows your own clock. At night the pups nap more and the tree drinks less."><span id="rCi">${IC.sun}</span><span id="rC">--:--</span></div>` +
+      `<div id="seaChip"><span id="rSeaI"></span><span id="rSea"></span></div>`;
+    $('giftBtn').onclick = () => openGift();
+    $('seaChip').onclick = () => openBook('mem');
+    $('gClose').onclick = closeGift;
+    $('gClaim').onclick = claimGift;
+    $('decide').onchange = e => { S.decide = e.target.checked; toast(S.decide ? `${IC.paw} The pups will pick plots themselves` : 'You pick the plots again', 2200); save(); refreshBuild(true); };
+    $('queue').addEventListener('click', e => { const r = e.target.closest('[data-pid]'); if (r) openPlot(+r.dataset.pid, true); });
+    // roster
+    $('filter').addEventListener('click', e => { const b = e.target.closest('button[data-f]'); if (!b) return; rosterFilter = b.dataset.f; refreshRoster(true); });
+    const ro = $('roster');
+    ro.addEventListener('click', e => {
+      const row = e.target.closest('.pup'); if (!row) return; const i = +row.dataset.i;
+      const b = e.target.closest('button[data-job]');
+      if (b) { setJob(i, b.dataset.job); return; }
+      focusPup(i);
+      if (S.pups[i] && S.pups[i].isNew) showAway(null);   // a newcomer not greeted yet: name + first job
+    });
+    $('sheetBtn').onclick = () => { const o = $('side').classList.toggle('open'); $('sheetBtn').innerHTML = o ? 'Close &#9660;' : 'Pups &#9650;'; };
+    $('camTree').onclick = () => { closePlot(); focusPup(-1); flyHome(); };
+    // step 5: the Book (tree memories, pups met, decorations, outfits) + the tree memory card
+    $('bookBtn').onclick = () => { if ($('book').hidden) openBook(S.book.read < S.level ? 'mem' : bookTab); else closeBook(); };
+    $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
+    if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
+    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
+    $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
+    $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem); });
+    $('memOk').onclick = () => { closeMemory(); if (!$('book').hidden) renderBook(); };
+    $('book').addEventListener('click', e => { if (e.target.id === 'book') closeBook(); });
+    $('buildBtn').onclick = () => { if (!$('plotCard').hidden) { closePlot(); return; } const x = plots.info.find(x => x.st === 'open' && x.show) || plots.info[0]; openPlot(x.q.pid, true); };
+    $('pcClose').onclick = closePlot;
+    $('pcPrev').onclick = () => cyclePlot(-1); $('pcNext').onclick = () => cyclePlot(1);
+    $('pcBody').addEventListener('click', e => {
+      const b = e.target.closest('button[data-act]'); if (!b || curPlot === null) return;
+      const q = nav.plotBy[curPlot];
+      if (b.dataset.act === 'order') {
+        if (Sim.order(S, curPlot, b.dataset.type, nav)) {
+          const builders = S.pups.filter(p => p.job === 'build').length;
+          toast(`${IC[B_ICON[b.dataset.type]]} Blueprint: ${bName(b.dataset.type, q)}${builders ? '' : ' &middot; give a pup the Build job'}`, 3000); save();
+        }
+      } else if (b.dataset.act === 'exp') { closePlot(); openExp(); return; }
+      else if (b.dataset.act === 'cancel') { if (Sim.cancel(S, curPlot, nav)) { toast('Blueprint cancelled, materials back in the pile', 2400); save(); } }
+      renderPlot(true); refreshBuild(true);
+    });
+    $('awayOk').onclick = () => { $('away').hidden = true; if (soc) soc.awayDone(); for (const p of S.pups) delete p.isNew; save(); refreshRoster(true); if (giftPending) { giftPending = false; openGift(); } };
+    $('awayList').addEventListener('click', e => {
+      const hb = e.target.closest('button[data-haul]'); if (hb) { $('awayOk').onclick(); openHaul(+hb.dataset.haul); return; }
+      const mb = e.target.closest('button[data-memaway]'); if (mb) { $('awayOk').onclick(); showMemory(+mb.dataset.memaway); return; }
+      const b = e.target.closest('button[data-job]'); if (!b) return; const i = +b.closest('[data-i]').dataset.i; setJob(i, b.dataset.job, true);
+      b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    });
+    $('awayList').addEventListener('change', e => { const inp = e.target.closest('input[data-i]'); if (!inp) return; if (Sim.rename(S, +inp.dataset.i, inp.value)) { save(); refreshRoster(true); } else inp.value = S.pups[+inp.dataset.i].name; });
+    $('side').hidden = false; $('topBtns').hidden = false; $('resbar').hidden = false;
+  }
+  function setJob(i, job, quiet) {
+    if (Sim.assign(S, i, job, nav)) { if (!quiet) toast(`${esc(S.pups[i].name)}: ${IC[job]} ${JOB_NAMES[job]}`, 1600); save(); hintDone(); }
+    refreshRoster(true);
+  }
+  const jobOpen = j => Needs.jobOpen(S, j);
+  const lockTip = j => `${JOB_NAMES[j]}: wakes ${S.wake.t === null ? 'after your first sky trip lands' : 'soon (' + fmtT(Math.max(0, Needs.wakeAt(S, j) - S.time)) + ')'}`;
+  const jobBtns = p => Sim.JOBS.map(j => `<button data-job="${j}" class="${p.job === j ? 'on' : ''}${p.like === j ? ' lk' : ''}${p.dislike === j ? ' dk' : ''}${jobOpen(j) ? '' : ' lockj'}" title="${jobOpen(j) ? JOB_NAMES[j] + (p.like === j ? ' (loves it)' : p.dislike === j ? ' (dislikes it)' : '') : lockTip(j)}"${jobOpen(j) ? '' : ' disabled'}>${IC[j]}</button>`).join('');
+  // friendship line for a pup: best friends first; puppies name their parents
+  function friendLine(i, long) {
+    const p = S.pups[i], f = Needs.friendsOf(S, i);
+    let h = '';
+    if (p.parents) h += `${IC.paw}puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')}${f.length ? ' &middot; ' : ''}`;
+    if (!f.length) return h || (long ? `${IC.friends}<i>no friends yet: pups who share a job become friends</i>` : '');
+    const by = [3, 2, 1].map(l => f.filter(x => x.lv === l)).filter(a => a.length);
+    h += IC.friends + by.map(a => `${Needs.FR_NAMES[a[0].lv]} with ${a.slice(0, long ? 9 : 2).map(x => esc(S.pups[x.i].name)).join(', ')}${!long && a.length > 2 ? ' +' + (a.length - 2) : ''}`).join(' &middot; ');
+    return h;
+  }
+  // labels over pups (one per pup, made as pups appear)
+  function syncPups() {
+    pups.sync(S.pups);
+    const lb = $('labels');
+    while (lb.children.length > S.pups.length) lb.lastChild.remove();
+    while (lb.children.length < S.pups.length) {
+      const i = lb.children.length, l = document.createElement('div'); l.className = 'lbl'; l.dataset.i = i;
+      l.innerHTML = `<span class="ji"></span><span class="nmx"></span>`; l.onclick = () => focusPup(i); lb.appendChild(l);
+    }
+  }
+  let rosterSig = '', rosterFilter = 'all', rowsSig = '';
+  function refreshRoster(force) {
+    const sig = S.pups.map(p => p.job + p.phase + p.task + Math.round(p.morale) + p.name + (p.isNew ? 'n' : '') + (p.xpE || 0) + (p.exp ? Math.floor(S.time / 60) : '')).join('|') + pups.selected + rosterFilter + Needs.NEW.map(jobOpen).join() + Math.floor(S.time / 120);
+    if (!force && sig === rosterSig) return; rosterSig = sig;
+    // filter chips with counts
+    const cnt = { all: S.pups.length }; for (const j of Sim.JOBS) cnt[j] = 0; for (const p of S.pups) cnt[p.job]++;
+    $('filter').innerHTML = ['all'].concat(Sim.JOBS.filter(jobOpen)).map(f => `<button data-f="${f}" class="${rosterFilter === f ? 'on' : ''}" title="${f === 'all' ? 'All pups' : JOB_NAMES[f]}">${f === 'all' ? 'All' : IC[f]}<b>${cnt[f]}</b></button>`).join('');
+    $('pupCount').textContent = S.pups.length;
+    // rows: rebuilt when the pup list / names change, otherwise patched
+    const rs = S.pups.map(p => p.id + p.name + p.like + p.dislike).join('|');
+    const ro = $('roster');
+    if (rs !== rowsSig) {
+      rowsSig = rs;
+      ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span><span class="new">new</span><span class="xpc" title="Explorer level (sky trips)"></span><span class="mor" title="morale">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
+    }
+    ro.querySelectorAll('.pup').forEach(row => {
+      const i = +row.dataset.i, p = S.pups[i]; if (!p) return;
+      row.hidden = rosterFilter !== 'all' && p.job !== rosterFilter;
+      row.classList.toggle('sel', pups.selected === i); row.classList.toggle('isnew', !!p.isNew);
+      row.querySelectorAll('button[data-job]').forEach(b => { const j = b.dataset.job, o = jobOpen(j); b.classList.toggle('on', j === p.job); b.classList.toggle('lockj', !o); b.disabled = !o; if (!o) b.title = lockTip(j); else if (b.title.indexOf('wakes') >= 0) b.title = JOB_NAMES[j]; });
+      // friendship hint: hearts = friends; the selected pup shows who (and a puppy its parents)
+      const fl = Needs.friendsOf(S, i), fc = row.querySelector('.frc'), best = fl.length ? fl[0].lv : 0;
+      fc.innerHTML = fl.length ? `${IC.friends}<b>${fl.length}</b>` : ''; fc.className = 'frc' + (best >= 3 ? ' close' : ''); fc.title = fl.length ? friendLine(i, true).replace(/<[^>]+>/g, '') : '';
+      const fv = row.querySelector('.frl'); if (pups.selected === i) { const h = friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : ''); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
+      row.querySelector('.mor b').textContent = Math.round(p.morale);
+      row.querySelector('.st').textContent = statusOf(p);
+      const xc = row.querySelector('.xpc'), xl = expLv(p); xc.textContent = p.xpE > 0 ? 'Explorer ' + xl : ''; xc.hidden = !(p.xpE > 0);
+      row.classList.toggle('trip', !!p.exp);
+    });
+    document.querySelectorAll('#labels .lbl').forEach(l => { const i = +l.dataset.i, p = S.pups[i]; if (!p) return; l.classList.toggle('sel', pups.selected === i); l.style.borderColor = p.collar; l.querySelector('.ji').innerHTML = p.exp ? IC.board : IC[p.job]; l.querySelector('.nmx').textContent = p.name; });
+  }
+  function needRate(k) {   // net points per hour with the current crew (what the trend shows); null = asleep
+    const n = Sim.C.NEEDS[k], aw = n.floor ? Needs.awakeK(S, k) : 1; if (aw < 0) return null;
+    let sup = 0; S.pups.forEach(p => {
+      if (p.job !== k || p.exp) return; let x = Sim.C.SUPPLY[k] * Sim.mult(p.morale);
+      if (k === 'spirit' && p.task === 'busk') x *= Needs.C.BUSK_K;
+      if (k === 'nourish') x *= (1 + Needs.C.GARDEN.SPROUT_K * S.garden.sprouts.length) * (1 + Needs.C.GARDEN.CONS_K * Math.min(1, Needs.built(S, 'conserv')));
+      sup += x;
+    });
+    if (k === 'light') sup += Sim.counts(S).lantern * Sim.C.B.lantern.light;
+    if (k === 'nourish' && Needs.built(S, 'conserv')) sup += Needs.C.GARDEN.CONS_N;
+    const decay = n.floor ? (n.decay + (k === 'protect' ? Needs.C.BLIGHT.LOAD * Needs.load(S) : 0)) * (0.25 + 0.75 * aw) : n.decay;
+    return sup - decay;
+  }
+  function refreshTree() {
+    const h = S.health; $('lv').textContent = S.level;
+    $('hfill').style.width = h.toFixed(1) + '%'; $('hfill').style.background = healthCol(h);
+    $('hlabel').textContent = `${healthWord(h)} ${Math.round(h)}%`;
+    const lo = Sim.C.LV_XP[S.level - 1] || 0, hi = Sim.C.LV_XP[S.level];
+    $('stg').textContent = Growth.stageName(S.level);
+    if (hi === undefined) { $('xfill').style.width = '100%'; $('xlabel').textContent = `Fully grown: the Elder Tree (XP ${fmtN(S.xp)})`; }
+    else { $('xfill').style.width = ((S.xp - lo) / (hi - lo) * 100).toFixed(1) + '%'; $('xlabel').textContent = `Growth ${Math.floor(S.xp)} / ${hi}  (+${Math.round(Sim.C.XP_PER_H(h))}/h)`; }
+    document.querySelectorAll('#needs .need').forEach(r => {
+      const k = r.dataset.k, v = S.needs[k]; r.querySelector('i').style.width = v.toFixed(1) + '%';
+      const rate = needRate(k), tr = r.querySelector('.tr');
+      r.classList.toggle('soon', rate === null);
+      if (rate === null) { tr.textContent = 'asleep'; tr.style.color = ''; r.title = `${NEED_NAMES[k]} is asleep: the island keeps it near ${Sim.C.NEEDS[k].floor}. It wakes ${S.wake.t === null ? 'after your first sky trip lands' : 'in ' + fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}.`; return; }
+      r.title = 'Tap for details';
+      tr.textContent = (rate >= 0 ? '+' : '') + rate.toFixed(0) + '/h'; tr.style.color = rate >= 0 ? '#2c8a4a' : '#c0392b';
+      if (k === 'protect') r.classList.toggle('alert', S.blight.list.length > 0 && !S.pups.some(p => p.job === 'protect'));
+    });
+    $('rSd').textContent = fmtN(S.inv.seeds); $('rSd').parentNode.hidden = !(S.inv.seeds > 0) && Needs.awakeK(S, 'nourish') < 0;
+    $('rB').textContent = fmtN(S.stats.buckets); $('rS').textContent = fmtN(S.sap); $('rW').textContent = fmtN(S.res.wood); $('rT').textContent = fmtN(S.res.stone);
+    const fn = Sim.foodNet(S); $('rF').innerHTML = `${fmtN(S.res.food)}<small class="${fn >= 0 ? 'up' : 'down'}">${fn >= 0 ? '+' : ''}${Math.round(fn)}/h</small>`;
+    $('rF').parentNode.classList.toggle('warn', S.res.food < Sim.C.ARRIVE_FOOD);
+    $('rCr').textContent = fmtN(S.res.crystal || 0); $('rCr').parentNode.hidden = !(S.res.crystal > 0) && S.level < Exped.C.BOARD_LV;
+    const beds = Sim.bedsOf(S, nav); $('rBd').textContent = `${S.pups.length}/${beds}`; $('rBd').parentNode.classList.toggle('warn', S.pups.length >= beds);
+    // island clock chip: sun / dusk / moon + HH:MM
+    const hh = Sim.tod(S), dc = Sim.dayCurve(hh), ic = dc.night > 0.5 ? 'moon' : dc.dusk > 0.4 || dc.dawn > 0.4 ? 'dusk' : 'sun';
+    if ($('rCi').dataset.ic !== ic) { $('rCi').innerHTML = IC[ic]; $('rCi').dataset.ic = ic; }
+    $('rC').textContent = String(Math.floor(hh)).padStart(2, '0') + ':' + String(Math.floor(hh % 1 * 60)).padStart(2, '0');
+    $('clockChip').classList.toggle('nite', dc.night > 0.5);
+    // season chip (step 5)
+    const sk = Seasons.of(S);
+    if (sk !== null) {
+      const nm = Seasons.NAMES[sk], a = Seasons.at(S.ep0 + S.time);
+      if ($('seaChip').dataset.k !== nm) { $('seaChip').dataset.k = nm; $('rSeaI').innerHTML = IC[nm]; $('rSea').textContent = Seasons.TITLE[nm]; $('seaChip').className = 'sea-' + nm; }
+      $('seaChip').title = `${Seasons.TITLE[nm]} on the island: ${SEA_TXT[nm]}. ${Seasons.fix !== null ? '(fixed for testing)' : `Changes to ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} in ${fmtDays(a.left)}.`} One season per week.`;
+    }
+    $('bookBtn').classList.toggle('ready', S.book.read < S.level);
+  }
+  // ---- step 5: seasons, growth stages, tree memories, the Book
+  const SEA_TXT = { spring: 'blossoms everywhere, gardeners +20 %', summer: 'long sunny days, the tree is thirstier, +10 % glow sap', autumn: 'harvest time: gathering + gardens +25 %, lanterns by the plaza', winter: 'snow, short days: light matters most (lantern paths +50 %), the tree drinks less' };
+  const fmtDays = sec => { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600); return d ? `${d} day${d > 1 ? 's' : ''}${h ? ' ' + h + ' h' : ''}` : fmtT(sec); };
+  const SEA_HELLO = { spring: 'Spring came to the island: blossoms and petals everywhere!', summer: 'Summer! Long sunny days (the tree is a bit thirstier)', autumn: 'Autumn: harvest time, and lanterns by the plaza', winter: 'Winter came: snow on the roofs. Light matters most now!' };
+  function seasonCheck() {
+    const k = Seasons.of(S); if (k === null || k === S.book.sea || VISIT) return;
+    const first = S.book.sea === -1; S.book.sea = k; const nm = Seasons.NAMES[k];
+    toast(`${IC[nm]} ${first ? `It is <b>${Seasons.TITLE[nm]}</b> on the island: ${SEA_TXT[nm]}` : SEA_HELLO[nm]}`, 6500, () => openBook('mem'));
+  }
+  // built cottages: a lantern by each door in autumn
+  let doorSig = '', doors = [];
+  function homeDoors() {
+    const sig = Object.keys(S.plots).filter(k => S.plots[k].done && S.plots[k].type === 'home').join(',');
+    if (sig !== doorSig) { doorSig = sig; doors = sig ? sig.split(',').map(k => { const q = nav.plotBy[+k], o = q.out; return [q.door[0] + o[0] * 5 - o[1] * 3, q.door[2] + o[1] * 5 + o[0] * 3, Math.atan2(o[0], o[1])]; }) : []; }
+    return doors;
+  }
+  // the island opens as the tree grows: thinned-out woods grow back (L4: past 300 m, L6: past 210 m; visual only - the
+  // nearer thinned spots are the decor spots)
+  let landLv = -1;
+  function growLand(lv) {
+    const k = lv >= 6 ? 2 : lv >= 4 ? 1 : 0; if (k === landLv) return; landLv = k;
+    const R = [1e9, 300, 210][k], TP = nav.TP;
+    for (const b of map.batches) for (const i of b.inst) if (i.thin) i.role = Math.hypot(i.c.x - TP[0], i.c.z - TP[2]) >= R ? 'forest' : 'later';
+    map.invalidate();
+  }
+  // tree memory card (level-up, the Book, the away card)
+  let memOpen = 0;
+  function showMemory(lv) {
+    const m = Growth.MEMORIES[lv]; if (!m) return; memOpen = lv;
+    const un = (Growth.UNLOCKS[lv] || []).map(([ic, t]) => `<li>${IC[ic] || IC.star}<span>${t}</span></li>`).join('');
+    $('memBody').innerHTML = `<div class="mstage disp">${IC.memory} Level ${lv} &middot; ${Growth.stageName(lv)}</div><h2 class="disp">${m.title}</h2><p class="mtext">${m.text}</p>${lv > 1 ? `<h4>${IC.star} The tree's growth opened</h4><ul class="munl">${un}</ul>` : `<ul class="munl">${un}</ul>`}`;
+    $('mem').hidden = false; if (S.book.read < lv) { S.book.read = lv; save(); }
+  }
+  function closeMemory() { $('mem').hidden = true; memOpen = 0; }
+  let bookTab = 'mem';
+  const BREED_N = { noodle: 'Noodle', bean: 'Bean', biscuit: 'Biscuit', mochi: 'Mochi', pepper: 'Pepper', pudding: 'Pudding', waffles: 'Waffles' };
+  function openBook(tab) { closePlot(); closeExp(); closeEvents(); closeNeed(); bookTab = tab || bookTab; $('book').hidden = false; renderBook(); }
+  function closeBook() { $('book').hidden = true; }
+  function renderBook() {
+    document.querySelectorAll('#bookTabs button').forEach(b => b.classList.toggle('on', b.dataset.t === bookTab));
+    const unread = S.book.read < S.level; $('bookTabs').querySelector('[data-t="mem"]').classList.toggle('new', unread);
+    let h = '';
+    if (bookTab === 'mem') {
+      const sk = Seasons.of(S);
+      if (sk !== null) { const nm = Seasons.NAMES[sk], a = Seasons.at(S.ep0 + S.time); h += `<div class="bseason sea-${nm}">${IC[nm]}<div><b>${Seasons.TITLE[nm]}</b><small>${SEA_TXT[nm]} &middot; ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} in ${fmtDays(a.left)}</small></div></div>`; }
+      h += `<p class="bsub">The Elder Tree remembers each time it grew. <b>${Growth.stageName(S.level)}</b> stage, level ${S.level} of 8.</p><div class="mgrid">`;
+      for (let lv = 1; lv <= 8; lv++) {
+        const m = Growth.MEMORIES[lv], got = lv <= S.level, nw = got && lv > S.book.read;
+        h += got ? `<button class="mtile${nw ? ' new' : ''}" data-mem="${lv}"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b class="disp">${m.title}</b><small>${m.text.slice(0, 64)}...</small>${nw ? '<em>new</em>' : ''}</button>`
+          : `<div class="mtile lock"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b>${IC.lock} A memory not yet grown</b><small>${Growth.UNLOCKS[lv].map(u => u[1]).slice(0, 2).join(', ')}...</small></div>`;
+      }
+      h += '</div>';
+    } else if (bookTab === 'pups') {
+      const by = {}; S.pups.forEach(p => { (by[p.breed] = by[p.breed] || []).push(p); });
+      const met = Sim.BREEDS.filter(b => by[b]).length;
+      h += `<p class="bsub">Breeds met: <b>${met} / ${Sim.BREEDS.length}</b> &middot; ${S.pups.length} pups live on the island.</p><div class="pgrid">`;
+      for (const b of Sim.BREEDS) {
+        const L = by[b] || [], c = L[0] ? L[0].collar : '#bbb';
+        h += `<div class="ptile${L.length ? '' : ' lock'}"><i class="pface" style="--c:${c}">${IC.paw}</i><b class="disp">${BREED_N[b] || b}</b><small>${L.length ? `${L.length} on the island: ${L.slice(0, 4).map(p => esc(p.name)).join(', ')}${L.length > 4 ? ' +' + (L.length - 4) : ''}` : b === 'noodle' ? 'not met yet: they live on the floating isles' : 'not met yet'}</small></div>`;
+      }
+      const sp = [['Lumen', S.inv.lumen || S.pups.some(p => p.special), 'the glowing pup of the daily gift (day 14)']].concat(Exped.ISLE_PUPS.map(p => [p.name, S.pups.some(q => q.id === p.id), 'a rare find on a sky trip']));
+      h += `</div><h4>${IC.star} Special pups</h4><div class="pgrid sm">` + sp.map(([n, got, w]) => `<div class="ptile${got ? '' : ' lock'}"><i class="pface" style="--c:${got ? '#9fe8ff' : '#bbb'}">${IC.paw}</i><b class="disp">${got ? n : '???'}</b><small>${got ? 'lives here!' : w}</small></div>`).join('') + '</div>';
+    } else if (bookTab === 'decor') {
+      const have = {}; for (const d of S.inv.decor) have[d] = (have[d] || 0) + 1; for (const x of S.placed) have[x.id] = (have[x.id] || 0) + 1;
+      const ids = Object.keys(Exped.DECOR), n = ids.filter(d => have[d]).length;
+      h += `<p class="bsub">Decorations found: <b>${n} / ${ids.length}</b> (sky trips, the trader, the daily gift).</p><div class="pgrid">`;
+      for (const d of ids) h += `<div class="ptile${have[d] ? '' : ' lock'}"><i class="dface">${have[d] ? IC.decor : IC.lock}</i><b class="disp">${have[d] ? decorName(d) : '???'}</b><small>${have[d] ? `${have[d]} found &middot; ${S.placed.filter(x => x.id === d).length} placed` : findWhere(d)}</small></div>`;
+      h += '</div>';
+    } else {
+      const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
+      h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>. The wardrobe (dress your pups) comes in a later update.</p><div class="pgrid">`;
+      for (const o of all) h += `<div class="ptile${own.has(o) ? '' : ' lock'}"><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? 'in the wardrobe' : Exped.OUTFITS.includes(o) ? 'a rare sky-trip find' : 'a daily-gift outfit'}</small></div>`;
+      h += '</div>';
+    }
+    $('bookBody').innerHTML = h;
+  }
+  const findWhere = d => { const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the trader' : 'a daily-gift present'; };
+
+  // ---- daily gift (src/daily.js): calendar popup, opened by itself on the first open of a local day
+  let giftPending = false, giftJust = null;
+  const giftItems = g => {
+    const a = [];
+    for (const k in g.res) a.push(`<span class="gl">${IC[k]}+${g.res[k]}</span>`);
+    if (g.sap) a.push(`<span class="gl">${IC.sap}+${g.sap}</span>`);
+    if (g.seeds) a.push(`<span class="gl">${IC.seed}+${g.seeds} seeds</span>`);
+    if (g.decor) a.push(`<span class="gl">${IC.jar}${Daily.DECOR[g.decor]}</span>`);
+    if (g.outfit) a.push(`<span class="gl">${IC.scarf}${Daily.OUTFITS[g.outfit]}</span>`);
+    if (g.pup) a.push(`<span class="gl">${IC.paw}${esc(g.pup.name)}, a glowing pup</span>`);
+    return a;
+  };
+  function renderGift() {
+    const st = Daily.status(S, new Date());
+    $('gTiles').innerHTML = st.tiles.map(x => {
+      const g = x.gift, items = giftItems(g);
+      const ic = g.pup ? IC.paw : g.outfit ? IC.scarf : g.decor ? IC.jar : g.seeds ? IC.seed : Object.keys(g.res).length === 1 ? IC[Object.keys(g.res)[0]] : g.sap && !Object.keys(g.res).length ? IC.sap : IC.gift;
+      return `<div class="gt${x.done ? ' done' : ''}${x.today ? ' today' : ''}${x.k === 6 ? ' rare' : ''}${giftJust !== null && x.today && x.done ? ' pop' : ''}"><b>Day ${x.k + 1}</b><div class="gi">${ic}</div><small>${items.join(' ')}</small>${x.done ? `<i class="stamp">${IC.paw}</i>` : ''}${x.k === 6 ? '<em>rare</em>' : ''}</div>`;
+    }).join('');
+    let msg = '';
+    if (st.back) msg = `Your clock seems to have gone back in time. The next gift opens on your next new day.`;
+    else if (st.can && st.missed) msg = `Welcome back! Your calendar waited for you: nothing was lost.`;
+    else if (st.can) msg = `A gift from the Elder Tree for coming by today.`;
+    else msg = `Today's gift is in the pantry. Come back tomorrow for Day ${(S.daily.claims % 7) + 1}!`;
+    $('gMsg').innerHTML = msg;
+    $('gStreak').innerHTML = `${IC.star}<b>${st.streak}</b> day${st.streak === 1 ? '' : 's'} in a row${st.bonusPct ? ` &middot; gifts +${st.bonusPct}%` : ''}`;
+    $('gMonth').innerHTML = `<span>${IC.moon} Monthly bonus</span><div class="bar"><i style="width:${Math.min(100, st.month.n / st.month.goal * 100).toFixed(0)}%"></i><span>${Math.min(st.month.n, st.month.goal)} / ${st.month.goal} days${st.month.done ? ' &middot; got it!' : ''}</span></div>`;
+    if (giftJust) {
+      const g = giftJust, items = giftItems(g);
+      if (g.month) { if (g.month.sap) items.push(`<span class="gl">${IC.sap}+${g.month.sap}</span>`); if (g.month.decor) items.push(`<span class="gl">${IC.jar}${Daily.DECOR[g.month.decor]}</span>`); if (g.month.seeds) items.push(`<span class="gl">${IC.seed}+${g.month.seeds} seeds</span>`); }
+      $('gGot').innerHTML = `<b>You got:</b> ${items.join(' ')}${g.month ? ' <b class="mb">+ monthly bonus!</b>' : ''}${g.pup ? `<br><small>${esc(g.pup.name)} moves in as soon as a bed is free.</small>` : g.outfit ? '<br><small>Outfits go in the wardrobe (coming in a later update).</small>' : g.seeds || g.decor ? '<br><small>Seeds and decorations are kept for later updates.</small>' : ''}`;
+      $('gGot').hidden = false;
+    } else $('gGot').hidden = true;
+    $('gClaim').textContent = st.can ? 'Claim!' : 'Lovely!';
+    $('gClaim').classList.toggle('pulse', st.can);
+    $('giftBtn').classList.toggle('ready', st.can);
+  }
+  function openGift() { giftJust = null; renderGift(); $('gift').hidden = false; }
+  function closeGift() { $('gift').hidden = true; giftJust = null; }
+  function claimGift() {
+    if (!Daily.status(S, new Date()).can) { closeGift(); return; }
+    const g = Daily.claim(S, new Date()); if (!g) { closeGift(); return; }
+    giftJust = g; save(); renderGift(); refreshTree();
+    toast(`${IC.gift} Daily gift: ${giftItems(g).join(' ')}`, 3200);
+  }
+  function giftCheck(auto) {
+    if (VISIT) return;
+    const st = Daily.status(S, new Date()); $('giftBtn').classList.toggle('ready', st.can);
+    if (auto && st.can && Q.get('nogift') !== '1' && $('gift').hidden) { if (!$('away').hidden) giftPending = true; else openGift(); }
+  }
+  // build section: decide toggle + queue + what the island is waiting for
+  let buildSig = '';
+  function refreshBuild(force) {
+    const sig = S.queue.map(pid => { const e = S.plots[pid]; return pid + e.type + Math.floor(e.prog / 30) + e.paid; }).join('|') + S.decide + Math.floor(S.res.wood) + Math.floor(S.res.stone) + S.pups.filter(p => p.task === 'site' && p.phase === 'build').length + S.pups.filter(p => p.job === 'build').length + S.pups.length + Math.floor(S.arrive / 60);
+    if (!force && sig === buildSig) return; buildSig = sig;
+    $('decide').checked = !!S.decide;
+    const builders = S.pups.filter(p => p.job === 'build').length;
+    let html = '';
+    for (const pid of S.queue) {
+      const e = S.plots[pid], q = nav.plotBy[pid]; if (!e || !q) continue;
+      const work = Sim.workOf(e.type, q), f = e.prog / work, cost = Sim.costOf(e.type, q);
+      const on = S.pups.filter(p => p.tgt === pid && p.phase === 'build').length;
+      let st;
+      if (!builders) st = 'needs a pup on Build';
+      else if (!e.paid) { const miss = Object.keys(cost).filter(k => have(k) < cost[k]).map(k => `${Math.ceil(cost[k] - have(k))} ${k === 'sap' ? 'glow sap' : k}`); st = miss.length ? 'waiting for ' + miss.join(' + ') : 'starting soon'; }
+      else st = on ? `${on} pup${on > 1 ? 's' : ''} building &middot; ~${fmtT((work - e.prog) / Math.max(1, on))} left` : 'builders on the way';
+      html += `<div class="qi" data-pid="${pid}">${IC[B_ICON[e.type]]}<div><b>${bName(e.type, q)}</b>${e.auto ? '<span class="auto">pups\' idea</span>' : ''}<div class="bar"><i style="width:${(f * 100).toFixed(1)}%"></i></div><small>${st}</small></div></div>`;
+    }
+    if (!html) html = `<div class="qe">${S.decide ? 'Nothing needed right now; the pups will start something when the island needs it.' : 'No blueprints. Tap <b>Build</b> (or a plot sign) to place one.'}</div>`;
+    // arrivals hint
+    const beds = Sim.bedsOf(S, nav), n = S.pups.length;
+    let why = '';
+    if (n >= beds) why = 'No free bed: build a home and a stray may move in.';
+    else if (S.res.food < Sim.C.ARRIVE_FOOD) why = 'The pantry is too low for newcomers.';
+    else if (Sim.avgMorale(S) < Sim.C.ARRIVE_MORALE) why = 'The pups are a bit glum; newcomers wait for happier days.';
+    else if (S.time - S.lastArrive < Sim.C.ARRIVE_GAP) why = `A free bed! Next stray can come in ~${fmtT(Math.max(Sim.C.ARRIVE_GAP - (S.time - S.lastArrive), Sim.C.ARRIVE_WAIT - S.arrive))}.`;
+    else why = `A free bed! A stray is on the way (~${fmtT(Sim.C.ARRIVE_WAIT - S.arrive)}).`;
+    $('queue').innerHTML = html + `<div class="qe arr">${IC.paw} ${why}</div>`;
+  }
+
+  // ---- plot card (build menu): open plot -> 5 building types; locked -> what unlocks it; blueprint -> progress + cancel
+  let curPlot = null, plotSig = '';
+  function openPlot(pid, fly) {
+    if (expView) closeExp(); closeEvents(); closeNeed();
+    curPlot = pid; plots.sel = pid; $('plotCard').hidden = false; renderPlot(true);
+    const x = plots.byPid[pid]; if (!x) return;
+    if (fly) {
+      const tgt = new THREE.Vector3(x.c[0], x.gy + 3, x.c[1]);
+      const out = new THREE.Vector3(x.c[0] - nav.TP[0], 0, x.c[1] - nav.TP[2]).normalize();
+      const ph = document.body.classList.contains('phone');
+      const dist = Math.max(75, Math.max(x.w, x.d) * 4.5) * (W() < H() ? 1.3 : 1);
+      const eye = tgt.clone().add(out.multiplyScalar(dist * 0.88)).add(new THREE.Vector3(0, dist * 0.45, 0));
+      if (ph) tgt.y -= dist * 0.22;   // phone: the card covers the bottom, aim lower so the plot sits higher on screen
+      follow = -1; pups.select(-1); flyTo(eye, tgt, 1.1);
+    }
+  }
+  function closePlot() { curPlot = null; if (plots) plots.sel = null; $('plotCard').hidden = true; }
+  function cyclePlot(d) {
+    const list = plots.info.filter(x => x.show && (x.marker || x.st === 'build' || x.st === 'done'));
+    if (!list.length) return; let k = list.findIndex(x => x.q.pid === curPlot); k = (k + d + list.length) % list.length; openPlot(list[k].q.pid, true);
+  }
+  function renderPlot(force) {
+    if (curPlot === null) return;
+    const q = nav.plotBy[curPlot], e = S.plots[curPlot]; if (!q) return;
+    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + S.pups.filter(p => p.job === 'build').length;
+    if (!force && sig === plotSig) return; plotSig = sig;
+    const builders = Math.max(1, S.pups.filter(p => p.job === 'build').length), nb = S.pups.filter(p => p.job === 'build').length;
+    const fType = q.faction ? Object.keys(Sim.C.B).find(t => Sim.C.B[t].piece === q.piece) : null;   // step 5: the hall this plot holds
+    $('pcTitle').innerHTML = `${q.faction ? (fType ? IC[B_ICON[fType]] : IC.lock) : e ? IC[B_ICON[e.type]] : IC.home} ${plotName(q)} <small>${Math.round(q.d)} m walk</small>`;
+    let h = '';
+    if (q.faction && !e && q.lv > S.level) h = `<p class="lockd">${IC.lock} <b>${q.faction.name}</b> &middot; ${q.faction.what}.<br>The old hall wakes up when the Elder Tree reaches <b>level ${q.faction.lv}</b> (${Growth.stageName(q.faction.lv)} stage; now ${S.level}).</p>${fType ? `<p class="sub">${gives(fType, q)}</p>` : ''}`;
+    else if (!e && q.lv > S.level) h = `<p class="lockd">${IC.lock} This land opens when the Elder Tree reaches <b>level ${q.lv}</b> (now ${S.level}).</p>`;
+    else if (!e) {
+      h = `<p class="sub">${q.faction ? `The old <b>${q.faction.name}</b> can be rebuilt: ${q.faction.what}.` : 'Pick what the pups should build here.'}${nb ? '' : ' <b>Nobody has the Build job yet.</b>'}</p>`;
+      for (const type of Object.keys(Sim.C.B)) {
+        if (!Sim.fits(q, type)) continue;   // a faction plot lists only its own hall; house plots never list halls
+        const cost = Sim.costOf(type, q), work = Sim.workOf(type, q), B = Sim.C.B[type];
+        const why = B.need && Needs.awakeK(S, B.need) < 0 ? `With ${NEED_NAMES[B.need]}` : B.lv && S.level < B.lv ? `Tree level ${B.lv}` : B.one && Object.values(S.plots).some(e => e.type === type) ? 'Have one' : '';
+        h += `<div class="bo${why ? ' off' : ''}">${IC[B_ICON[type]]}<div class="bi"><b>${bName(type, q)}</b><small>${gives(type, q)}</small><div class="cs">${costHtml(cost)}<span class="tm">${IC.clock}${fmtT(work / builders)}${nb > 1 ? ` with ${nb}` : ''}</span></div></div>${why ? `<span class="why">${IC.lock}${why}</span>` : `<button class="go" data-act="order" data-type="${type}">Build</button>`}</div>`;
+      }
+      h += `<p class="sub small">Builders pay when they start and fetch missing wood / stone themselves. Glow sap comes from a healthy tree.</p>`;
+    } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the trip board</button>` : ''}`;
+    else {
+      const work = Sim.workOf(e.type, q), f = e.prog / work, on = S.pups.filter(p => p.tgt === curPlot && p.phase === 'build').length;
+      const stage = !e.paid ? 'Blueprint (waiting for materials)' : f < plots.SCAF ? 'Scaffold' : f < 0.98 ? 'Frame' : 'Finishing';
+      h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage} ${Math.floor(f * 100)}%</span></div>
+        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} left` : `Needs ${costHtml(Sim.costOf(e.type, q))}`}</p><button class="ghost" data-act="cancel">Cancel blueprint${e.paid ? ' (refund)' : ''}</button>`;
+    }
+    $('pcBody').innerHTML = h;
+  }
+
+  // ---- expeditions (src/expedition.js): trip board card (destinations, trips, hauls, decor), team picker, haul reveal
+  let expView = null, expSig = '';   // null = closed, {v: 'home'} or {v: 'plan', dest, tier, team: []}
+  const decorName = id => (Exped.DECOR[id] || {}).name || Daily.DECOR[id] || id;
+  const outfitName = id => Daily.OUTFITS[id] || id;
+  const expLv = p => Exped.lvOf(p.xpE);
+  function haulItems(h) {   // [{ic, txt, rare}] in reveal order: resources, crystals, seeds, decor, rare
+    const a = [];
+    for (const k of ['wood', 'stone', 'food']) if (h.res[k]) a.push({ ic: IC[k], txt: `+${h.res[k]}`, sub: JOB_NAMES[k] === 'Berries' ? 'berries' : k });
+    if (h.crystal) a.push({ ic: IC.crystal, txt: `+${h.crystal}`, sub: h.cache ? 'crystals (a cache!)' : 'crystals' });
+    if (h.seeds) a.push({ ic: IC.seed, txt: `+${h.seeds}`, sub: 'seeds' });
+    for (const d of h.decor) a.push({ ic: IC.decor, txt: decorName(d), sub: 'decoration' });
+    if (h.outfit) a.push({ ic: IC.scarf, txt: outfitName(h.outfit), sub: 'rare outfit!', rare: true });
+    if (h.pup) a.push({ ic: IC.paw, txt: esc(h.pup.name), sub: h.waits ? 'a Noodle pup! (moves in when a bed is free)' : 'a Noodle pup joins you!', rare: true });
+    return a;
+  }
+  const haulLine = h => haulItems(h).map(x => `<span class="gl">${x.ic}${x.txt}${/^\+/.test(x.txt) && x.sub !== 'berries' && x.sub !== 'wood' && x.sub !== 'stone' ? ' ' + x.sub.split(' ')[0] : ''}</span>`).join(' ');
+  function tripState(tr) {
+    if (tr.dep < 0) return { txt: 'boarding at the dock', f: 0 };
+    const el = S.time - tr.dep, FLY = Math.min(Exped.C.FLY, tr.dur * 0.25), left = Math.max(0, tr.dep + tr.dur - S.time);
+    return { txt: el < FLY ? 'flying out' : left < FLY ? 'flying home!' : `exploring &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
+  }
+  function openExp(view) {
+    closePlot(); closeEvents(); closeNeed(); expView = view || { v: 'home' }; $('expCard').hidden = false; renderExp(true);
+  }
+  function closeExp() { expView = null; $('expCard').hidden = true; }
+  function renderExp(force) {
+    if (!expView) return;
+    const sig = J(expView) + S.level + Math.floor(S.res.food) + J(S.exp.trips.map(t => [t.id, t.dep])) + S.exp.hauls.length + J(S.placed) + S.inv.decor.length + Math.floor(S.time / 15) + S.pups.length + S.pups.map(p => p.exp ? 1 : 0).join('');
+    if (!force && sig === expSig) return; expSig = sig;
+    const bd = Exped.board(S), body = $('ecBody');
+    if (expView.v === 'plan') { renderPlan(body); return; }
+    $('ecTitle').innerHTML = `${IC.board} Sky trips`;
+    let h = '';
+    if (bd === null) {
+      const queued = Object.values(S.plots).some(e => e.type === 'board');
+      h += `<p class="lockd">${IC.lock} ${S.level < Exped.C.BOARD_LV ? `The floating isles drift close enough when the Elder Tree reaches <b>level ${Exped.C.BOARD_LV}</b> (now ${S.level}). Keep it healthy!` : queued ? 'The pups are building the <b>Expedition dock</b>. Trips start when it is done.' : 'Build an <b>Expedition dock</b> on a free plot (tap <b>Build</b>), then send pups to the floating isles.'}</p>`;
+      if (S.level >= Exped.C.BOARD_LV && !queued) h += `<button class="go" data-x="findplot">${IC.home} Pick a plot for the dock</button>`;
+    }
+    if (S.exp.hauls.length) {
+      h += `<h4>${IC.gift} Hauls to open</h4>`;
+      S.exp.hauls.forEach((x, k) => { h += `<div class="qi hl" data-x="haul" data-k="${k}">${IC.board}<div><b>${Exped.DEST[x.dest].name} team is back!</b><small>${x.names.map(esc).join(', ')}</small></div><button class="go">Open</button></div>`; });
+    }
+    if (S.exp.trips.length) {
+      h += `<h4>${IC.isle} Out in the sky <span class="cnt">${S.exp.trips.length}/${Exped.maxTrips(S)}</span></h4>`;
+      for (const tr of S.exp.trips) {
+        const st = tripState(tr), d = Exped.DEST[tr.dest];
+        h += `<div class="qi" data-x="look" data-id="${tr.id}">${IC.board}<div><b>${d.name}</b> <small class="inl">${Exped.TIERS[tr.tier].label}</small><div class="bar"><i style="width:${(st.f * 100).toFixed(1)}%"></i></div><small>${tr.team.map(i => `<span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}`).join(' ')} &middot; ${st.txt}</small></div>${tr.dep < 0 ? `<button class="ghost" data-x="recall" data-id="${tr.id}">Call off</button>` : ''}</div>`;
+      }
+    }
+    h += `<h4>${IC.isle} Floating isles</h4>`;
+    for (const d of Exped.DEST) {
+      const ok = Exped.unlocked(S, d);
+      const finds = d.locked ? '' : Object.keys(d.res).map(k => IC[k]).join('') + (d.roll.crystal >= 2 ? IC.crystal : '') + (d.roll.seeds >= 2 ? IC.seed : '') + (d.roll.decor >= 2 ? IC.decor : '') + (d.rare ? IC.star : '');
+      h += `<div class="bo dest${ok ? '' : ' off'}" data-x="${ok ? 'plan' : 'peek'}" data-d="${d.i}">${IC.isle}<div class="bi"><b>${d.name}</b><small>${d.blurb}</small>${ok ? `<div class="cs">${finds}</div>` : ''}</div>${ok ? `<button class="go"${bd === null ? ' disabled' : ''}>Plan</button>` : `<span class="why">${IC.lock}${d.locked ? `Lv ${d.lv}, later` : `Tree Lv ${d.lv}`}</span>`}</div>`;
+    }
+    // decorations: what you own (not placed) + what's out on the island
+    const own = {}; for (const id of S.inv.decor) own[id] = (own[id] || 0) + 1;
+    const ids = Object.keys(own);
+    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length}/${(nav.decorSpots || []).length} spots</small></h4>`;
+    if (!ids.length) h += `<div class="qe">Expeditions bring back wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to place around the tree.</div>`;
+    for (const id of ids) {
+      const free = Exped.ownedFree(S, id), placed = S.placed.filter(x => x.id === id);
+      h += `<div class="dec">${IC.decor}<b>${decorName(id)}</b><small>${placed.length} placed${free ? ` &middot; ${free} in the shed` : ''}</small>${free > 0 ? `<button class="go sm" data-x="place" data-id="${id}">Place</button>` : ''}${placed.length ? `<button class="ghost sm" data-x="unplace" data-k="${placed[placed.length - 1].k}">Put away</button>` : ''}</div>`;
+    }
+    h += `<p class="sub small">Trips are risk-free: nobody gets lost, bad luck just means a smaller haul. A team away does no island work but packs its own berries.</p>`;
+    body.innerHTML = h;
+  }
+  function renderPlan(body) {
+    const pv = expView, d = Exped.DEST[pv.dest], T = Exped.TIERS[pv.tier];
+    $('ecTitle').innerHTML = `${IC.isle} ${d.name}`;
+    let h = `<p class="sub">${d.blurb} Pick 1-4 pups: a pup who loves a job finds more of its kind.</p><div class="tiers">`;
+    Exped.TIERS.forEach((t, k) => { h += `<button data-x="tier" data-k="${k}" class="${k === pv.tier ? 'on' : ''}">${IC.clock}${t.label}<small>${IC.food}${t.food}/pup</small></button>`; });
+    h += `</div><div class="team">`;
+    S.pups.forEach((p, i) => {
+      const on = pv.team.includes(i), bz = Exped.busy(p), w = Exped.LIKE[p.like], good = w && (!['wood', 'stone', 'food'].includes(w) || d.res[w]);
+      h += `<button class="tp${on ? ' on' : ''}${bz ? ' busy' : ''}" data-x="pick" data-i="${i}"${bz ? ' disabled' : ''}><span class="dot" style="background:${p.collar}"></span><b>${esc(p.name)}</b><span class="xl">Explorer ${expLv(p)}</span><small>${bz ? (p.exp ? 'on a trip' : 'arriving') : `loves ${IC[p.like] || ''}${good ? ` <i class="bon">${Exped.LIKE_TXT[w]}</i>` : ''}`}</small>${on ? `<em>${pv.team.indexOf(i) + 1}</em>` : ''}</button>`;
+    });
+    h += `</div>`;
+    const c = Exped.canSend(S, nav, pv.dest, pv.tier, pv.team), est = pv.team.length ? Exped.estimate(S, pv.dest, pv.tier, pv.team) : null;
+    if (est) h += `<div class="est"><b>Likely haul</b> ${Object.keys(est.res).filter(k => est.res[k]).map(k => `<span class="gl">${IC[k]}~${est.res[k]}</span>`).join(' ')} <span class="gl">${IC.crystal}~${est.crystal}+</span> <span class="gl">${IC.gift}${est.rolls} bonus finds</span> <span class="gl">${IC.star}${Math.max(1, Math.round(est.rare * 100))}% rare</span><br><small>Supplies ${IC.food}${T.food * pv.team.length} &middot; back in ${T.label} (online or not) &middot; +${T.xp} explorer xp each</small></div>`;
+    h += `<div class="pf"><button class="ghost" data-x="back">&#9664; Isles</button><button class="big${c.ok ? ' pulse' : ''}" data-x="send"${c.ok ? '' : ' disabled'}>${IC.board} Set sail!</button></div>${c.ok ? '' : `<p class="why2">${c.why}</p>`}`;
+    body.innerHTML = h;
+  }
+  function sendTrip(dest, tier, team) {
+    const tr = Exped.send(S, nav, dest, tier, team); if (!tr) return null;
+    const d = Exped.DEST[dest]; save(); syncPups(); refreshRoster(true);
+    toast(`${IC.board} ${team.map(i => esc(S.pups[i].name)).join(', ')} ${team.length > 1 ? 'are' : 'is'} off to <b>${d.name}</b>!`, 3600);
+    closeExp(); dockCam(dest);
+    return tr;
+  }
+  // camera: frame the dock with the chosen isle behind it (departure shot)
+  function dockCam(dest) {
+    const f = expFx.dockFrame(S); if (!f) return;
+    const dk = expFx.view.dock || new THREE.Vector3(f.door[0], f.door[1], f.door[2]), I = expFx.isle[Exped.DEST[dest].id];
+    const toI = I.land.clone().sub(dk).setY(0).normalize();
+    const k = W() < H() ? 1.4 : 1, tgt = dk.clone().add(toI.clone().multiplyScalar(14)).add(new THREE.Vector3(0, 6, 0));
+    if (!document.body.classList.contains('phone')) tgt.add(new THREE.Vector3(toI.z, 0, -toI.x).multiplyScalar(16));   // PC: the side panel covers the left, keep the dock right of centre
+    const eye = dk.clone().sub(toI.clone().multiplyScalar(48 * k)).add(new THREE.Vector3(0, 52 * k, 0)).add(new THREE.Vector3(-toI.z, 0, toI.x).multiplyScalar(30 * k));
+    follow = -1; pups.select(-1); flyTo(eye, tgt, 1.4); sentAt = performance.now();
+  }
+  // lift-off shortly after the player sent a team: ride behind the boat for a few seconds (any drag ends it)
+  let sentAt = -1e9, boatCam = null;
+  function startBoatCam(tripId) { if (performance.now() - sentAt > 180000) return; boatCam = { id: tripId, t: 0 }; tween = null; follow = -1; }
+  function boatCamTick(dt) {
+    const v = expFx.view.trips.find(x => x.trip.id === boatCam.id); boatCam.t += dt;
+    if (!v || boatCam.t > 11) { boatCam = null; return; }
+    const b = v.boat, fwd = new THREE.Vector3(Math.sin(b.rotation.y), 0, Math.cos(b.rotation.y)), k = W() < H() ? 1.4 : 1;
+    const tgt = b.position.clone().add(fwd.clone().multiplyScalar(30)).add(new THREE.Vector3(0, 4, 0));
+    const eye = b.position.clone().sub(fwd.multiplyScalar(46 * k)).add(new THREE.Vector3(0, 20 * k, 0)), a = Math.min(1, dt * (boatCam.t < 1.2 ? 2.5 : 5));
+    controls.target.lerp(tgt, a); camera.position.lerp(eye, a);
+  }
+  // haul reveal: items pop in one by one; closing it marks the haul as opened
+  let haulK = -1;
+  function openHaul(k) {
+    const h = S.exp.hauls[k]; if (!h) return; haulK = k; closeExp();
+    const d = Exped.DEST[h.dest], items = haulItems(h);
+    $('hTitle').innerHTML = `The ${d.name} team came back!`;
+    $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + `<small class="trip">${Exped.TIERS[h.tier].label} trip</small>`;
+    $('hItems').innerHTML = items.map((x, m) => `<div class="hi${x.rare ? ' rare' : ''}" style="animation-delay:${(0.45 + m * 0.32).toFixed(2)}s">${x.ic}<b>${x.txt}</b><small>${x.sub}</small></div>`).join('');
+    $('hSack').classList.remove('open'); void $('hSack').offsetWidth; $('hSack').classList.add('open');
+    $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0);
+    $('haul').hidden = false;
+  }
+  function closeHaul() { if (haulK >= 0) { S.exp.hauls.splice(haulK, 1); haulK = -1; save(); } $('haul').hidden = true; refreshExpBtn(); }
+  function refreshExpBtn() {
+    const b = $('expBtn'); b.classList.toggle('ready', S.exp.hauls.length > 0); b.dataset.n = S.exp.trips.length ? S.exp.trips.length : '';
+    b.classList.toggle('out', S.exp.trips.length > 0);
+  }
+  function placeDecor(id) {
+    const k = Exped.place(S, nav, id); if (k < 0) { toast('No free decoration spot left', 2200); return; }
+    save(); const p = expFx.decorPos(k);
+    toast(`${IC.decor} ${decorName(id)} placed!`, 2200);
+    if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 3, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; pups.select(-1); flyTo(tgt.clone().add(out.multiplyScalar(38)).add(new THREE.Vector3(0, 20, 0)), tgt, 1.2); }
+  }
+  function buildExpUI() {
+    $('expBtn').onclick = () => { if (expView) closeExp(); else openExp(); };
+    $('ecClose').onclick = closeExp;
+    $('hOk').onclick = closeHaul;
+    $('hDecor').onclick = () => { closeHaul(); openExp(); setTimeout(() => { const e = document.querySelector('#ecBody .dec'); if (e) e.scrollIntoView({ block: 'center' }); }, 50); };
+    $('hPup').onclick = () => { const h = S.exp.hauls[haulK], i = h ? h.pupIdx : -1; closeHaul(); if (i >= 0) { focusPup(i); showAway(null); } };
+    $('ecBody').addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
+      if (x === 'plan') { const d = +b.dataset.d; if (Exped.board(S) === null) return; expView = { v: 'plan', dest: d, tier: 1, team: [] }; }
+      else if (x === 'peek') { const d = Exped.DEST[+b.dataset.d]; toast(`${IC.lock} ${d.name}: ${d.locked ? 'far out in the sky, it opens in a later update' : 'opens at tree level ' + d.lv}`, 2600); return; }
+      else if (x === 'back') expView = { v: 'home' };
+      else if (x === 'tier') expView.tier = +b.dataset.k;
+      else if (x === 'pick') { const i = +b.dataset.i, k = expView.team.indexOf(i); if (k >= 0) expView.team.splice(k, 1); else if (expView.team.length < Exped.C.MAX_TEAM) expView.team.push(i); else toast('Up to 4 pups per boat', 1600); }
+      else if (x === 'send') { const v = expView; sendTrip(v.dest, v.tier, v.team.slice()); return; }
+      else if (x === 'haul') { openHaul(+b.dataset.k); return; }
+      else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('Trip called off: supplies back in the pantry', 2400); save(); } }
+      else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
+      else if (x === 'place') { placeDecor(b.dataset.id); }
+      else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k)) { save(); toast('Put away in the shed', 1600); } }
+      else if (x === 'findplot') { closeExp(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
+      renderExp(true);
+    });
+    $('tlabels').addEventListener('click', e => { const l = e.target.closest('[data-t]'); if (!l) return; if (l.dataset.t === 'haul') openHaul(0); else if (l.dataset.t === 'trader') { openEvents(); traderCam(); } else if (l.dataset.t === 'fruit') fruitCam(); else openExp(); });
+  }
+  // ---- step 4: the events card (happening now, the trader's stall, the island log) and the need card
+  let evOpen = false, evSig = '';
+  const agoT = t => { const d = S.time - t; return d < 90 ? 'just now' : fmtT(d) + ' ago'; };
+  const pupN = i => S.pups[i] ? esc(S.pups[i].name) : 'A pup';
+  const goodsHtml = o => Object.keys(o).map(k => `<span class="gl">${k === 'decor' ? IC.decor + decorName(o[k]) : (k === 'seeds' ? IC.seed : IC[k]) + o[k]}</span>`).join(' ');
+  const EV_IC = { fruit: 'fruit', shower: 'rain', crystal: 'crystal', wish: 'wish', trader: 'cart', wave: 'blight', fest: 'fest' };
+  // step 5: seasonal festivals (Events 'fest', e.sea = season index)
+  const FEST = [{ t: 'Blossom picnic', s: 'petals everywhere, the pups play music under the blossoms' }, { t: 'Splash day', s: 'the pups splash in the river and bring the tree extra water' },
+    { t: 'Lantern night', s: 'paper lanterns all round the plaza: the tree glows brighter' }, { t: 'Snow pup day', s: 'the pups build snow pups by the plaza, everyone giggles' }];
+  function evText(e, live) {   // e = an active event or a log entry -> {t: title, s: sub}
+    const n = e.n, pl = (x, w) => x + ' ' + w + (x === 1 ? '' : 's');
+    if (e.type === 'fruit') return { t: `The Elder Tree dropped ${pl(n, 'glowing fruit')}`, s: live ? 'Tap them by the roots: berries + nourishment, sometimes a seed' : e.out === 'auto' ? `you got ${e.got || 0}, the pups gathered the rest` : e.out === 'done' ? 'all collected!' : '' };
+    if (e.type === 'shower') return { t: 'A sudden shower', s: live ? 'the tree drinks it up (+' + Events.C.SHOWER + ' water/h)' : 'the tree drank it up' };
+    if (e.type === 'crystal') return { t: `${pupN(e.pup)} found ${pl(n, 'crystal')}`, s: 'in the grass by the roots' };
+    if (e.type === 'wish') return { t: `${pupN(e.pup)} wants to try ${IC[e.want] || ''}${JOB_NAMES[e.want] || e.want}`, s: live ? `give them that job for a big morale boost (+${Events.C.WISH_MORALE})` : e.out === 'done' ? 'wish came true! so happy' : e.out === 'forgot' ? 'forgot about it (no harm done)' : '' };
+    if (e.type === 'trader') return { t: 'A wandering trader', s: live ? `stall by the tree, here for ${fmtT(Math.max(0, e.end - S.time))}` : e.traded ? `traded ${e.traded} time${e.traded > 1 ? 's' : ''}, then moved on` : 'moved on' };
+    if (e.type === 'wave') return { t: `A blight wave: ${pl(n || 0, 'dark patch')}`, s: 'guardians sweep them away' };
+    if (e.type === 'fest') { const f = FEST[e.sea] || FEST[0], nd = e.need ? NEED_NAMES[e.need] : ''; return { t: f.t, s: live ? `${f.s} (+${Events.C.FEST_RATE} ${nd.toLowerCase()}/h for ${fmtT(Math.max(0, e.end - S.time))})` : 'a lovely day, everyone a little happier' }; }
+    return { t: e.type, s: '' };
+  }
+  function openEvents() { closePlot(); closeExp(); closeNeed(); evOpen = true; $('evTitle').innerHTML = `${IC.bell} Island events`; $('evCard').hidden = false; renderEvents(true); }
+  function closeEvents() { evOpen = false; $('evCard').hidden = true; }
+  function renderEvents(force) {
+    if (!evOpen) return;
+    const last = S.events.log[S.events.log.length - 1];
+    const sig = J(S.events.active) + S.events.log.length + J(last || 0) + Math.floor(S.time / 20) + Math.floor(S.res.crystal || 0) + S.inv.seeds + Math.floor(S.res.food) + Math.floor(S.res.wood) + Math.floor(S.res.stone) + S.pups.map(p => p.job).join();
+    if (!force && sig === evSig) return; evSig = sig;
+    let h = `<h4>${IC.bell} Happening now</h4>`;
+    if (!S.events.active.length) h += `<div class="qe">Nothing right now. Something small happens every few minutes: fruit drops, showers, wishes, a trader...</div>`;
+    for (const e of S.events.active) {
+      const x = evText(e, true);
+      h += `<div class="evi live ${e.type}">${IC[EV_IC[e.type]]}<div><b>${x.t}</b><small>${x.s}</small>`;
+      if (e.type === 'trader') {
+        h += `<div class="offers">` + e.offers.map((k, j) => { const o = Events.OFFERS[k], done = e.done.includes(j), c = Events.canTrade(S, e.id, j);
+          return `<div class="of${done ? ' done' : ''}"><span class="gv">${goodsHtml(o.give)}</span><span class="ar">&#10140;</span><span class="gt2">${goodsHtml(o.get)}</span>${done ? `<span class="ok">traded!</span>` : `<button class="go sm" data-x="trade" data-id="${e.id}" data-j="${j}"${c.ok ? '' : ' disabled title="Not enough"'}>Trade</button>`}</div>`; }).join('') + `</div>`;
+      } else if (e.type === 'wish') {
+        const p = S.pups[e.pup];
+        if (p && p.job !== e.want) h += `<button class="go sm" data-x="wish" data-id="${e.id}">Give ${esc(p.name)} the ${JOB_NAMES[e.want]} job</button>`;
+      } else if (e.type === 'fruit') h += `<button class="ghost sm" data-x="fruit">Show me the fruit</button> <small class="inl">${e.n - e.got.length} left &middot; ${fmtT(Math.max(0, e.end - S.time))}</small>`;
+      else if (e.type === 'shower') h += `<small class="inl">${fmtT(Math.max(0, e.end - S.time))} more</small>`;
+      h += `</div></div>`;
+    }
+    h += `<h4>${IC.clock} Island log</h4>`;
+    const L = S.events.log.slice().reverse().filter(l => !S.events.active.some(a => a.id === l.id)).slice(0, 24);
+    if (!L.length) h += `<div class="qe">Nothing yet.</div>`;
+    for (const l of L) { const x = evText(l, false); h += `<div class="evi lg">${IC[EV_IC[l.type]]}<div><b>${x.t}</b><small>${x.s}${x.s ? ' &middot; ' : ''}${agoT(l.t)}</small></div></div>`; }
+    h += `<p class="sub small">Events never cost you anything: while you are away fruit gets gathered by the pups, wishes and traders just pass by.</p>`;
+    $('evBody').innerHTML = h;
+  }
+  function refreshEvBtn() {
+    const b = $('evBtn'), a = S.events.active; b.dataset.n = a.length ? a.length : '';
+    b.classList.toggle('ready', a.some(e => e.type === 'trader' || e.type === 'fruit' || (e.type === 'wish' && S.pups[e.pup] && S.pups[e.pup].job !== e.want)));
+  }
+  function collectFruit(f) {
+    const r = Events.collect(S, f.id, f.j); if (!r) return;
+    nfx.sparkle(f.p); floater(f.p, `+${r.food}${IC.food}${r.nourish ? ` +${r.nourish}${IC.nourish}` : r.light ? ` +${r.light}${IC.light}` : ''}${r.seed ? ` +1${IC.seed}` : ''}`);
+    save(); refreshTree(); renderEvents(true); refreshEvBtn();
+  }
+  function fruitCam() {
+    const e = S.events.active.find(x => x.type === 'fruit'); if (!e) return;
+    const p = nfx.fruitAt(S, e, e.got.length < e.n ? [...Array(e.n).keys()].find(j => !e.got.includes(j)) : 0), tgt = new THREE.Vector3(p[0], p[1], p[2]);
+    const out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize();
+    follow = -1; pups.select(-1); flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2);
+  }
+  function traderCam() {
+    const p = nfx.traderAt(S), tgt = new THREE.Vector3(p[0], p[1] - 5, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize();
+    follow = -1; pups.select(-1); flyTo(tgt.clone().add(out.multiplyScalar(30)).add(new THREE.Vector3(0, 13, 0)), tgt, 1.2);
+  }
+
+  // need card: what feeds a need, who is on it, the blight / wards / seeds / stage around it
+  let needK = null, needSig = '';
+  const NEED_TXT = {
+    water: 'Water carriers fetch river water in buckets and pour it at the roots. The tree drinks less at night.',
+    light: 'Lantern keepers light their lanterns in the shrine and tend the glowing orbs. Busiest at dusk.',
+    nourish: 'Gardeners tend the beds and bring compost to the roots. With seeds they plant glow sprouts: every sprout makes all gardeners better for a few hours.',
+    protect: 'Blight creeps in as dark patches on the ground near the roots. Guardians sweep it away; crystal wards slow it down. Blight only ever slows the tree, and never spreads while the tree is healthy.',
+    spirit: 'Performers play music: on a stage at full joy, or busking on the plaza. Music lifts every pup\'s morale and nearby pups dance. At night the stage puts on a little light show.',
+  };
+  function openNeed(k) { closePlot(); closeExp(); closeEvents(); needK = k; $('needCard').hidden = false; renderNeed(true); }
+  function closeNeed() { needK = null; $('needCard').hidden = true; }
+  function renderNeed(force) {
+    if (!needK) return; const k = needK, aw = Sim.C.NEEDS[k].floor ? Needs.awakeK(S, k) : 1, rate = needRate(k);
+    const sig = k + Math.round(S.needs[k]) + (rate === null ? 'x' : Math.round(rate)) + S.pups.map(p => p.job).join() + S.blight.list.length + S.wards.length + Math.floor(S.res.crystal || 0) + S.inv.seeds + S.garden.sprouts.length + J(S.plots).length + Math.floor(S.time / 60);
+    if (!force && sig === needSig) return; needSig = sig;
+    $('ncTitle').innerHTML = `${IC[k]} ${NEED_NAMES[k]} <small>${Math.round(S.needs[k])}%${rate !== null ? ` &middot; ${rate >= 0 ? '+' : ''}${rate.toFixed(0)}/h` : ''}</small>`;
+    let h = `<p class="sub">${NEED_TXT[k]}</p>`;
+    if (aw < 0) h += `<p class="lockd">${IC.lock} Asleep for now: the island keeps it near ${Sim.C.NEEDS[k].floor}. ${S.wake.t === null ? 'It wakes after your <b>first sky trip</b> lands (build the Expedition dock at tree level 2).' : `It wakes in <b>${fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}</b>.`}</p>`;
+    else if (aw < 1) h += `<p class="sub small">Just woke up: it starts easy and needs more care over the next ${fmtT((1 - aw) * Needs.C.RAMP)}.</p>`;
+    const on = S.pups.map((p, i) => i).filter(i => S.pups[i].job === k);
+    if (aw >= 0) {
+      h += `<h4>${IC[k]} ${JOB_WHO[k] || JOB_NAMES[k] + ' pups'} <span class="cnt">${on.length}</span></h4>`;
+      h += on.length ? `<div class="chips">${on.map(i => `<span class="chip" data-x="pup" data-i="${i}"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}</span>`).join('')}</div>` : `<div class="qe">Nobody yet.</div>`;
+      const cand = S.pups.map((p, i) => i).filter(i => S.pups[i].job !== k && !S.pups[i].exp && S.pups[i].dislike !== k).sort((a, b) => (S.pups[b].like === k) - (S.pups[a].like === k) || (S.pups[a].job === 'rest' ? -1 : 0) - (S.pups[b].job === 'rest' ? -1 : 0) || a - b).slice(0, 3);
+      if (cand.length) h += `<div class="chips">${cand.map(i => `<button class="ghost sm" data-x="assign" data-i="${i}">${IC[k]} ${esc(S.pups[i].name)}${S.pups[i].like === k ? ' <span class="lv">loves it</span>' : ''}</button>`).join('')}</div>`;
+    }
+    if (k === 'protect' && aw >= 0) {
+      const B = Needs.C.BLIGHT, free = nav.wardSpots.length - S.wards.length;
+      h += `<h4>${IC.blight} Blight <span class="cnt">${S.blight.list.length}</span></h4><div class="qe">${S.blight.list.length ? S.blight.list.map(b => `<span class="chip" data-x="blight" data-k="${b.k}">${IC.blight}${Math.round(b.r * 100)}%</span>`).join(' ') : 'No blight right now.'}${S.health < B.SPREAD_H ? ' <b>The tree is weak: blight can spread.</b>' : ''}</div>`;
+      h += `<h4>${IC.ward} Crystal wards <span class="cnt">${S.wards.length}/${nav.wardSpots.length}</span></h4><p class="sub small">A ward is a glowing crystal pillar: blight within ${B.WARD_R} m appears ${Math.round((1 - B.WARD_K) * 100)} % less and grows slower.</p>`;
+      h += `<button class="go" data-x="ward"${free > 0 && (S.res.crystal || 0) >= B.WARD_COST ? '' : ' disabled'}>${IC.ward} Set a ward (${IC.crystal}${B.WARD_COST})</button>${free <= 0 ? ' <small class="inl">all ward spots used</small>' : (S.res.crystal || 0) < B.WARD_COST ? ` <small class="inl">${Math.floor(S.res.crystal || 0)} crystals: expeditions + events find more</small>` : ''}`;
+    }
+    if (k === 'nourish' && aw >= 0) {
+      const mx = Needs.sproutMax(S), cs = Needs.built(S, 'conserv');
+      h += `<h4>${IC.sprout} Glow sprouts <span class="cnt">${S.garden.sprouts.length}/${mx}</span></h4><p class="sub small">${IC.seed}${S.inv.seeds} seeds in the shed. Gardeners plant one when a bed is free; each sprout gives every gardener +${Math.round(Needs.C.GARDEN.SPROUT_K * 100)} % for ${fmtT(Needs.C.GARDEN.SPROUT_LIFE)}.${Needs.gardens(S).length ? ' Your berry gardens are gardening spots too.' : ' Without a berry garden they use the root beds by the door.'}</p>`;
+      h += cs ? `<p>${IC.conserv} <b>Conservatory</b> built: ${gives('conserv')}</p>` : `<p class="sub small">${IC.conserv} A <b>Conservatory</b> (tree level 3, tap Build) helps: ${gives('conserv')}.</p>`;
+    }
+    if (k === 'spirit' && aw >= 0) {
+      const st = Needs.firstBuilt(S, 'stage');
+      h += st !== null ? `<p>${IC.stage} <b>Music stage</b> built: ${gives('stage')}.</p>` : `<p class="sub small">${IC.stage} No stage yet: performers busk on the plaza at ${Math.round(Needs.C.BUSK_K * 100)} %. Build a <b>Music stage</b> on a plot.</p><button class="ghost" data-x="plot">${IC.home} Pick a plot for the stage</button>`;
+      if (S.needs.spirit < Needs.C.GLUM_SPIRIT) h += `<p class="lockd">The pups feel a bit glum (morale -${Needs.C.GLUM_MORALE}). Some music would help!</p>`;
+    }
+    $('ncBody').innerHTML = h;
+  }
+  function buildNeedUI() {
+    $('evBtn').onclick = () => { if (evOpen) closeEvents(); else openEvents(); };
+    $('evClose').onclick = closeEvents; $('ncClose').onclick = closeNeed;
+    $('evBody').addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
+      if (x === 'trade') { const o = Events.trade(S, +b.dataset.id, +b.dataset.j); if (o) { toast(`${IC.cart} Traded ${goodsHtml(o.give)} for ${goodsHtml(o.get)}`, 2600); save(); refreshTree(); } }
+      else if (x === 'wish') { const ev = S.events.active.find(y => y.id === +b.dataset.id); if (ev) setJob(ev.pup, ev.want); }
+      else if (x === 'fruit') { fruitCam(); }
+      renderEvents(true); refreshEvBtn();
+    });
+    $('ncBody').addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
+      if (x === 'assign') setJob(+b.dataset.i, needK);
+      else if (x === 'pup') focusPup(+b.dataset.i);
+      else if (x === 'ward') { const k = Needs.placeWard(S, nav); if (k >= 0) { save(); toast(`${IC.ward} A crystal ward glows by the roots`, 2400); const p = nfx.wardPos(k); if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 4, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2); } } }
+      else if (x === 'blight') { const p = nfx.blightPos(+b.dataset.k); if (p) { const tgt = new THREE.Vector3(p[0], p[1], p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(40)).add(new THREE.Vector3(0, 26, 0)), tgt, 1.2); } }
+      else if (x === 'plot') { closeNeed(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
+      renderNeed(true);
+    });
+  }
+
+  const J = o => JSON.stringify(o);
+  // trip labels over the boats / isles, and "Haul ready!" over the dock
+  function expLabels() {
+    const box = $('tlabels'), want = [];
+    for (const v of expFx.view.trips) { const st = tripState(v.trip); want.push({ key: 't' + v.trip.id, p: v.label, html: `${IC.board}<b>${Exped.DEST[v.trip.dest].name}</b><small>${st.txt}</small>`, t: 'trip' }); }
+    { const tr = S.events.active.find(e => e.type === 'trader'); if (tr) { const p = nfx.traderAt(S); want.push({ key: 'trader', p: new THREE.Vector3(p[0], p[1] + 3, p[2]), html: `${IC.cart}<b>Trader</b><small>tap to trade</small>`, t: 'trader', cls: 'trd' }); } }
+    if (nfx.fruit.length) { const f = nfx.fruit[0]; want.push({ key: 'fruit', p: new THREE.Vector3(f.p[0], f.p[1] + 5, f.p[2]), html: `${IC.fruit}<b>Glowing fruit!</b><small>tap the fruit</small>`, t: 'fruit', cls: 'hr' }); }
+    if (S.exp.hauls.length && expFx.view.dock) want.push({ key: 'haul', p: expFx.view.dock.clone().setY(expFx.view.dock.y + 14), html: `${IC.gift}<b>Haul ready!</b><small>tap to open</small>`, t: 'haul', cls: 'hr' });
+    const have = {}; box.querySelectorAll('.tl').forEach(el => { have[el.dataset.key] = el; });
+    for (const w of want) {
+      let el = have[w.key]; delete have[w.key];
+      if (!el) { el = document.createElement('div'); el.className = 'tl card' + (w.cls ? ' ' + w.cls : ''); el.dataset.key = w.key; el.dataset.t = w.t; box.appendChild(el); }
+      if (el.dataset.h !== w.html) { el.innerHTML = w.html; el.dataset.h = w.html; }
+      const s = w.p.clone().project(camera), vis = s.z < 1 && Math.abs(s.x) < 1.05 && Math.abs(s.y) < 1.05;
+      el.style.display = vis ? 'flex' : 'none'; if (vis) { el.style.left = ((s.x + 1) / 2 * W()) + 'px'; el.style.top = ((1 - s.y) / 2 * H()) + 'px'; }
+    }
+    for (const k in have) have[k].remove();
+  }
+
+  function floater(pos3, html) {
+    const v = new THREE.Vector3().fromArray(pos3).project(camera); if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) return;
+    const d = document.createElement('div'); d.className = 'flo'; d.innerHTML = html;
+    d.style.left = ((v.x + 1) / 2 * W()) + 'px'; d.style.top = ((1 - v.y) / 2 * H()) + 'px'; app.appendChild(d); setTimeout(() => d.remove(), 1500);
+  }
+  // "while you were away" (sum = catch-up summary) and / or the newcomers card (pups flagged isNew)
+  function showAway(sum) {
+    const news = S.pups.map((p, i) => p.isNew ? i : -1).filter(i => i >= 0);
+    let h = '';
+    if (sum) {
+      const lv = sum.levels > 0 ? `<li class="good exl">${IC.star}<div>The tree grew ${sum.levels} level${sum.levels > 1 ? 's' : ''}! Now level ${S.level} (<b>${Growth.stageName(S.level)}</b>).<br><button class="go sm" data-memaway="${S.level}">${IC.memory} Read its memory</button></div></li>` : '';
+      const g = sum.gathered || {};
+      h += `<li>${IC.clock}${sum.capped ? 'Over 8 h (pups count up to 8 h)' : fmtT(sum.sec)}</li>
+        <li>${IC.water}${fmtN(sum.buckets)} buckets &middot; ${IC.orb}${fmtN(sum.orbs)} orbs &middot; ${IC.sap}+${fmtN(sum.sap)}</li>${lv}
+        <li>${IC.heart}Tree health ${Math.round(sum.healthFrom)}% &rarr; <b>${Math.round(sum.healthTo)}%</b> (${healthWord(sum.healthTo)})</li>`;
+      if (sum.nightSec >= 1800) h += `<li>${IC.moon}${fmtT(sum.nightSec)} of it was night: the pups took sleepy naps and the tree drank less.</li>`;
+      if ((g.wood || 0) + (g.stone || 0) + (g.food || 0) >= 1) h += `<li>${IC.wood}+${fmtN(g.wood)} ${IC.stone}+${fmtN(g.stone)} ${IC.food}+${fmtN(g.food)} gathered</li>`;
+      if (sum.resTo && sum.resTo.food <= 0) h += `<li>${IC.food}The pantry ran empty: the pups are hungry and slower. Put someone on Berries or build a garden.</li>`;
+      for (const b of sum.built || []) { const q = nav.plotBy[b.pid]; if (q) h += `<li class="good">${IC[B_ICON[b.kind]]}Built: <b>${bName(b.kind, q)}</b> (${gives(b.kind, q)})</li>`; }
+      // expeditions that landed while away (the haul is in; the reveal card opens from here or the trip board)
+      for (const x of sum.exped || []) {
+        const k = S.exp.hauls.findIndex(y => y.id === x.id);
+        h += `<li class="good exl">${IC.board}<div>The <b>${Exped.DEST[x.dest].name}</b> team (${x.names.map(esc).join(', ')}) came back with: ${haulLine(x)}${k >= 0 ? `<br><button class="go sm" data-haul="${k}">Open the haul</button>` : ''}</div></li>`;
+      }
+      for (const tr of S.exp.trips) if (tr.dep >= 0) h += `<li>${IC.isle}The <b>${Exped.DEST[tr.dest].name}</b> team is still exploring: back in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}.</li>`;
+      // step 4: wake-ups, the new jobs' work, events (newest last; ones still running are waiting for you)
+      for (const k of sum.woke || []) h += `<li class="good">${IC[k]}<div><b>${NEED_NAMES[k]}</b> woke up: a new job, <b>${JOB_WHO[k]}</b>! Tap the need for details.</div></li>`;
+      if (sum.fed) h += `<li>${IC.nourish}Gardeners fed the tree ${sum.fed} times</li>`;
+      if (sum.cleared || sum.blightNew) h += `<li>${IC.blight}${sum.blightNew ? `${sum.blightNew} blight patch${sum.blightNew > 1 ? 'es' : ''} crept in` : ''}${sum.blightNew && sum.cleared ? ', ' : ''}${sum.cleared ? `guardians swept away ${sum.cleared}` : ''}</li>`;
+      const evs = (sum.events || []).map(id => S.events.log.find(l => l.id === id)).filter(Boolean);
+      if (evs.length) {
+        h += `<li class="hd">${IC.bell}<b>${evs.length} little event${evs.length > 1 ? 's' : ''}</b></li>`;
+        for (const l of evs.slice(-6)) { const live = S.events.active.find(a => a.id === l.id), x = evText(live || l, !!live); h += `<li class="evl${live ? ' live' : ''}">${IC[EV_IC[l.type]]}<div>${x.t}<small>${x.s}${live ? ' &middot; <b>still here!</b>' : ''}</small></div></li>`; }
+        if (evs.length > 6) h += `<li class="evl"><small>... and ${evs.length - 6} earlier (see Events)</small></li>`;
+      }
+    }
+    if (news.length) {
+      h += `<li class="hd">${IC.paw}<b>${news.length === 1 ? 'A new pup moved in!' : news.length + ' new pups moved in!'}</b></li>`;
+      for (const i of news) {
+        const p = S.pups[i];
+        h += `<li class="np" data-i="${i}"><span class="dot" style="background:${p.collar}"></span><div><input data-i="${i}" maxlength="14" value="${esc(p.name)}" aria-label="Name"><small>${p.parents ? `${IC.paw}a puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')} &middot; ` : ''}${p.breed} &middot; loves ${IC[p.like] || ''}${JOB_NAMES[p.like]} &middot; dislikes ${IC[p.dislike] || ''}${JOB_NAMES[p.dislike]}</small><div class="jobs">${jobBtns(p)}</div></div></li>`;
+      }
+    }
+    const sh = soc ? soc.awayHtml() : '';   // step 6: visitors, waterings, gifts, likes, guestbook notes
+    h += sh;
+    if (!h) return;
+    $('awayTitle').textContent = sum || (sh && !news.length) ? 'While you were away' : 'Welcome, newcomer!';
+    $('awayList').innerHTML = h; $('away').hidden = false;
+  }
+  let hintShown = false;
+  function hintDone() { if (hintShown) { $('hint').style.opacity = 0; setTimeout(() => $('hint').hidden = true, 700); } }
+
+  // ---- camera: orbit the tree, fly to / follow a pup, glance at the tree on level-up
+  let follow = -1, tween = null;
+  const v3 = new THREE.Vector3();
+  function homeView() {
+    const s = fx ? fx.scale : Sim.scaleOf(S), TP = nav.TP, t = new THREE.Vector3(TP[0], TP[1] + 34 * s, TP[2]);
+    // step 5: from the Grown stage on the canopy reaches out over the plaza: the camera steps further back (L1-3 unchanged)
+    return { target: t, eye: t.clone().add(new THREE.Vector3(70, 34 + 30 * s, 140).multiplyScalar((0.78 + s * 0.8 + Math.max(0, s - 0.68) * 1.9) * (W() < H() ? 1.3 : 1))) };
+  }
+  function flyTo(eye, target, dur, then) { tween = { e0: camera.position.clone(), t0: controls.target.clone(), e1: eye.clone(), t1: target.clone(), t: 0, dur: dur || 1.2, then }; }
+  function flyHome() { const h = homeView(); flyTo(h.eye, h.target, 1.4); }
+  function focusPup(i) {
+    if (VISIT) { const p = S.pups[i]; if (p) toast(`<span class="dot" style="background:${p.collar}"></span> <b>${esc(p.name)}</b> &middot; ${p.breed} &middot; ${IC[p.job] || ''}${JOB_NAMES[p.job] || ''}`, 2200); pups.select(i); return; }
+    follow = i; pups.select(i); refreshRoster(true);
+    if (i < 0) return;
+    const p = pups.list[i].holder.position, tgt = p.clone().setY(p.y + 4);
+    const dir = camera.position.clone().sub(controls.target); const d = Math.min(Math.max(dir.length(), 28), 55);
+    dir.setLength(d); if (dir.y < d * 0.35) dir.y = d * 0.35;
+    flyTo(tgt.clone().add(dir.setLength(d)), tgt, 1.0);
+  }
+  controls.addEventListener('start', () => { tween = null; boatCam = null; });
+  function cameraTick(dt) {
+    if (boatCam) boatCamTick(dt);
+    else if (tween) {
+      tween.t += dt; const k = Math.min(1, tween.t / tween.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      let t1 = tween.t1; if (follow >= 0 && !tween.then) t1 = pups.list[follow].holder.position.clone().setY(pups.list[follow].holder.position.y + 4);
+      const off1 = tween.e1.clone().sub(tween.t1);
+      controls.target.lerpVectors(tween.t0, t1, e); camera.position.lerpVectors(tween.e0, t1.clone().add(off1), e);
+      if (k >= 1) { const th = tween.then; tween = null; if (th) th(); }
+    } else if (follow >= 0 && pups.list[follow]) {
+      const p = pups.list[follow].holder.position; v3.set(p.x, p.y + 4, p.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 5));
+      controls.target.add(v3); camera.position.add(v3);
+    }
+  }
+  function levelUp(lv) {
+    const newStage = Growth.STAGES.some(st => st.from === lv);
+    toast(`${IC.star} The Elder Tree grew! <b>Level ${lv}</b>${newStage ? ` &middot; a new stage: <b>${Growth.stageName(lv)}</b>` : ''}`, 4200);
+    const back = { e: camera.position.clone(), t: controls.target.clone() }, wasFollow = follow;
+    const s = Sim.C.SCALE[lv - 1], TP = nav.TP;
+    const tgt = new THREE.Vector3(TP[0], TP[1] + 45 * s, TP[2]);
+    const far = (230 * s + 80) * (W() < H() ? 1.25 : 1);
+    const eye = tgt.clone().add(camera.position.clone().sub(controls.target).setY(0).setLength(far)).setY(TP[1] + 60 * s + 30);
+    follow = -1;
+    flyTo(eye, tgt, 1.3, () => { fx.burst(); setTimeout(() => { if (!tween) { follow = wasFollow; if (wasFollow < 0) flyTo(back.e, back.t, 1.3, () => {}); else focusPup(wasFollow); } showMemory(lv); }, 3200); });
+    growLand(lv); refreshBuild(true);
+  }
+  // click a pup (screen-space nearest, so small pups are easy to hit) or a plot (patch / sign)
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pups) return; down = null;
+    const r = renderer.domElement.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const fr = nfx && nfx.pickFruit(mx, my, camera, W(), H(), PHONE ? 44 : 32); if (fr) { collectFruit(fr); return; }   // glowing fruit first (events)
+    let best = -1, bd = PHONE ? 46 : 36;
+    pups.list.forEach((P, i) => {
+      for (const hgt of [1, 2.2, 4]) {
+        const v = P.holder.position.clone().setY(P.holder.position.y + hgt).project(camera); if (v.z > 1) continue;
+        const d = Math.hypot((v.x + 1) / 2 * W() - mx, (1 - v.y) / 2 * H() - my); if (d < bd) { bd = d; best = i; }
+      }
+    });
+    if (best >= 0) { focusPup(best); return; }
+    if (VISIT) { if (walker) { const gp = walker.pickGround(mx, my, W(), H()); if (gp) walker.walkTo(gp, nav.trunkR(fx.scale)); } return; }   // tap / click = walk there
+    const x = plots.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34);
+    if (x) openPlot(x.q.pid, false);
+  });
+
+  // ---- boot
+  const t0 = performance.now();
+  ElderMap.load({ base: LIB, scene, lite: PHONE }).then(async m => {
+    map = m; window.__map = m;
+    if (PHONE) m.cull.px = 1.5;
+    if (PHONE) m.batches.forEach(b => { if (b.inkMesh) b.inkMesh.material.visible = false; });
+    const c = m.box.getCenter(new THREE.Vector3()), r = m.box.getSize(new THREE.Vector3()).length() / 2;
+    scene.fog.near = r * 1.4; scene.fog.far = r * 4.5; camera.far = r * 8; camera.updateProjectionMatrix();
+    const sc = sun.shadow.camera, s = Math.min(r, 450); Object.assign(sc, { left: -s, right: s, top: s, bottom: -s, far: r * 4 });
+    sun.position.copy(c).add(new THREE.Vector3(-0.5, 1, 0.35).multiplyScalar(r * 1.2)); sun.target.position.copy(c); scene.add(sun.target); sc.updateProjectionMatrix();
+    startIsland(m);
+    // the water mask is data (data/water_cells.json, the same file tools/sim_check.mjs reads), so the decor / blight /
+    // ward spot lists (saves store indices into them) are identical in the game and in the sim check
+    const water = await fetch('data/water_cells.json').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!water) console.warn('data/water_cells.json missing: spot lists ignore water');
+    nav = Nav(m.layout, { water }); ground = buildGround(m);
+    const clr = treeClear(m, nav); if (clr) nav.setClear(clr);
+    if (PHONE) m.cull.coverK = 0.7;
+    // step 6: social (Explore, publishing, gifts, visits) through one backend interface (src/net.js: mock or Supabase)
+    soc = SocialUI({ Q, SLOT, SAVE_KEY, IC, esc, toast, nav, mode: VISIT ? 'visit' : 'home', get S() { return S; }, save, showAway: s => showAway(s || null), lastSum: () => bootSum,
+      refresh: () => { refreshTree(); refreshBuild(true); },
+      onWater: () => { S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
+      onGift: () => { const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
+      onLike: () => { const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); } });
+    let ld;
+    if (VISIT) {
+      const vs = await soc.visitLoad(VISIT);
+      if (!vs) { $('loading').innerHTML = `<div class="card">That island could not be found (it may be private now). <a href="${soc.homeUrl()}">Back home</a></div>`; return; }
+      ld = { state: vs, away: 0, visit: true };
+    } else ld = load();
+    S = ld.state;
+    fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S));
+    plots = Plots(scene, m, nav, ground);
+    expFx = ExpFx(scene, m, nav, ground, { phone: PHONE });
+    const loader = new THREE.GLTFLoader();
+    pups = Pups(scene); await pups.load('art/pups.glb', loader);
+    nfx = NeedsFx(scene, m, nav, ground, pups, { phone: PHONE, target: () => controls.target });
+    seaFx = SeasonFx(scene, m, nav, ground, { phone: PHONE });
+    { const g0 = plots.glowPieces; plots.glowPieces = fn => { g0(fn); expFx.glowPieces(fn); nfx.glowPieces(fn); seaFx.glowPieces(fn); }; }   // placed decor + wards + autumn lanterns glow at night too
+    buildUI(); buildExpUI(); buildNeedUI();
+    let sum = null;
+    // anchor the island clock so that it reads "now" once the catch-up has run (the catch-up then lives through the
+    // real hours, night included); a fresh island just starts at "now"
+    if (ld.away > 5) { anchorClock(Math.min(ld.away, Sim.C.OFFLINE_CAP)); sum = Sim.catchUp(S, ld.away, nav); fx.setScale(Sim.scaleOf(S)); }
+    else anchorClock(0);
+    dn = DayNight({ scene, renderer, camera, controls, hemi, sun, center: c, lightR: r * 1.2, map: m, nav, ground, plots, phone: PHONE, door: () => nav.door(fx.scale).p });
+    growLand(S.level); fx.level = S.level;
+    if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree has ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
+    syncPups();
+    hs = S.health; hl = S.needs.light;
+    const h = homeView(); camera.position.copy(h.eye); controls.target.copy(h.target); controls.update();
+    const cq = /^pup(\d+)$/.exec(Q.get('cam') || ''); if (cq && +cq[1] < S.pups.length) { follow = +cq[1]; pups.select(follow); }
+    refreshTree(); refreshRoster(true); refreshBuild(true); refreshExpBtn(); refreshEvBtn();
+    if (ld.corrupt) toast('The old save could not be read, so a fresh island was started.', 5000);
+    if (ld.fromV < 5 && S.wake.t !== null) ev.push({ type: 'wake', need: 'nourish' });   // a v4 island that already sailed: Gardeners from now
+    if (ld.migrated) toast('Your island moved to the new version: wood, stone, berries and building are here!', 5000);
+    if ((sum && ld.away >= 60) || S.pups.some(p => p.isNew)) showAway(sum && ld.away >= 60 ? sum : null);
+    if (ld.fresh) { hintShown = true; $('hint').hidden = false; }
+    bootSum = sum && ld.away >= 60 ? sum : null;
+    if (VISIT) {   // step 6: Schiffy walks in from the tree door; the camera follows her
+      walker = Walker(scene, { nav, ground, camera, controls }); await walker.load(new THREE.GLTFLoader());
+      // she starts on the path out of the tree door, past the pups' nap spots (rest grid reaches ~40 m beyond the door)
+      const TP = nav.TP, dp = nav.door(fx.scale).p, ux = dp[0] - TP[0], uz = dp[2] - TP[2], ul = Math.hypot(ux, uz) || 1, out = 48;
+      const sx = dp[0] + ux / ul * out, sz = dp[2] + uz / ul * out; walker.place([sx, ground(sx, sz, dp[1]), sz]); const wp = walker.pos();
+      // camera behind her, looking past her at the tree (the tree fills the back of the first view)
+      const ox = wp[0] - TP[0], oz = wp[2] - TP[2], ol = Math.hypot(ox, oz) || 1, back = (36 + 24 * fx.scale) * (W() < H() ? 1.35 : 1);
+      controls.target.set(wp[0], wp[1] + 6, wp[2]); camera.position.set(wp[0] + ox / ol * back, wp[1] + 16 + 10 * fx.scale, wp[2] + oz / ol * back); controls.update();
+      soc.startVisit();
+    } else soc.startHome();
+    $('loading').remove(); booted = true; m.readyAt = performance.now() - t0;
+    save();
+    giftCheck(true);
+    window.__game = { renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get walker() { return walker; }, VISIT,
+      snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
+      // day / night (tests): setTime('21:30' | hours | null = back to the real clock), clock() = island HH:MM, dn = DayNight
+      dn, setTime(x) { TIME_FIX = parseT(x); anchorClock(0); refreshTree(); return this.clock(); },
+      clock() { const h = Sim.tod(S); return String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.floor(h % 1 * 60)).padStart(2, '0'); },
+      Daily, openGift, closeGift, claimGift, giftCheck, renderGift,
+      // expeditions (tests): Exped, expFx, openExp(view), closeExp, sendTrip(dest, tier, [pups]), openHaul(k), closeHaul, placeDecor(id), dockCam(dest)
+      Exped, expFx, openExp, closeExp, sendTrip, openHaul, closeHaul, placeDecor, dockCam, renderExp,
+      // step 4 (tests): Needs, Events, nfx, openEvents / closeEvents, openNeed(k) / closeNeed, collectFruit({id, j, p}), fruitCam, traderCam,
+      // waterRuns() = the water cells rebuilt from the terrain mesh (compare with data/water_cells.json), spotCheck() = mesh
+      // water test vs the data-driven decor list (true = same list), spotSig() = fingerprint of every spot list (== sim_check's)
+      Needs, Events, nfx, openEvents, closeEvents, openNeed, closeNeed, collectFruit, fruitCam, traderCam, renderEvents, renderNeed,
+      // step 5 (tests): Seasons, Growth, seaFx, setSeason(k | name | null), setLevel(lv) (xp to that level's start + snap),
+      // openBook(tab) / closeBook, showMemory(lv) / closeMemory, growLand, rootReach() (re-make Needs.C.ROOT from the tree mesh)
+      Seasons, Growth, get seaFx() { return seaFx; }, openBook, closeBook, renderBook, showMemory, closeMemory, growLand,
+      setSeason(k) { Seasons.fix = typeof k === 'string' ? Seasons.NAMES.indexOf(k) : k; if (Seasons.fix === -1) Seasons.fix = null; refreshTree(); return Seasons.of(S); },
+      setLevel(lv) { S.level = Math.max(1, Math.min(8, lv)); S.xp = Sim.C.LV_XP[S.level - 1]; fx.level = S.level; fx.setScale(Sim.scaleOf(S)); growLand(S.level); for (const p of S.pups) if (p.phase === 'rest') { p.phase = 'idle'; p.t = 0; p.dur = 0; } refreshTree(); refreshBuild(true); return S.level; },
+      rootReach() {
+        const b = m.batches.find(x => x.key === 'EG_ElderTree'), P = b.geo.attributes.position.array, TP = nav.TP, pl = m.layout.placements.find(p => p.role === 'tree');
+        const M = new THREE.Matrix4().compose(new THREE.Vector3(...pl.pos), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), pl.ry), new THREE.Vector3(pl.s, pl.s, pl.s)), v = new THREE.Vector3(), R = new Array(72).fill(0);
+        for (let i = 0; i < P.length; i += 3) { if (P[i + 1] > 6) continue; v.set(P[i], P[i + 1], P[i + 2]).applyMatrix4(M); const dx = v.x - TP[0], dz = v.z - TP[2], a = Math.floor(((Math.atan2(dz, dx) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 72) % 72; R[a] = Math.max(R[a], Math.hypot(dx, dz)); }
+        return R.map(x => Math.round(x * 10) / 10);
+      },
+      waterRuns() { return waterRuns(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
+  }).catch(e => { err('Could not start: ' + (e.stack || e)); window.__mapError = String(e); });
+
+  // ---- loop: fixed sim steps from real time, render reads the sim
+  let acc = 0, hs = 80, hl = 80, last = performance.now(), frames = 0, pacc = 0, cpu = 0, uiAcc = 0, clockAcc = 0;
+  const STEP = Sim.C.STEP;
+  const onEv = e => {
+    if (e.type === 'deliver') {
+      const P = pups.list[e.pup]; if (!P) return;
+      const hp = P.holder.position;
+      if (e.job === 'water') { fx.splash(hp.x, hp.y, hp.z); floater([hp.x, hp.y + 9, hp.z], `+${IC.water}`); }
+      else if (e.job === 'light') { if (e.orb) fx.flashOrb(e.orb.pid); floater([hp.x, hp.y + 9, hp.z], `+${IC.light}`); }
+      else if (e.job === 'nourish' || e.job === 'protect' || e.job === 'spirit') { if (e.job === 'nourish') fx.splash(hp.x, hp.y, hp.z); floater([hp.x, hp.y + 9, hp.z], `+${IC[e.job]}`); }
+      else floater([hp.x, hp.y + 9, hp.z], `+${Math.max(1, Math.round(e.amount))}${IC[e.job]}`);
+    } else if (e.type === 'level') levelUp(e.level);
+    else if (e.type === 'built') {
+      const q = nav.plotBy[e.pid]; if (!q) return;
+      toast(`${IC[B_ICON[e.kind]]} Built: <b>${bName(e.kind, q)}</b> &middot; ${gives(e.kind, q)}`, 4200, () => openPlot(e.pid, true));
+    } else if (e.type === 'exp-go') {
+      const tr = S.exp.trips.find(x => x.id === e.trip); if (tr) { toast(`${IC.board} Lift-off! The boat sails for <b>${Exped.DEST[tr.dest].name}</b>`, 3000); startBoatCam(tr.id); }
+    } else if (e.type === 'exp-back') {
+      const h = e.haul; syncPups(); refreshExpBtn();
+      toast(`${IC.board} The <b>${Exped.DEST[h.dest].name}</b> team is back with a haul! <u>Open it</u>`, 15000, () => { const k = S.exp.hauls.findIndex(y => y.id === h.id); if (k >= 0) openHaul(k); });
+    } else if (e.type === 'arrive') {
+      syncPups(); const p = S.pups[e.pup];
+      if (e.puppy && p.parents) toast(`${IC.friends} Puppy! <b>${esc(S.pups[p.parents[0]].name)}</b> and <b>${esc(S.pups[p.parents[1]].name)}</b> welcome little <b>${esc(p.name)}</b>! <u>Say hi</u>`, 14000, () => { focusPup(e.pup); showAway(null); });
+      else toast(`${IC.paw} A stray pup, <b>${esc(p.name)}</b>, is crossing the bridge! <u>Say hi</u>`, 12000, () => { focusPup(e.pup); showAway(null); });
+    }
+    // ---- step 4
+    else if (e.type === 'wake') {
+      const k = e.need, msg = { nourish: 'The trip brought seeds: the tree is hungry for <b>Nourishment</b>. New job: <b>Gardeners</b>!', protect: 'Dark <b>blight</b> creeps near the roots. New job: <b>Guardians</b>!', spirit: 'The pups long for music: <b>Spirit</b> woke up. New job: <b>Performers</b>!' }[k];
+      toast(`${IC[k]} ${msg} <u>Tap</u>`, 16000, () => openNeed(k)); refreshRoster(true);
+    } else if (e.type === 'cleared') { const P = pups.list[e.pup]; if (P) floater([P.holder.position.x, P.holder.position.y + 11, P.holder.position.z], `${IC.blight}&#10003;`); }
+    else if (e.type === 'sprout') { const P = pups.list[e.pup]; if (P) floater([P.holder.position.x, P.holder.position.y + 9, P.holder.position.z], `${IC.sprout}`); }
+    else if (e.type === 'blight' && e.why !== 'wave' && !S.pups.some(p => p.job === 'protect') && Needs.awakeK(S, 'protect') >= 0 && S.blight.list.length === 1) toast(`${IC.blight} A dark blight patch creeps by the roots. Give a pup the <b>Guard</b> job! <u>Show</u>`, 7000, () => openNeed('protect'));
+    else if (e.type === 'event') {
+      const x = e.e, tx = evText(x, e.k === 'start');
+      if (e.k === 'start') {
+        const tap = { fruit: fruitCam, trader: () => { openEvents(); traderCam(); }, wish: openEvents, wave: () => openNeed('protect') }[x.type];
+        toast(`${IC[EV_IC[x.type]]} ${tx.t}${x.type === 'wave' ? '! Guardians, sweep!' : x.type === 'fruit' ? '! Tap them' : x.type === 'trader' ? ' set up a stall by the tree' : ''}${tap ? ' <u>Show</u>' : ''}`, x.type === 'crystal' || x.type === 'shower' ? 4200 : 9000, tap || null);
+      } else if (e.out === 'done' && x.type === 'wish') toast(`${IC.wish} ${pupN(x.pup)}'s wish came true! <b>+${Events.C.WISH_MORALE} morale</b>`, 4200);
+      else if (e.out === 'auto' && x.type === 'fruit') toast(`${IC.fruit} The pups gathered the leftover fruit`, 2600);
+      else if (e.out === 'left') toast(`${IC.cart} The trader packed up and moved on`, 2600);
+      refreshEvBtn(); renderEvents(true);
+    }
+  };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else if (booted) giftCheck(true); });
+  addEventListener('pagehide', save);
+  addEventListener('resize', () => { setLayout(); camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); });
+  const poses = [], airY = (x, z, y) => y;   // pups in a sky boat / hopping: no ground snap
+  renderer.setAnimationLoop(() => {
+    const now = performance.now(), real = (now - last) / 1000; last = now;
+    const dt = Math.min(0.1, real), t = now / 1000;
+    if (!booted) { renderer.render(scene, camera); return; }
+    const c0 = performance.now();
+    // sim
+    if (real > 30) {   // tab was hidden / laptop slept: coarse catch-up, summary if long
+      const sum = Sim.catchUp(S, real * SPEED, nav); syncPups(); if (real >= 60 && !VISIT) showAway(sum); acc = 0;
+    } else {
+      acc += real * SPEED; let n = 0;
+      while (acc >= STEP && n < 4000) { Sim.step(S, STEP, nav, ev); acc -= STEP; n++; }
+      if (acc >= STEP) acc = 0;
+    }
+    if (pups.list.length !== S.pups.length) syncPups();
+    if (VISIT) {   // a visit is a light visual tick: pups work + animate, the tree never levels, only delivery floaters show
+      if (S.level < Sim.C.MAX_LV) S.xp = Math.min(S.xp, Sim.C.LV_XP[S.level] - 1);
+      for (let k = ev.length - 1; k >= 0; k--) if (ev[k].type !== 'deliver') ev.splice(k, 1);
+    }
+    while (ev.length) onEv(ev.shift());
+    // view
+    const tScale = Sim.scaleOf(S); if (Math.abs(fx.scale - tScale) > 1e-4) fx.setScale(fx.scale + (tScale - fx.scale) * Math.min(1, dt * 1.2) + Math.sign(tScale - fx.scale) * 1e-4);
+    hs += (S.health - hs) * Math.min(1, dt * 1.5); hl += (S.needs.light - hl) * Math.min(1, dt * 1.5);
+    fx.night = dn.state.night; fx.update(t, dt, hs, hl, renderer);
+    const sick = Math.max(0, Math.min(1, (60 - hs) / 50));
+    // the island clock: follows the sim (so ?speed shows days passing); on the real clock (speed 1, no ?time) it is
+    // re-anchored when it drifts > 2 min (DST, time-zone trip, a sleep longer than the 8 h catch-up cap)
+    clockAcc += real;
+    if (clockAcc > 10) {
+      clockAcc = 0;
+      if (TIME_FIX === null && SPEED === 1) { const dft = Math.abs(((Sim.tod(S) * 3600 - realSec()) % 86400 + 86400 + 43200) % 86400 - 43200); if (dft > 120 || Math.abs(S.ep0 + S.time - Seasons.localNow()) > 120) anchorClock(0); }
+      giftCheck(false);
+    }
+    // step 5: season (weights fade over the first night hours of a new week) -> map tints, sky, weather, tree petals / leaves;
+    // the sky reads the season-warped hour (summer long days, winter short)
+    const sw = Seasons.weights(S.ep0 !== null ? S.ep0 + S.time : Seasons.localNow());
+    dn.season = sw; fx.season = sw; fx.level = S.level;
+    dn.update(Sim.dayH(S), t, dt, sick, fx.scale);
+    { const fe = S.events.active.find(e => e.type === 'fest'); seaFx.fest = fe ? 1 : 0; seaFx.festSea = fe ? fe.sea : -1; }
+    seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
+    seasonCheck();
+    poses.length = 0;
+    expFx.update(S, t, dt, Math.min(STEP, acc));   // boats first: pups on a trip ride in them
+    for (let i = 0; i < S.pups.length; i++) {
+      let ps = Sim.pose(S, i, nav, Math.min(STEP, acc));
+      const ov = expFx.pupPose(S, i, ps, t); if (ov) ps = ov; poses.push(ps);
+    }
+    nfx.dance(poses);   // resting pups near a performance dance
+    for (let i = 0; i < poses.length; i++) { const ps = poses[i]; pups.update(i, ps, t, dt, ps.air ? airY : ground); ps.y = pups.list[i] ? pups.list[i].y : ps.p[1]; }
+    nfx.update(S, t, dt, poses, dn.state.night, camera, renderer.domElement.height);
+    plots.update(S, t, dt, S.level, poses);
+    cameraTick(dt); if (walker) walker.update(dt); controls.update();
+    pups.lod(camera.position, PHONE ? 220 : 260);   // home view sees the plaza at ~190 m: keep its pups inked
+    map.update(camera, t, renderer.domElement.height);
+    renderer.render(scene, camera);
+    // labels: projected over each pup's head, then stacked upward where they would overlap (nearest pup keeps its spot)
+    const hv = new THREE.Vector3(), placed = [], lbls = [];
+    document.querySelectorAll('#labels .lbl').forEach(l => {
+      const i = +l.dataset.i; if (!pups.list[i]) return; pups.head(i, hv); const d = hv.distanceTo(camera.position); hv.project(camera);
+      const vis = hv.z < 1 && Math.abs(hv.x) < 1.05 && Math.abs(hv.y) < 1.05 && d < 600;
+      l.style.display = vis ? 'flex' : 'none';
+      if (vis) lbls.push({ l, d, x: (hv.x + 1) / 2 * W(), y: (1 - hv.y) / 2 * H(), w: l.offsetWidth || 26, h: l.offsetHeight || 22 });
+    });
+    lbls.sort((a, b) => a.d - b.d);
+    for (const L of lbls) {
+      let y = L.y;
+      for (let guard = 0; guard < 8; guard++) {
+        const hit = placed.find(p => Math.abs(p.x - L.x) < (p.w + L.w) / 2 + 2 && Math.abs(p.y - y) < (p.h + L.h) / 2 + 1);
+        if (!hit) break; y = hit.y - (hit.h + L.h) / 2 - 2;
+      }
+      placed.push({ x: L.x, y, w: L.w, h: L.h });
+      L.l.style.left = L.x + 'px'; L.l.style.top = y + 'px';
+    }
+    expLabels();
+    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
+    if (now - lastSave > 5000) save();
+    cpu += performance.now() - c0; frames++; pacc += real;
+    if (pacc >= 0.5) {
+      const i = renderer.info.render;
+      window.__perf = { fps: frames / pacc, cpuMs: cpu / frames, calls: i.calls, tris: i.triangles, drawn: map.stats.drawn, loadMs: Math.round(map.readyAt || 0), pups: S.pups.length };
+      frames = 0; pacc = 0; cpu = 0;
+    }
+  });
+})();
