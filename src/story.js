@@ -104,7 +104,9 @@
     sea1: ['Summer', 'Summer, and the days are long and lazy. Keep the water coming, little ones. I get thirsty when the sun shows off.'],
     sea2: ['Autumn', 'Autumn. My leaves are turning gold and red, and I let them go one at a time, like stories.'],
     sea3: ['Winter', 'Winter. The snow makes everything quiet, so I can hear every paw step. Keep the lanterns lit for me?'],
-    visit: ['A visitor', 'Someone from another island walked under my branches today{x}. They left the air a little warmer than they found it.'],
+    crit1: ['Small guests', 'Did you see? Someone small came to visit, not a pup at all. The wild things are coming back. They only come where it feels like home.'],
+    whale1: ['The whale', 'A sky whale sang over us today. I have not heard that song since I was a sapling. It means the sky remembers us.'],
+    visit: ['A visitor','Someone from another island walked under my branches today{x}. They left the air a little warmer than they found it.'],
   };
   function words(e) {   // log entry -> { t: title, x: text, kind }
     if (!e) return null;
@@ -181,6 +183,7 @@
         for (const p of P) if (p.job === 'build' && !p.exp) setDD(p, 'blt', bi, 0, 4);
         if (kind === 'home') once(s, 'home1');
       } else if (e.type === 'event' && e.k === 'end' && e.out === 'done' && e.e.type === 'wish') setDD(P[e.e.pup], 'wish', JOBS.indexOf(e.e.want), 0, 5);
+      else if (e.type === 'crit' && e.k === 'start') { once(s, 'crit1'); if (e.v.c === 'whale') once(s, 'whale1'); }   // Round 2 step 3: sky critters
     }
     // colour: a new ring = a wave (every ring between gets its line, in order)
     const r = ringOf(bloom(s));
@@ -278,6 +281,9 @@
       F.push([k ? 3 : 6.5, t.replace('{a}', p.name).replace('{o}', 'its')]);
     });
     if ((sum.built || []).length) F.push([5, 'a new roof where there was only grass']);
+    // Round 2 step 3: a sky critter that visited in the night (the whale always makes the dream)
+    { const K = window.Critters, cs = (sum.critters || []).filter(v => K && K.BY[v.c]); const wh = cs.find(v => v.c === 'whale');
+      if (wh) F.push([9.5, 'a sky whale singing as it drifted over my crown']); else if (cs.length) { const v = cs[hash(h0 + 5) % cs.length]; F.push([5.5, `${K.article(K.BY[v.c])} that ${K.BY[v.c].verb} ${K.where(s, v)}`]); } }
     if (sum.cleared > 0) F.push([4, 'dark patches melting away like frost']);
     if (rain && !F.some(f => /rain/.test(f[1]))) F.push([3.5, 'warm rain on every leaf']);
     const nap = P.map((p, i) => i).filter(i => P[i].job === 'rest');

@@ -387,5 +387,16 @@
     m.customProgramCacheKey = () => 'eg-tint-' + id;
     return m;
   }
-  window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache };
+  // Round 2 step 3 (critters, src/critter_fx.js): a kit piece outside the layout as a batch (same merge, Glow* flags, ink hull),
+  // and the map's lit material without the colour-restoring grey (magical visitors keep their colour on a grey island)
+  let kitLit = null;
+  function kitLitMat() {
+    if (kitLit) return kitLit;
+    kitLit = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad, vertexColors: true });
+    kitLit.onBeforeCompile = s => { litMat.onBeforeCompile(s); s.fragmentShader = '#define EG_NORESTORE\n' + s.fragmentShader; };
+    kitLit.customProgramCacheKey = () => 'eg-kit-norestore';
+    return kitLit;
+  }
+  window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache,
+    kitBatch: makeBatch, kitLitMat, inkMat };
 })();

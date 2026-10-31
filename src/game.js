@@ -138,6 +138,7 @@
     // Round 2 step 2
     tree: SV('<path d="M10.5 21l.6-6h1.8l.6 6z" fill="#b07a45"/><path d="M12 3.5c-3.6 0-6.5 2.6-6.5 5.8 0 1 .3 1.9.8 2.7-.6.6-.9 1.3-.9 2.1 0 2 1.9 3.4 4.1 3.4h5c2.2 0 4.1-1.5 4.1-3.4 0-.8-.3-1.5-.9-2.1.5-.8.8-1.7.8-2.7 0-3.2-2.9-5.8-6.5-5.8z" fill="#7fd36a"/><circle cx="9.5" cy="9" r="1" fill="#ffe066" stroke="none"/><circle cx="14.5" cy="12" r="1" fill="#ffe066" stroke="none"/>'),
     diary: SV('<rect x="5" y="3" width="14" height="18" rx="2" fill="#ffd9a8"/><path d="M5 3h3v18H5z" fill="#c98a4b"/><path d="M11 8h5M11 11.5h5M11 15h3" fill="none"/>'),
+    critter: SV('<ellipse cx="12" cy="14" rx="6.5" ry="7" fill="#a99ad0"/><path d="M6.5 9.5L7 4.5l3.5 3M17.5 9.5L17 4.5l-3.5 3" fill="#7e6cae"/><circle cx="9.5" cy="12" r="2.4" fill="#9ff0ff"/><circle cx="14.5" cy="12" r="2.4" fill="#9ff0ff"/><circle cx="9.5" cy="12" r="1" fill="#2a2442" stroke="none"/><circle cx="14.5" cy="12" r="1" fill="#2a2442" stroke="none"/><path d="M11 15l1 1.6 1-1.6z" fill="#f0a63c"/>'),
     memory: SV('<path d="M12 2.5c4 3 6.5 6.3 6.5 10a6.5 6.5 0 0 1-13 0c0-3.7 2.5-7 6.5-10z" fill="#9fe8ff"/><path d="M12 8.5v8M9 12.5l3 3 3-3" fill="none"/>'),
   };
   const NEED_NAMES = { water: 'Water', light: 'Light', nourish: 'Nourish', protect: 'Protect', spirit: 'Spirit' };
@@ -177,7 +178,7 @@
     return (STATUS[p.job] || {})[p.phase] || '';
   }
 
-  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, booted = false, bootAt = 0;
+  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, crFx = null, booted = false, bootAt = 0;
   const newSeed = () => (+Q.get('seed') >>> 0) || ((Math.random() * 4294967296) >>> 0) || 1;   // ?seed=N (tests)   // a fresh island's event seed (the sim itself never uses Math.random)
   const ev = [];
 
@@ -394,9 +395,12 @@
     $('dyClose').onclick = closeDiary; $('diary').addEventListener('click', e => { if (e.target.id === 'diary') closeDiary(); });
     $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
     if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
-    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
+    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['crit', 'critter'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
-    $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem); });
+    $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem);
+      const ch = e.target.closest('[data-crit]'); if (ch) { closeBook(); meetCritter(+ch.dataset.crit, true); }   // a visitor here now: fly there + its card
+      const ct = e.target.closest('[data-csp]'); if (ct && Critters.status(S, ct.dataset.csp) === 'seen') openCritCard(ct.dataset.csp, null, false); });
+    $('ccClose').onclick = closeCritCard;
     $('memOk').onclick = () => { closeMemory(); if (!$('book').hidden) renderBook(); };
     $('book').addEventListener('click', e => { if (e.target.id === 'book') closeBook(); });
     $('buildBtn').onclick = () => { if (!$('plotCard').hidden) { closePlot(); return; } const x = plots.info.find(x => x.st === 'open' && x.show) || plots.info[0]; openPlot(x.q.pid, true); };
@@ -418,6 +422,7 @@
     $('awayList').addEventListener('click', e => {
       const hb = e.target.closest('button[data-haul]'); if (hb) { $('awayOk').onclick(); openHaul(+hb.dataset.haul); return; }
       const mb = e.target.closest('button[data-memaway]'); if (mb) { $('awayOk').onclick(); showMemory(+mb.dataset.memaway); return; }
+      const cb = e.target.closest('button[data-crit]'); if (cb) { $('awayOk').onclick(); meetCritter(+cb.dataset.crit, true); return; }
       const b = e.target.closest('button[data-job]'); if (!b) return; const i = +b.closest('[data-i]').dataset.i; setJob(i, b.dataset.job, true);
       b.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     });
@@ -687,6 +692,8 @@
       h += '</div>';
     } else if (bookTab === 'words') {
       h += renderWords(); if (Story.unread(S)) { Story.readAll(S); save(); }
+    } else if (bookTab === 'crit') {
+      h += renderCritters();
     } else {
       const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
       h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>. The wardrobe (dress your pups) comes in a later update.</p><div class="pgrid">`;
@@ -694,6 +701,58 @@
       h += '</div>';
     }
     $('bookBody').innerHTML = h;
+  }
+  // ---- Round 2 step 3: sky critters (src/critters.js = who visits, src/critter_fx.js = how they look). Tap a visitor = its
+  // card + it goes in the album (first sighting: sparkle + sting). The album is the Book's Critters tab.
+  const RAR_T = Critters.RAR;
+  // a portrait of the real model (critter_fx thumbs, made once with the game's renderer); unknown = its silhouette
+  const cthumb = () => { try { return crFx && crFx.ready ? crFx.thumbs(renderer) : null; } catch (e) { console.warn('critter thumbs', e); return null; } };
+  const cface = (sp, st) => { const T = cthumb(), u = T && T[sp.id]; return u ? `<img class="cpic${st === 'unknown' ? ' sil' : st === 'glimpsed' ? ' glim' : ''}" src="${u}" alt="">` : `<i class="cface${st === 'unknown' ? ' sil' : st === 'glimpsed' ? ' glim' : ''}" style="--c:${sp.col}"></i>`; };
+  function renderCritters() {
+    const ring = Story.ringOf(Story.bloom(S)), here = S.crit.vis.filter(v => Critters.BY[v.c]);
+    let h = `<p class="bsub">Critters seen: <b>${Critters.seenN(S)} / ${Critters.SP.length}</b>. Wild sky creatures visit when the island has what they love: place decorations, build, and look out for them. Tap a visitor to meet it.</p>`;
+    if (here.length) h += `<div class="chere"><span style="font:600 13px Fredoka,sans-serif;align-self:center">Here now:</span>${here.map(v => { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); return `<button data-crit="${v.id}"><i class="cdot" style="--c:${sp.col}"></i>${st === 'unknown' ? 'Someone new!' : esc(sp.name)}</button>`; }).join('')}</div>`;
+    h += '<div class="pgrid">';
+    for (const sp of Critters.SP) {
+      const st = Critters.status(S, sp.id), e = S.crit.al[sp.id] || { v: 0, s: 0, g: 0 }, hn = Critters.hint(S, sp.id, ring);
+      if (st === 'seen') h += `<div class="ptile ctile" data-csp="${sp.id}" style="cursor:pointer">${cface(sp, st)}<b class="disp">${esc(sp.name)}</b><span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span><small class="cwhen">${sp.whenT}</small><small>seen ${e.s}&times; &middot; ${e.v} visit${e.v === 1 ? '' : 's'}${e.g ? ` &middot; ${e.g} gift${e.g === 1 ? '' : 's'}` : ''}</small></div>`;
+      else if (st === 'glimpsed') h += `<div class="ptile ctile glim">${cface(sp, st)}<b class="disp">${esc(sp.name)}</b><span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span><small class="ch">It came by ${e.v}&times;, but you have not met yet. Tap it next time!</small><small class="cwhen">${esc(hn.text)}</small></div>`;
+      else h += `<div class="ptile ctile lock">${cface(sp, st)}<b class="disp">???</b>${sp.rar === 'legendary' ? `<span class="rar legendary">${RAR_T.legendary}</span>` : ''}<small class="ch">${esc(hn.text)}</small></div>`;
+    }
+    return h + '</div>';
+  }
+  let critOpen = null;
+  function openCritCard(cid, v, first) {
+    const sp = Critters.BY[cid]; if (!sp) return; const e = S.crit.al[cid] || { v: 0, s: 0, g: 0 };
+    critOpen = v ? v.id : null;
+    $('ccBody').innerHTML = `<div class="cch">${cface(sp, 'seen')}<div><h3>${esc(sp.name)}<span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span></h3>${first ? `<span class="cnew">${IC.star} New in your album!</span>` : ''}</div></div>
+      <p>${esc(sp.note)}</p><div class="cmeta"><span>${IC.clock} ${sp.whenT}</span>${v ? `<span>${IC.critter} ${esc(Critters.where(S, v, nav))}</span>` : ''}<span>${IC.heart} loves ${esc(sp.fav)}</span><span>seen ${e.s}&times; &middot; ${e.v} visit${e.v === 1 ? '' : 's'}${e.g ? ` &middot; ${e.g} gift${e.g === 1 ? '' : 's'}` : ''}</span>${sp.gift ? `<span>${IC.gift} sometimes leaves ${esc(sp.gift.name)}</span>` : ''}</div>`;
+    $('critCard').hidden = false;
+  }
+  function closeCritCard() { $('critCard').hidden = true; critOpen = null; }
+  function sparkleAt(p3) {
+    const v = new THREE.Vector3().fromArray(p3).project(camera); if (v.z > 1) return;
+    const d = document.createElement('div'); d.className = 'cspark'; d.style.left = ((v.x + 1) / 2 * W()) + 'px'; d.style.top = ((1 - v.y) / 2 * H()) + 'px';
+    d.innerHTML = [...Array(18)].map((_, k) => { const a = k / 18 * Math.PI * 2, r = 50 + (k % 3) * 30; return `<i style="--dx:${(Math.cos(a) * r).toFixed(0)}px;--dy:${(Math.sin(a) * r - 20).toFixed(0)}px;animation-delay:${(k % 4) * 0.06}s"></i>`; }).join('');
+    app.appendChild(d); setTimeout(() => d.remove(), 1800);
+  }
+  // tap a visitor (or a "Go see" button): the card; first sighting = sparkle + sting. fly = move the camera there first.
+  function meetCritter(id, fly) {
+    const v = S.crit.vis.find(x => x.id === id); if (!v) { toast(`${IC.critter} It has already wandered off. It will be back!`, 2600); return; }
+    if (fly) critCam(id);
+    if (VISIT) { openCritCard(v.c, v, false); return; }   // someone else's island: look, never write their album
+    const r = Critters.tap(S, id); if (!r) return;
+    openCritCard(v.c, v, r.first);
+    const p = crFx && crFx.posOf(id);
+    if (r.first) { snd.sfx('sting_gift', { gain: 0.8 }); if (p) setTimeout(() => sparkleAt(crFx.posOf(id) || p), fly ? 1300 : 0); }
+    else snd.sfx('like', { gain: 0.6 });
+    save(); if (!$('book').hidden) renderBook();
+  }
+  function critCam(id) {
+    const p = crFx && crFx.posOf(id); if (!p) return;
+    const v = S.crit.vis.find(x => x.id === id), big = crFx.sizeOf(id), tgt = new THREE.Vector3(p[0], p[1], p[2]);
+    const dir = camera.position.clone().sub(controls.target).setY(0).normalize(), d = v && v.c === 'whale' ? 260 : Math.max(22, big * 6);
+    follow = -1; pups.select(-1); flyTo(tgt.clone().add(dir.multiplyScalar(d)).add(new THREE.Vector3(0, v && v.c === 'whale' ? -40 : d * 0.45, 0)), tgt, 1.3);
   }
   const findWhere = d => { const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the trader' : 'a daily-gift present'; };
 
@@ -1179,6 +1238,18 @@
         for (const l of evs.slice(-6)) { const live = S.events.active.find(a => a.id === l.id), x = evText(live || l, !!live); h += `<li class="evl${live ? ' live' : ''}">${IC[EV_IC[l.type]]}<div>${x.t}<small>${x.s}${live ? ' &middot; <b>still here!</b>' : ''}</small></div></li>`; }
         if (evs.length > 6) h += `<li class="evl"><small>... and ${evs.length - 6} earlier (see Events)</small></li>`;
       }
+      // Round 2 step 3: sky critters who visited, in the tree's voice; ones still here get a "Go see" button
+      const cv = (sum.critters || []).filter(v => Critters.BY[v.c]);
+      if (cv.length) {
+        const slept = (sum.nightSec || 0) >= 5400, gifts = (sum.critGifts || []).map(v => Critters.BY[v.c]).filter(Boolean);
+        h += `<li class="hd">${IC.critter}<b>${cv.length === 1 ? 'A visitor came by' : cv.length + ' visitors came by'}</b></li>`;
+        for (const v of cv.slice(-5)) {
+          const live = S.crit.vis.find(x => x.id === v.id), sp = Critters.BY[v.c], st = Critters.status(S, v.c);
+          h += `<li class="evl${live ? ' live' : ''}">${cface(sp, st === 'seen' ? 'seen' : 'glimpsed')}<div>${esc(Critters.line(S, v, nav, slept))}${live ? `<br><button class="go sm" data-crit="${v.id}">Still here: go see!</button>` : ''}</div></li>`;
+        }
+        if (cv.length > 5) h += `<li class="evl"><small>... and ${cv.length - 5} more (the Book's Critters page)</small></li>`;
+        if (gifts.length) h += `<li class="good">${IC.gift}<div>They left little gifts: ${gifts.slice(0, 4).map(sp => esc(sp.gift.name)).join(', ')}${gifts.length > 4 ? ' and more' : ''}.</div></li>`;
+      }
     }
     if (news.length) {
       h += `<li class="hd">${IC.paw}<b>${news.length === 1 ? 'A new pup moved in!' : news.length + ' new pups moved in!'}</b></li>`;
@@ -1248,6 +1319,7 @@
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pups) return; down = null;
     const r = renderer.domElement.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
     const fr = nfx && nfx.pickFruit(mx, my, camera, W(), H(), PHONE ? 44 : 32); if (fr) { collectFruit(fr); return; }   // glowing fruit first (events)
+    const cr = crFx && crFx.pick(mx, my, camera, W(), H(), PHONE ? 48 : 38); if (cr !== null && cr !== undefined) { meetCritter(cr, false); return; }   // then a sky critter
     let best = -1, bd = PHONE ? 46 : 36;
     pups.list.forEach((P, i) => {
       for (const hgt of [1, 2.2, 4]) {
@@ -1305,6 +1377,9 @@
     pups = Pups(scene); await pups.load('art/pups.glb', loader);
     nfx = NeedsFx(scene, m, nav, ground, pups, { phone: PHONE, target: () => controls.target });
     seaFx = SeasonFx(scene, m, nav, ground, { phone: PHONE });
+    // Round 2 step 3: sky critters (the library's elderglow_critters.glb; loads in the background, never blocks the boot)
+    crFx = CritterFx(scene, m, nav, ground, { phone: PHONE, scale: () => fx.scale, H: () => renderer.domElement.height });
+    crFx.load(LIB + 'elderglow_critters.glb', loader).catch(e => console.warn('critters not loaded:', e));
     { const g0 = plots.glowPieces; plots.glowPieces = fn => { g0(fn); expFx.glowPieces(fn); nfx.glowPieces(fn); seaFx.glowPieces(fn); }; }   // placed decor + wards + autumn lanterns glow at night too
     buildUI(); buildExpUI(); buildNeedUI();
     let sum = null;
@@ -1386,6 +1461,10 @@
       // Round 2 step 2 (tests): Story, RST (shown colour radius / wave), session, trySpeak(force), showSay(words), closeSay,
       // openDiary(i), closeDiary, setColour(R | null, wave) = jump the shown radius (null = back to the earned one)
       Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, startWave,
+      // Round 2 step 3 (tests): Critters, crFx, meetCritter(id, fly), critCam(id), openCritCard(c, visit, first), closeCritCard,
+      // spawnCritter(c, key, min) = put a visitor here NOW (captures only: use ?nosave=1 / a test slot), renderCritters
+      Critters, get crFx() { return crFx; }, meetCritter, critCam, openCritCard, closeCritCard, sparkleAt,
+      spawnCritter(c, key, min) { const sp = Critters.BY[c]; if (!sp) return null; S.crit.vis = S.crit.vis.filter(v => v.c !== c); const v = { id: ++S.crit.n, c, k: key || 't0', t0: S.time - 10, end: S.time + (min || 60) * 60, tap: 0 }; S.crit.vis.push(v); Critters.entry(S, c).v++; return v; },
       setColour(R, wave) { RST.lock = null; RST.wave = null; ElderMap.uRestWave.value = 0; if (R === null) { RST.R = Story.radius(S).R; return RST.R; } if (wave) { RST.R = Math.min(RST.R, R); startWave(RST.R, R); RST.wave.lockEnd = R; } else RST.lock = R; return R; },
       waterRuns() { return waterRuns(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
   }).catch(e => { err('Could not start: ' + (e.stack || e)); window.__mapError = String(e); });
@@ -1434,6 +1513,20 @@
       else if (e.out === 'left') toast(`${IC.cart} The trader packed up and moved on`, 2600);
       refreshEvBtn(); renderEvents(true);
     }
+    // ---- Round 2 step 3: sky critters arrive / leave (a soft toast; tap = fly there; gifts float up when they go)
+    else if (e.type === 'crit' && !VISIT) {
+      const v = e.v, sp = Critters.BY[v.c]; if (!sp) return;
+      if (e.k === 'start') {
+        const isNew = !(S.crit.al[v.c] && S.crit.al[v.c].s), wh = Critters.where(S, v, nav);
+        const msg = v.c === 'whale' ? `Look up! A <b>sky whale</b> is drifting over the island...` : isNew ? `Someone new is visiting ${esc(wh)}...` : `${esc(Critters.article(sp)).replace(/^./, c => c.toUpperCase())} is visiting ${esc(wh)}`;
+        toast(`${IC.critter} ${msg} <u>Go see</u>`, v.c === 'whale' ? 20000 : 9000, () => meetCritter(v.id, true));
+        if (!$('book').hidden && bookTab === 'crit') renderBook();
+      } else if (e.k === 'end') {
+        if (critOpen === v.id) closeCritCard();
+        if (e.gift) { const p = crFx && crFx.posOf(v.id); if (p) floater(p, IC.gift); toast(`${IC.gift} The ${esc(sp.name.toLowerCase())} left you ${esc(sp.gift.name)}`, 3600); refreshTree(); }
+        if (!$('book').hidden && bookTab === 'crit') renderBook();
+      }
+    }
   };
   // ---- sound: sim events -> cozy sounds (never the other way round); a pup's tiny yip is rare (audio.js rate-limits it to one / 20 s)
   let lastYip = 0;
@@ -1454,6 +1547,7 @@
     else if (e.type === 'cleared') at(e.pup, 'shimmer', { gain: 0.8 });
     else if (e.type === 'event' && e.k === 'start' && e.e.type !== 'shower') snd.sfx('notify', { gain: 0.8 });
     else if (e.type === 'event' && e.out === 'done' && e.e.type === 'wish') snd.sfx('gift', { gain: 0.7 });
+    else if (e.type === 'crit' && e.k === 'start') snd.sfx(e.v.c === 'whale' ? 'sting_bloom' : 'shimmer', { gain: e.v.c === 'whale' ? 0.6 : 0.7 });   // a visitor: a soft tinkle (the whale: a long swell)
   }
   // the sound's view of the world, 4x a second (cheap: a few distances; the river = nearest water run of data/water_cells.json)
   const sv = new THREE.Vector3();
@@ -1527,6 +1621,7 @@
     { const fe = S.events.active.find(e => e.type === 'fest'); seaFx.fest = fe ? 1 : 0; seaFx.festSea = fe ? fe.sea : -1; }
     seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
     seasonCheck();
+    if (crFx) { crFx.bind(S); crFx.update(S, t, dt, Math.min(STEP, acc), dn.state.night, camera, now / 1000); }   // sky critters
     poses.length = 0;
     expFx.update(S, t, dt, Math.min(STEP, acc));   // boats first: pups on a trip ride in them
     for (let i = 0; i < S.pups.length; i++) {

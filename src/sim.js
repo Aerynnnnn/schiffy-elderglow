@@ -131,7 +131,7 @@
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
     const s = {
-      v: 8, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 9, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -144,6 +144,7 @@
     window.Events.create(s, seed || 1);   // S.events (src/events.js)
     if (window.Social) window.Social.create(s);   // S.social (step 6, src/social.js): account, public flag, merged gift ids
     if (window.Story) window.Story.create(s);     // S.story (Round 2 step 2, src/story.js): colour rings, the tree's words, diaries
+    if (window.Critters) window.Critters.create(s);   // S.crit (Round 2 step 3, src/critters.js): sky critter visits + album
     s.health = healthOf(s); return s;
   }
   const eaters = s => { let n = 0; for (const p of s.pups) if (p.phase !== 'away') n++; return n; };   // a team away eats its packed supplies
@@ -389,6 +390,7 @@
     window.Exped.tick(s, dt, nav, ev);   // expeditions: depart when the team is aboard, land + haul when due
     N.tick(s, dt, nav, ev);              // wake-ups, blight, sprouts, friendships (src/needs.js)
     window.Events.tick(s, dt, nav, ev);  // small events (src/events.js)
+    if (window.Critters) window.Critters.tick(s, dt, nav, ev);   // sky critters come + go (src/critters.js; after Events: rain)
     // needs: water + light decay; the other three sleep (drift toward a floor) until they wake, then decay gently
     // (ramping up), never below their min
     for (const k in C.NEEDS) {
@@ -445,7 +447,9 @@
       events: ev.filter(e => e.type === 'event' && e.k === 'start').map(e => e.e.id), blightNew: ev.filter(e => e.type === 'blight').length, cleared: s.blight.cleared - b.cleared,
       fed: s.garden.fed - b.fed, woke: ev.filter(e => e.type === 'wake').map(e => e.need), puppies: ev.filter(e => e.type === 'arrive' && e.puppy).map(e => e.pup),
       // Round 2 step 2: trips per pup while away (tree dreams) + the colour rings before / after
-      pupTrips: s.pups.map((p, i) => p.trips - (tr0[i] || 0)), ringFrom: ring0, ringTo: s.story ? s.story.ring : 0 };
+      pupTrips: s.pups.map((p, i) => p.trips - (tr0[i] || 0)), ringFrom: ring0, ringTo: s.story ? s.story.ring : 0,
+      // Round 2 step 3: sky critters that came while away (start records) + the visits that left a gift
+      critters: ev.filter(e => e.type === 'crit' && e.k === 'start').map(e => e.v), critGifts: ev.filter(e => e.type === 'crit' && e.k === 'end' && e.gift).map(e => e.v) };
   }
 
   // where a pup is for the renderer (extra = seconds since the last tick, for smooth motion)
@@ -474,7 +478,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -560,6 +564,8 @@
     if (window.Social) window.Social.sanitize(s, o.v >= 7 ? o : {});
     // v8 (Round 2 step 2): colour ring, the tree's log, chapters; older saves get the ring of their progress (no grey regression)
     if (window.Story) window.Story.sanitize(s, o.v >= 8 ? o : {});
+    // v9 (Round 2 step 3): sky critters (visitors here now, album, recent visits); older saves: an empty album
+    if (window.Critters) window.Critters.sanitize(s, o.v >= 9 ? o : {});
     s.health = healthOf(s); return s;
   }
 

@@ -299,7 +299,7 @@
   body.phone #resbar #seaChip span:last-child { display: none; }
   @media (max-width: 1180px) { #resbar #seaChip span:last-child { display: none; } }
   body.phone #topBtns { gap: 5px; } body.phone #topBtns button { padding: 4px 7px; font-size: 13px; border-width: 2.5px; }
-  body.phone #bookTabs { gap: 4px; padding: 4px 8px 8px; flex-wrap: nowrap; } body.phone #bookTabs button { padding: 3px 6px; font-size: 12px; gap: 2px; } body.phone #bookTabs svg.ic { width: 15px; height: 15px; }
+  body.phone #bookTabs { gap: 4px; padding: 4px 8px 8px; flex-wrap: wrap; } body.phone #bookTabs button { padding: 3px 6px; font-size: 12px; gap: 2px; } body.phone #bookTabs svg.ic { width: 15px; height: 15px; }
   /* step 6: Explore card (islands), visit banner + action bar + panels */
   #socCard { background: #fffbf2; position: absolute; top: 64px; right: 12px; width: 380px; max-height: calc(100% - 80px); overflow-y: auto; z-index: 9; padding: 0 12px 12px; }
   #socCard .pch { background: #fffbf2; } #socTitle { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } #socTitle svg.ic { width: 24px; height: 24px; }
@@ -416,6 +416,26 @@
   .dyl { display: flex; gap: 10px; padding: 4px 0; font-size: 14px; line-height: 1.45; } .dyl b { flex: none; width: 52px; font-family: var(--disp); font-weight: 400; color: #b07a45; font-size: 13px; padding-top: 1px; }
   .dyl span { font-style: italic; color: #3e3860; } .dyl.today b { color: #8f6bff; } .dsub { margin: 6px 0; font-size: 12px; color: #6a5a7a; }
   body.phone .dcard { width: 100%; max-height: 80%; align-self: flex-end; border-radius: 18px 18px 0 0; }
+  /* Round 2 step 3: sky critters (card on tap, album tab, first-sighting sparkle) */
+  #critCard { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); width: min(400px, 92%); z-index: 21; padding: 12px 16px 12px; background: linear-gradient(175deg, #fffdf6, #f3edff); animation: tin .35s ease-out; }
+  #critCard[hidden] { display: none; } #ccClose { position: absolute; top: 8px; right: 10px; border: none; background: none; font-size: 17px; cursor: pointer; }
+  .cch { display: flex; align-items: center; gap: 10px; } .cch h3 { margin: 0; font-family: var(--disp); font-weight: 400; font-size: 21px; }
+  .cface { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--ink); background: radial-gradient(circle at 35% 30%, #fff 0 18%, var(--c) 19% 100%); box-shadow: 0 3px 0 var(--ink); position: relative; }
+  .cface.sil { background: radial-gradient(circle at 50% 45%, #3a3358 0 52%, #d9d1ee 53%); } .cface.glim { background: radial-gradient(circle at 50% 45%, var(--c) 0 50%, #ece6f8 51%); filter: saturate(.6); }
+  .rar { display: inline-block; font: 600 11px Fredoka, sans-serif; border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; margin-left: 4px; vertical-align: 2px; }
+  .rar.common { background: #d9f5c9; } .rar.uncommon { background: #cfe8ff; } .rar.rare { background: #e6d7ff; } .rar.legendary { background: linear-gradient(90deg, #ffe9a8, #ffc8ec, #b9e6ff); }
+  #critCard p { margin: 8px 0 4px; font-style: italic; color: #3e3860; font-size: 14.5px; line-height: 1.45; } #critCard .cmeta { font-size: 12.5px; color: #5d567a; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  #critCard .cnew { display: inline-flex; align-items: center; gap: 4px; background: #8f6bff; color: #fff; border: 2px solid var(--ink); border-radius: 999px; padding: 1px 10px; font: 600 12px Fredoka, sans-serif; animation: pls 1.2s ease-in-out 3; }
+  .cpic { width: 64px; height: 64px; object-fit: contain; filter: drop-shadow(0 2px 0 #2a244233); } .cpic.sil { filter: brightness(0) opacity(.28); } .cpic.glim { filter: grayscale(.85) opacity(.65); }
+  .cch .cpic { width: 72px; height: 72px; flex: none; margin: -6px 0 -6px -4px; } .ctile .cpic { margin: -2px auto -4px; } #awayList .cpic { width: 34px; height: 34px; flex: none; } #awayList .cface { width: 24px; height: 24px; border-width: 2px; box-shadow: none; flex: none; }
+  .cspark { position: absolute; pointer-events: none; z-index: 19; width: 0; height: 0; }
+  .cspark i { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; background: radial-gradient(circle, #fff 0 22%, #ffe27a 38%, #ffb3ec88 55%, transparent 72%); border-radius: 50%; animation: csp 1.4s ease-out forwards; }
+  @keyframes csp { 0% { transform: translate(0, 0) scale(.3); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) scale(1.4); opacity: 0; } }
+  .ctile { position: relative; } .ctile .cface { width: 40px; height: 40px; margin: 2px auto 2px; } .ctile .cn { position: absolute; top: 4px; right: 6px; font: 600 10px Fredoka, sans-serif; color: #8f6bff; }
+  .ctile.glim { background: #f7f3ff; } .ctile small.ch { font-style: italic; } .ctile .cwhen { font-size: 10.5px; color: #6b8f3a; }
+  .chere { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } .chere button { border: 2.5px solid var(--ink); background: #fff; border-radius: 999px; padding: 2px 10px 2px 4px; font: 600 13px Fredoka, sans-serif; display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+  .chere .cdot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); background: var(--c); }
+  body.phone #critCard { bottom: 76px; } body.phone #critCard p { font-size: 13.5px; }
   body.phone #visPanel { bottom: 78px; } body.phone .gopts { grid-template-columns: repeat(3, 1fr); } body.phone #visHint { white-space: normal; width: 80%; bottom: 84px; text-align: center; }
 </style>
 </head>
@@ -453,10 +473,11 @@
   <div id="hint" class="card" hidden>Tap a pup, then give it a job. Tap <b>Build</b> to plan a home.</div>
   <div id="away" hidden><div class="card"><h2 id="awayTitle">While you were away</h2><ul id="awayList"></ul><button class="big" id="awayOk">Lovely!</button></div></div>
   <div id="gift" hidden><div class="card gcard"><div class="gh"><h2>Daily gift</h2><span id="gStreak" class="gs"></span><button id="gClose" title="Close">&#10005;</button></div><p id="gMsg" class="gm"></p><div id="gTiles" class="gtiles"></div><div id="gGot" class="ggot" hidden></div><div id="gMonth" class="gmon"></div><div class="gf"><button class="big" id="gClaim">Claim!</button><small>Missed a day? No problem: the calendar just waits for you.</small></div></div></div>
-  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button><button data-t="words">Tree's words</button></div><div id="bookBody"></div></div></div>
+  <div id="book" hidden><div class="card bcard"><div class="gh"><span id="bkIc"></span><h2>The Book</h2><button id="bkClose" title="Close">&#10005;</button></div><div id="bookTabs"><button data-t="mem">Memories</button><button data-t="pups">Pups</button><button data-t="decor">Decorations</button><button data-t="outfits">Outfits</button><button data-t="crit">Critters</button><button data-t="words">Tree's words</button></div><div id="bookBody"></div></div></div>
   <div id="mem" hidden><div class="card mcard"><div id="memBody"></div><button class="big" id="memOk">Lovely!</button></div></div>
   <div id="treeSay" class="card" hidden><div class="tsh"><span id="tsIc"></span><b class="disp">The Elder Tree</b><small id="tsKind"></small><button id="tsClose" title="Close">&#10005;</button></div><p id="tsText"></p><div id="tsPups"></div><div class="tsf"><button class="ghost" id="tsLog">All the tree's words</button><button class="big" id="tsOk">Mm.</button></div></div>
   <div id="diary" hidden><div class="card dcard"><div class="gh"><span class="dot" id="dyDot"></span><h2 id="dyTitle"></h2><button id="dyClose" title="Close">&#10005;</button></div><div id="dyBody"></div></div></div>
+  <div id="critCard" class="card" hidden><button id="ccClose" title="Close">&#10005;</button><div id="ccBody"></div></div>
   <div id="loading"><div class="card">Waking the Elder Tree...</div></div>
 </div>
 <div id="err"></div>
@@ -470,7 +491,7 @@
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/critter_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/audio.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();
