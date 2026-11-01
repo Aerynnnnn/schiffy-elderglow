@@ -142,9 +142,11 @@
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
     if (nav.setDecor) nav.setDecor([], '');   // a fresh island has no decor: its nap spots must not dodge another island's
+    if (nav.setLand) nav.setLand(null, '');   // (nor another island's land)
+    if (nav.setHomes) nav.setHomes([], '');   // (nor another island's turned / free homes)
     const s = {
-      v: 12, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
-      daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
+      v: 13, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false, craft: {} }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
       stats: { buckets: 0, orbs: 0, trips: 0, wood: 0, stone: 0, food: 0, built: 0, arrived: 0, exped: 0, wishes: 0, fruit: 0, trades: 0 },
@@ -152,6 +154,7 @@
       pups: PUPS.map((d, i) => newPup(Object.assign({ breed: d.id }, d), START_JOBS[i], nav.rest(i, sc))),
     };
     window.Exped.create(s);   // S.exp + S.placed (src/expedition.js, loaded right after this file)
+    if (window.Land) window.Land.create(s);   // S.land (creative build part 2, src/land.js): painted paths, removed / planted trees, meadows
     window.Needs.create(s);   // S.wake, S.blight, S.wards, S.garden, S.fr (src/needs.js)
     window.Events.create(s, seed || 1);   // S.events (src/events.js)
     if (window.Social) window.Social.create(s);   // S.social (step 6, src/social.js): account, public flag, merged gift ids
@@ -169,6 +172,8 @@
     return s && s.res && s.res.food <= 0 ? Math.max(20, m - C.HUNGRY_MORALE) : m;
   };
   const mult = m => 0.6 + 0.6 * m / 100;
+  // Round 3 update 2: what placed decorations do (src/catalog.js); exactly 1 (or 0 for the additive kinds) with no decor
+  const catK = (s, nav, k) => window.Catalog ? window.Catalog.at(s, nav)[k] : (k === 'rest' || k === 'spirit' ? 0 : 1);
 
   // ---- buildings
   const plotOf = (nav, pid) => nav.plotBy[pid];
@@ -214,6 +219,7 @@
     if (e.paid) pay(s, costOf(e.type, plotOf(nav, pid)), +1);   // cozy: a cancelled blueprint refunds everything
     delete s.plots[pid]; s.queue = s.queue.filter(x => x !== pid);
     for (const p of s.pups) if (p.tgt === pid) stopWalking(p, nav);
+    if (window.Homes) window.Homes.gone(s, pid, nav);   // a free home's blueprint leaves with its plot (src/homes.js)
     return true;
   }
   function foodNet(s) {
@@ -259,6 +265,7 @@
   }
   function complete(s, pid, nav, ev) {
     const e = s.plots[pid]; e.done = true; e.prog = workOf(e.type, plotOf(nav, pid)); e.at = Math.round(s.time);
+    if (window.Homes && (e.rot || e.col || e.piece)) window.Homes.norm(e);   // (variant fields stay last: save round trips byte-identical)
     s.queue = s.queue.filter(x => x !== pid); s.stats.built++;
     if (ev) ev.push({ type: 'built', pid, kind: e.type });
     for (const p of s.pups) if (p.tgt === pid && p.phase === 'build') { p.phase = 'idle'; p.t = 0; p.dur = 0; p.task = null; p.tgt = null; }
@@ -300,7 +307,7 @@
   function deliver(s, i, nav, ev, kind) {
     const p = s.pups[i], c = counts(s);
     const boost = kind === 'wood' ? 1 + C.B.woodshed.boost * Math.min(4, c.woodshed) : kind === 'stone' ? 1 + C.B.quarry.boost * Math.min(4, c.quarry) : 1;
-    const amt = C.GATHER[kind] * p.acc / H * boost * facK(s, 'forge', 'gather') * sea(s, 'gather');   // Gale Forge tools, autumn harvest
+    const amt = C.GATHER[kind] * p.acc / H * boost * facK(s, 'forge', 'gather') * sea(s, 'gather') * catK(s, nav, 'gather');   // Gale Forge tools, autumn harvest, a tidy work yard (catalog.js)
     s.res[kind] += amt; s.stats[kind] += amt; p.acc = 0; p.trips++; s.stats.trips++;
     if (ev) ev.push({ type: 'deliver', pup: i, job: kind, amount: amt });
   }
@@ -345,7 +352,7 @@
       case 'board': p.t = 0; break;   // still waiting at the dock
       case 'away': break;
       case 'pour': case 'tend': {
-        const job = p.phase === 'pour' ? 'water' : 'light', amt = C.SUPPLY[job] * p.acc / H;
+        const job = p.phase === 'pour' ? 'water' : 'light', amt = C.SUPPLY[job] * p.acc / H * (job === 'light' ? catK(s, nav, 'light') : 1);   // lit paths (catalog.js)
         s.needs[job] = Math.min(100, s.needs[job] + amt); p.acc = 0; p.trips++; s.stats.trips++;
         if (job === 'water') s.stats.buckets++; else s.stats.orbs++;
         if (ev) ev.push({ type: 'deliver', pup: i, job, amount: amt, orb: job === 'light' ? orbSpot(s, i, nav) : null });
@@ -397,9 +404,11 @@
   function step(s, dt, nav, ev) {
     if (!ev) ev = [];   // Round 2 step 2: the story reads this step's events (pushes only: nothing else depends on ev)
     if (window.Decor) window.Decor.sync(s, nav);   // free decor: the nav's blockers = this island's placed decor (one nav may serve two islands in the checks)
+    if (window.Land) window.Land.sync(s, nav);     // shaping the land: removed / planted trees + painted paths (src/land.js)
+    if (window.Homes) window.Homes.sync(s, nav);   // buildings: turned / swapped / free homes (src/homes.js)
     const e0 = ev.length;
     const dc = dayCurve(dayH(s)), duskK = 1 + C.NIGHT.LIGHT_DUSK * dc.dusk;
-    const N = window.Needs, madd = N.moraleAdd(s), frK = N.friendK(s);   // music / glum island; friends on the same job work a bit faster
+    const N = window.Needs, madd = N.moraleAdd(s) + catK(s, nav, 'rest'), frK = N.friendK(s);   // (+ cozy seats: catalog.js)   // music / glum island; friends on the same job work a bit faster
     // pups
     for (let i = 0; i < s.pups.length; i++) {
       const p = s.pups[i];
@@ -434,10 +443,11 @@
       if (aw < 0) { const st = n.drift * dt / H; s.needs[k] = v > n.floor ? Math.max(n.floor, v - st) : Math.min(n.floor, v + st); }
       else if (v > n.min) { const d = (n.decay + (k === 'protect' ? N.C.BLIGHT.LOAD * N.load(s) : 0)) * (0.25 + 0.75 * aw); s.needs[k] = Math.max(n.min, v - d * dt / H); }
     }
+    if (N.awakeK(s, 'spirit') >= 0) { const sp = catK(s, nav, 'spirit'); if (sp) s.needs.spirit = Math.min(100, s.needs.spirit + sp * dt / H); }   // happy spots (catalog.js)
     // buildings work by themselves; pups eat
     const c = counts(s);
     if (c.lantern) s.needs.light = Math.min(100, s.needs.light + c.lantern * C.B.lantern.light * sea(s, 'lantern') * dt / H);
-    s.res.food = Math.max(0, s.res.food + (c.garden * C.B.garden.food * sea(s, 'garden') - C.EAT * eaters(s)) * dt / H);
+    s.res.food = Math.max(0, s.res.food + (c.garden * C.B.garden.food * sea(s, 'garden') * catK(s, nav, 'garden') - C.EAT * eaters(s)) * dt / H);
     s.res.wood += c.woodshed * C.B.woodshed.wood * dt / H; s.res.stone += c.quarry * C.B.quarry.stone * dt / H;
     s.health = healthOf(s);
     s.xp += C.XP_PER_H(s.health) * dt / H;
@@ -515,7 +525,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -527,8 +537,9 @@
     s.daily = { claims: Math.round(fin(d.claims, 0, 0, 1e6)), last: Math.round(fin(d.last, -1, -1, 1e7)), maxDay: Math.round(fin(d.maxDay, -1, -1, 1e7)),
       streak: Math.round(fin(d.streak, 0, 0, 1e6)), mkey: Math.round(fin(d.mkey, -1, -1, 1e6)), mN: Math.round(fin(d.mN, 0, 0, 31)) };
     if (s.daily.maxDay < s.daily.last) s.daily.maxDay = s.daily.last;
-    const iv = o.inv && typeof o.inv === 'object' ? o.inv : {}, ids = (a, uniq) => { if (!Array.isArray(a)) return []; const r = a.filter(x => typeof x === 'string' && /^[a-z0-9-]{1,24}$/.test(x)); return (uniq ? [...new Set(r)] : r).slice(0, 200); };
-    s.inv = { seeds: Math.round(fin(iv.seeds, 0, 0, 1e6)), decor: ids(iv.decor, false), outfits: ids(iv.outfits, true), lumen: iv.lumen === true };
+    const iv = o.inv && typeof o.inv === 'object' ? o.inv : {}, ids = (a, uniq) => { if (!Array.isArray(a)) return []; const r = a.filter(x => typeof x === 'string' && /^[a-z0-9-]{1,24}$/.test(x)); return (uniq ? [...new Set(r)] : r).slice(0, 400); };   // (400: a 300-piece island + its shed)
+    s.inv = { seeds: Math.round(fin(iv.seeds, 0, 0, 1e6)), decor: ids(iv.decor, false), outfits: ids(iv.outfits, true), lumen: iv.lumen === true, craft: {} };
+    if (window.Catalog) window.Catalog.sanitize(s, o.v >= 13 ? o : {});   // v13: crafted counters (older saves: their pieces were found)
     s.level = Math.round(fin(o.level, 1, 1, C.MAX_LV)); s.xp = fin(o.xp, 0, 0, 1e12); s.sap = fin(o.sap, 0, 0, 1e15);
     for (const k in s.needs) s.needs[k] = fin(o.needs && o.needs[k], s.needs[k], 0, 100);
     for (const k in s.stats) s.stats[k] = Math.round(fin(o.stats && o.stats[k], 0, 0, 1e12));
@@ -536,11 +547,13 @@
       for (const k in s.res) s.res[k] = fin(o.res && o.res[k], s.res[k], 0, 1e12);
       s.decide = o.decide === true; s.seq = Math.round(fin(o.seq, 0, 0, 1e9)); s.arrive = fin(o.arrive, 0, 0, C.ARRIVE_WAIT);
       s.lastArrive = fin(o.lastArrive, -1e6, -1e6, s.time);
+      if (window.Homes) window.Homes.pre(s, o.v >= 13 ? o : {}, nav);   // buildings (v13): free homes first, so their plot keys resolve
       if (o.plots && typeof o.plots === 'object') for (const k in o.plots) {
         const e = o.plots[k], pid = +k, q = plotOf(nav, pid); if (!q || !e || typeof e !== 'object' || !C.B[e.type] || !fits(q, e.type)) continue;
         const w = workOf(e.type, q);
         s.plots[pid] = { type: e.type, prog: fin(e.prog, 0, 0, w), paid: e.paid === true || e.done === true, done: e.done === true, auto: e.auto === true, t: Math.round(fin(e.t, 0, 0, 1e12)) };
         if (e.done) s.plots[pid].at = Math.round(fin(e.at, s.time, 0, 1e12));
+        if (window.Homes && o.v >= 13) window.Homes.entry(s.plots[pid], e, q, pid);   // v13 buildings: rot / col / piece
       }
       const seen = new Set();
       if (Array.isArray(o.queue)) for (const x of o.queue) { const e = s.plots[x]; if (e && !e.done && !seen.has(x)) { seen.add(x); s.queue.push(+x); } }
@@ -549,11 +562,18 @@
     // v4 placed decor (v11: anywhere; v4-v10: a decor spot index, migrated onto that spot): BEFORE the pups, so the nav's
     // blockers are this island's and every saved leg below is measured round them (src/decor.js)
     if (window.Decor) window.Decor.sanitize(s, o.v >= 4 ? o : {}, nav);
+    // v13 land (creative build part 2): after the decor, before the pups (their legs are measured on this land); v12 / v13
+    // saves without one get an empty S.land
+    if (window.Land) window.Land.sanitize(s, o.v >= 13 ? o : {}, nav);
+    // v13 buildings: every turned / swapped / free home re-checked on today's island (after decor + land, before the pups)
+    if (window.Homes) window.Homes.post(s, nav);
+    // v13 guided tour (piece 5, src/tour.js): its stops point at decorations / plots, so after them; no stops = no field
+    if (window.Tour) window.Tour.sanitize(s, o.v >= 13 ? o : {}, nav);
     // pups: v1 = the six start pups by index; v2 = its own list (defs inside), first six default to the start pups
     const src = o.pups.slice(0, C.MAX_PUPS), taken = new Set();
     s.pups = [];
     src.forEach((q, i) => {
-      if (!q || typeof q !== 'object') { if (i < PUPS.length) { s.pups.push(create(nav).pups[i]); if (window.Decor) window.Decor.sync(s, nav); } return; }
+      if (!q || typeof q !== 'object') { if (i < PUPS.length) { s.pups.push(create(nav).pups[i]); if (window.Decor) window.Decor.sync(s, nav); if (window.Land) window.Land.sync(s, nav); if (window.Homes) window.Homes.sync(s, nav); } return; }
       const base = i < PUPS.length ? Object.assign({ breed: PUPS[i].id }, PUPS[i]) : null;
       const str = (v, re, d) => typeof v === 'string' && re.test(v) ? v : d;
       const def = v1 ? base : {

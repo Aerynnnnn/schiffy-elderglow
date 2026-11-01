@@ -10,7 +10,8 @@
 (function () {
   'use strict';
   const C = {
-    MAX: 60,           // things out on the island at once
+    MAX: 300,          // things out on the island at once (Round 3 update 2: 60 -> 300; the phone draws the nearest PHONE_N)
+    PHONE_N: 180,
     ROAD: 2.4,         // m from a road line to the decoration's footprint
     JOB: 2.4,          // m from a job spot / door / builder spot
     PIECE: 1,          // m from the layout's small decor pieces that have no footprint (braziers, fairy rings, garden boxes)
@@ -18,6 +19,7 @@
     REACH: 30,         // job spots whose walk to their road node passes this close are re-walked before a placement
     LAND: [0, 190, 260, 275, 275, 460, 460, 460, 460],   // m from the tree, by tree level (the land rings plots open on)
     THIN_R: 210,       // a thinned (hidden) forest tree inside this never grows back: decor may stand on its spot
+    PAINT: 1.2,        // m from a painted path's middle line (land shaping: the strip is 1.5 m wide)
   };
   // footprints of the kit pieces nav.js has none for ([cx, cz, hx, hz], piece space, measured from the kit GLBs 2026-11-01)
   // (vertices below 2 m of each kit batch; the same read gives EG_WispTree_A exactly its nav.FOOT box)
@@ -36,22 +38,27 @@
 
   // ---- nav sync: S.placed -> nav blockers (cheap when nothing changed: the signature string is all it compares)
   const sigOf = s => (s.placed || []).map(x => x.id + ',' + x.k + ',' + x.x + ',' + x.z + ',' + x.r).join('|');
-  const boxesOf = list => list.map(x => ({ k: x.k, f: footOf(x.id), x: x.x, z: x.z, r: x.r })).filter(b => b.f);
+  // (walked-on pieces, e.g. stepping stones + flower patches from the catalogue, block nobody)
+  const walkOn = id => !!(window.Catalog && window.Catalog.BY[id] && window.Catalog.BY[id].walk);
+  const boxesOf = list => list.filter(x => !walkOn(x.id)).map(x => ({ k: x.k, f: footOf(x.id), x: x.x, z: x.z, r: x.r })).filter(b => b.f);
   function sync(s, nav) { if (nav && nav.setDecor) nav.setDecor(boxesOf(s.placed || []), sigOf(s)); }
 
   // ---- what may never be covered (per nav, built once): job spots, doors, builder spots, blight / ward rings, small pieces
   const PROT = new WeakMap();
   function protOf(nav) {
-    let P = PROT.get(nav); if (P) return P;
-    P = [];
-    const add = (p, n, m, why) => { if (p) P.push({ p, n: n === undefined ? -1 : n, m, why }); };
+    // (buildings, creative build part 2: a turned / free home's door + builder spots move with it -> re-made when nav.homeSig()
+    // changes; entries carry the plot's pid so a home skips its own)
+    const hs = nav.homeSig ? nav.homeSig() : '';
+    let P = PROT.get(nav); if (P && P.hs === hs) return P;
+    P = []; P.hs = hs;
+    const add = (p, n, m, why, pid) => { if (p) P.push(pid === undefined ? { p, n: n === undefined ? -1 : n, m, why } : { p, n: n === undefined ? -1 : n, m, why, pid }); };
     for (const w of nav.water) { add(w.p, w.n, C.JOB, 'job'); add(w.dip, -1, C.JOB, 'job'); }
     for (const o of nav.orbs) add(o.p, o.n, C.JOB, 'job');
     for (const k in nav.gather) for (const g of nav.gather[k]) add(g.p, g.n, C.JOB, 'job');
-    for (const q of nav.plots) {
-      add(q.door, -1, C.JOB, 'door');
-      for (let j = 0; j < 7; j++) { const t = nav.site(q.pid, j); add(t.p, t.n, C.JOB, 'door'); }
-      if (q.kind === 'market') add(q.pos, -1, 20, 'building');
+    for (const q of nav.plots.concat(nav.freePlots ? nav.freePlots() : [])) {
+      add(q.door, -1, C.JOB, 'door', q.pid);
+      for (let j = 0; j < 7; j++) { const t = nav.site(q.pid, j); add(t.p, t.n, C.JOB, 'door', q.pid); }
+      if (q.kind === 'market') add(q.pos, -1, 20, 'building', q.pid);
     }
     for (const b of nav.blightSpots) add(b.p, b.n, 6, 'job');
     for (const w of nav.wardSpots) add(w.p, w.n, 4, 'job');
@@ -66,9 +73,11 @@
   function check(s, nav, id, x, z, r, skipK, opt) {
     const f = footOf(id); if (!f) return { ok: false, why: 'none' };
     sync(s, nav);   // the nav's blockers = this island's decor (one nav may serve two islands)
+    if (window.Land) window.Land.sync(s, nav);   // (+ its land: removed trees, planted trees, painted paths)
+    if (window.Homes) window.Homes.sync(s, nav);   // (+ its turned / free homes: src/homes.js)
     const Nav = N_(), TP = nav.TP, rad = radOf(id), lv = Math.max(1, Math.min(C.LAND.length - 1, s.level || 1));
     if (!isFinite(x) || !isFinite(z) || !isFinite(r)) return { ok: false, why: 'far' };
-    if ((s.placed || []).filter(o => o.k !== skipK).length >= C.MAX) return { ok: false, why: 'full' };
+    if (!(opt && opt.cap === false) && (s.placed || []).filter(o => o.k !== skipK).length >= C.MAX) return { ok: false, why: 'full' };   // (cap false: a planted tree, src/land.js)
     const dT = Math.hypot(x - TP[0], z - TP[2]);
     if (dT > C.LAND[lv]) return { ok: false, why: 'far' };
     let nn = Infinity; for (const n of nav.nodes) if (!n.bridge) nn = Math.min(nn, Math.hypot(n.p[0] - x, n.p[2] - z)); if (nn > C.NODE) return { ok: false, why: 'far' };
@@ -77,6 +86,8 @@
       const u = (x - TP[0]) * ux + (z - TP[2]) * uz, v = -(x - TP[0]) * uz + (z - TP[2]) * ux; if (u > 0 && u < 95 && Math.abs(v) < 3.2 + rad) return { ok: false, why: 'door' }; }
     if (nav.onDeck(x, z)) return { ok: false, why: 'bridge' };
     if (nav.roadDist(x, z, C.ROAD + rad + 1) < C.ROAD + rad) return { ok: false, why: 'path' };
+    // a painted path (src/land.js) stays free too (walked-on pieces may lie on it)
+    if (nav.paintDist && !walkOn(id) && nav.landSig() && nav.paintDist(x, z, C.PAINT + rad + 1) < C.PAINT + rad) return { ok: false, why: 'path' };
     // the footprint itself, sampled every <= 0.45 m (edges included): water (1 m cells), decks, footprints of other things
     const box = nav.boxOf(x, z, r, f, 1, 'cand', -1), hx = box.hx - Nav.PUP_R, hz = box.hz - Nav.PUP_R;
     const nx = Math.max(2, Math.ceil(2 * hx / 0.45)), nz = Math.max(2, Math.ceil(2 * hz / 0.45));
@@ -102,8 +113,8 @@
     }
     if (opt && opt.reach === false) return { ok: true };
     // every job spot whose walk to its road node passes near: still walkable round the blockers with this one added
-    const list = (s.placed || []).filter(o => o.k !== skipK).map(o => ({ k: o.k, f: footOf(o.id), x: o.x, z: o.z, r: o.r })).filter(b => b.f);
-    const base = list.slice(); list.push({ k: -1, f, x, z, r });
+    const list = boxesOf((s.placed || []).filter(o => o.k !== skipK));
+    const base = list.slice(); if (!walkOn(id)) list.push({ k: -1, f, x, z, r });
     nav.setDecor(list, 'probe');
     let bad = false;
     try {

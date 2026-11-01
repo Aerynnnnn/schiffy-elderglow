@@ -187,7 +187,7 @@
       }
       case 'carry': work('feed', C.GARDEN.FEED, toward(p.at.p, nav.TP)); break;
       case 'feed': {
-        const k = (1 + C.GARDEN.SPROUT_K * s.garden.sprouts.length) * (1 + C.GARDEN.CONS_K * Math.min(1, built(s, 'conserv'))) * Sim.facK(s, 'greenhold', 'nourish') * (window.Seasons ? window.Seasons.k(s, 'nourish') : 1);
+        const k = (1 + C.GARDEN.SPROUT_K * s.garden.sprouts.length) * (1 + C.GARDEN.CONS_K * Math.min(1, built(s, 'conserv'))) * Sim.facK(s, 'greenhold', 'nourish') * (window.Seasons ? window.Seasons.k(s, 'nourish') : 1) * (window.Catalog ? window.Catalog.at(s, nav).garden : 1);   // water + flowers by the beds (catalog.js)
         const amt = supply('nourish', k); s.garden.fed++;
         if (ev) ev.push({ type: 'deliver', pup: i, job: 'nourish', amount: amt });
         next(); break;
@@ -246,7 +246,7 @@
     if (s.wake.t !== null) for (const k of ['protect', 'spirit']) { const t0 = s.wake.t + C.WAKE[k]; if (s.time < t0 && s.time + dt >= t0 && ev) ev.push({ type: 'wake', need: k }); }
     // blight: grows; a roll per SLOT once Protect is awake (slot times are fixed, so offline == online)
     const B = C.BLIGHT;
-    for (const b of s.blight.list) b.r = Math.min(1, b.r + dt / B.GROW * (warded(s, nav, b.k) ? B.WARD_G : 1) * (1 - C.BLIGHT.R0));
+    for (const b of s.blight.list) b.r = Math.min(1, b.r + dt / B.GROW * (warded(s, nav, b.k) ? B.WARD_G : 1) * (window.Catalog ? window.Catalog.blightK(s, nav, b.k) : 1) * (1 - C.BLIGHT.R0));   // (warding stones: catalog.js)
     const pt = wakeAt(s, 'protect');
     if (pt !== null) {
       if (s.blight.slot === null) s.blight.slot = Math.floor(pt / B.SLOT);   // the first roll comes on the first slot after waking

@@ -18,7 +18,14 @@
     NOTE_MAX: 120, NOTES_PER_DAY: 3, VISITS_PER_HOUR: 30,
     GOT_KEEP: 400, SENT_KEEP: 400, WATERED_KEEP: 200,
     ISLAND: [3, 24], HOST: [2, 14], PUP: [1, 14],
+    // piece 5 "showing off" (= server/patch_5.sql): a "beautiful" star once per visitor per island (no undo), only after a
+    // visit there in the last 24 h, <= 30 an hour + 60 a UTC day per visitor; Island of the week = most stars this UTC week
+    // from >= 3 visitors, never last week's pick; Featured = the next 4 this week (>= 2 stars) + 2 new islands (< 14 days) with stars
+    STAR: { HOUR: 30, DAY: 60, VISIT_H: 24, WEEK_MIN: 3, FEAT_TOP: 4, FEAT_MIN: 2, FEAT_NEW: 2, NEW_DAYS: 14, REPORT_DAYS: 30 },
   };
+  // the UTC week (Monday 00:00 UTC) = SQL star_week() = Lanterns.cycleOf / bloom_cycle
+  const weekOf = ms => Math.floor((ms / 1000 + 259200) / 604800);
+  const weekStart = c => (c * 604800 - 259200) * 1000;
   const RES = ['wood', 'stone', 'food', 'crystal', 'seeds'];
   const day = ms => Math.floor(ms / 86400000);   // UTC day number (the server's current_date at UTC)
 
@@ -87,13 +94,17 @@
     const plots = []; for (const k in s.plots) { const e = s.plots[k]; plots.push([+k, e.type, e.done ? 1 : 0, e.done ? 100 : Math.round(100 * e.prog / Math.max(1, window.Sim.workOf(e.type, (nav && nav.plotBy[k]) || { piece: '' }) || 1))]); }
     plots.sort((a, b) => a[0] - b[0]);
     const h = s.health;
-    return {
+    const o = {
       v: C.SNAP_V, name: so.island, host: so.host, lv: s.level, xp: Math.round(s.xp), hp: Math.round(h),
       nd: ['water', 'light', 'nourish', 'protect', 'spirit'].map(k => Math.round(s.needs[k])), sea: typeof sea === 'number' ? sea : -1,
       wk: s.wake && s.wake.t !== null ? 1 : 0, plots, placed: window.Decor.snap(s), wards: s.wards.slice(0, 12), pups,
       st: { buckets: s.stats.buckets, orbs: s.stats.orbs, built: s.stats.built, arrived: s.stats.arrived, exped: s.stats.exped, days: Math.floor(s.time / 86400), pups: s.pups.length },
       col: colOf(h, sea),
     };
+    const ld = window.Land && window.Land.snap(s); if (ld) o.land = ld;   // shaping the land (only when touched: older snapshots = same bytes)
+    const hm = window.Homes && window.Homes.snap(s); if (hm) o.hm = hm;   // buildings: colours / turns / roofs / free homes (only when used)
+    const tr = window.Tour && window.Tour.snap(s); if (tr) o.tour = tr;   // piece 5: the host's guided tour (only when set)
+    return o;
   }
   // card colour: the tree's health + the season (cheap "thumbnail")
   function colOf(h, sea) {
@@ -123,6 +134,9 @@
       wards: Array.isArray(o.wards) ? o.wards : [], wake: { t: o.wk ? -7200 : null }, res: { wood: 50, stone: 50, food: 200, crystal: 0 } }, nav);
     if (!st) return null;
     if (window.Wardrobe) window.Wardrobe.unsnap(st, o.pups);   // outfits (8th entry; a 7-entry snapshot = everyone undressed)
+    if (window.Land) window.Land.unsnap(st, o.land, nav);      // painted paths, removed + planted trees, meadows (none = untouched land)
+    if (window.Homes) window.Homes.unsnap(st, o.hm, o.plots, nav);   // buildings: free homes + their plot rows, colours / turns / roofs
+    if (window.Tour) window.Tour.unsnap(st, o.tour, nav);            // piece 5: the host's tour stops (repaired like a save)
     st.events.slot = 1e9; st.decide = false; st.lastArrive = 1e9; st.social.acct = null;   // quiet: no events, no arrivals, no account
     return st;
   }
@@ -201,10 +215,10 @@
 
   // ---- sample islands for the mock backend (browsing works offline): deterministic, made from the real nav lists
   const SAMPLES = [
-    { name: 'Mossy Hollow', host: 'Clover', lv: 3, sea: 0, homes: 3, extra: ['garden', 'board', 'stage'], pups: 10, likes: 12 },
-    { name: 'Lantern Bay', host: 'Ember', lv: 5, sea: 2, homes: 6, extra: ['garden', 'board', 'stage', 'conserv', 'lantern', 'hush'], pups: 18, likes: 31 },
-    { name: 'Puddle Patch', host: 'Pip', lv: 2, sea: 1, homes: 1, extra: ['garden'], pups: 7, likes: 3 },
-    { name: 'Starfall Glade', host: 'Juniper', lv: 7, sea: 3, homes: 9, extra: ['garden', 'board', 'stage', 'conserv', 'lantern', 'hush', 'sprout', 'greenhold', 'circus'], pups: 26, likes: 58 },
+    { name: 'Mossy Hollow', host: 'Clover', lv: 3, sea: 0, homes: 3, extra: ['garden', 'board', 'stage'], pups: 10, likes: 12, stars: 2 },
+    { name: 'Lantern Bay', host: 'Ember', lv: 5, sea: 2, homes: 6, extra: ['garden', 'board', 'stage', 'conserv', 'lantern', 'hush'], pups: 18, likes: 31, stars: 3 },
+    { name: 'Puddle Patch', host: 'Pip', lv: 2, sea: 1, homes: 1, extra: ['garden'], pups: 7, likes: 3, stars: 1 },
+    { name: 'Starfall Glade', host: 'Juniper', lv: 7, sea: 3, homes: 9, extra: ['garden', 'board', 'stage', 'conserv', 'lantern', 'hush', 'sprout', 'greenhold', 'circus'], pups: 26, likes: 58, stars: 5 },
   ];
   function samples(nav) {
     const Sim = window.Sim;
@@ -232,9 +246,9 @@
       for (let k = 0; k < Math.min(nav.decorSpots.length, 2 + si * 2); k++) { const it = window.Decor.spotItem(nav, Object.keys(window.Exped.DECOR)[(k + si) % 7], k * 3 + si); if (it) s.placed.push(it); }
       s.social.island = d.name; s.social.host = d.host;
       const snap = snapshot(s, d.sea, nav); snap.st.days = 2 + si * 5;
-      return { id: 'sample-' + (si + 1), name: d.name, host: d.host, snap, likes: d.likes, sample: true };
+      return { id: 'sample-' + (si + 1), name: d.name, host: d.host, snap, likes: d.likes, stars: d.stars, sample: true };
     });
   }
 
-  window.Social = { C, day, textOk, nameCheck, noteCheck, create, sanitize, snapshot, colOf, snapSize, checkSnap, visitState, applyGifts, applySent, waterOk, spare, samples, RES };
+  window.Social = { C, day, weekOf, weekStart, textOk, nameCheck, noteCheck, create, sanitize, snapshot, colOf, snapSize, checkSnap, visitState, applyGifts, applySent, waterOk, spare, samples, RES };
 })();

@@ -104,6 +104,10 @@
   button.go { border: 2.5px solid var(--ink); background: #ffd23f; border-radius: 11px; padding: 6px 10px; font-family: var(--disp); font-size: 15px; box-shadow: 0 2px 0 var(--ink); }
   button.ghost { border: 2px solid var(--ink); background: #fff; border-radius: 10px; padding: 4px 10px; font-size: 13px; }
   #pcBody .bar.big { height: 24px; margin: 6px 0; }
+/* creative build part 2, buildings: a home's colours / roof / turn in its plot card */
+.hmt { background: #fffaf0; border: 2px solid var(--ink); border-radius: 12px; padding: 6px 8px; margin: 6px 0; } .hmsw { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; } .hmsw span { font-size: 12px; color: #5d567a; margin-right: 2px; }
+.hsw { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--ink); background: #e9e2d0; padding: 0; font-size: 14px; line-height: 1; cursor: pointer; box-shadow: none; } .hsw.on { outline: 3px solid #7dfcff; outline-offset: 1px; } .hmb { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+body.phone .hsw { width: 34px; height: 34px; }
   /* away / newcomers */
   #away li.good { background: #eaf8e2; border-radius: 8px; padding: 2px 6px; } #away li.hd { margin-top: 10px; }
   #away li.np { align-items: flex-start; background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 6px 8px; }
@@ -196,6 +200,30 @@
   .bo.dest { cursor: pointer; } .bo.dest:hover:not(.off) { background: #fff6d6; } .bo.dest .cs svg.ic { width: 18px; height: 18px; }
   button.go:disabled, .big:disabled { opacity: .45; cursor: default; box-shadow: none; }
   .qi.hl { background: #fff4c6; box-shadow: 0 0 0 3px #ffd23f; } .qi .bar i { background: linear-gradient(90deg, #7fd6ff, #c69bff); } .qi .dot { width: 9px; height: 9px; border-width: 1.5px; vertical-align: -1px; }
+  /* Round 3 update 2: the Craft card (catalogue sets, cost, what a piece does) */
+  #craftCard { background: #fffbf2; position: absolute; top: 64px; right: 12px; width: 372px; max-height: calc(100% - 80px); overflow-y: auto; z-index: 9; padding: 0 12px 10px; } #craftCard[hidden] { display: none; }
+  #crTitle { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } #crTitle svg.ic { width: 24px; height: 24px; }
+  #crSets { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; } #crSets button { border: 2px solid var(--ink); background: #fff; border-radius: 999px; padding: 1px 9px; font: 600 12px Fredoka, sans-serif; color: var(--ink); cursor: pointer; } #crSets button.on { background: #ffe08a; }
+  .cri { background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 6px 8px; margin: 5px 0; } .cri.lock { opacity: .6; } .cri .crh { display: flex; align-items: center; gap: 6px; } .cri .crh b { font-size: 14px; flex: 1; } .cri .crh small { font-size: 11px; color: #5d567a; }
+  .cri .crc { display: flex; flex-wrap: wrap; gap: 3px; margin: 3px 0; } .cri .crc span { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; background: #f3eee2; border-radius: 8px; padding: 0 6px; } .cri .crc span.short { background: #ffd9d9; color: #a3282c; } .cri .crc svg.ic { width: 15px; height: 15px; }
+  .cri .crf { font-size: 12px; color: #3e6a3a; display: flex; gap: 4px; align-items: flex-start; } .cri .crf.pure { color: #7a6a8a; font-style: italic; } .cri .crf svg.ic { width: 15px; height: 15px; flex: none; }
+  .cri .crb { display: flex; gap: 5px; justify-content: flex-end; margin-top: 4px; } .cri .crb .why { font-size: 11px; color: #a3282c; margin-right: auto; align-self: center; }
+  body.phone #craftBtn { display: none; } body.phone #craftCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 70%; border-radius: 18px 18px 0 0; border-bottom: none; z-index: 12; }
+  #pbFx { display: block; font-size: 12px; color: #3e6a3a; } #pbFx.none { color: #7a6a8a; } #pbFx svg.ic { width: 14px; height: 14px; vertical-align: -2px; }
+  /* Round 3 update 2: photo mode (view only) */
+  #photoBtn { position: absolute; right: 116px; bottom: 14px; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 7; background: #e8f4ff; cursor: pointer; } #photoBtn svg.ic { width: 26px; height: 26px; }
+  body.visit #photoBtn { right: 64px; bottom: 90px; } body.phone #photoBtn { right: 8px; bottom: auto; top: 246px; width: 38px; height: 38px; } body.phone #photoBtn svg.ic { width: 22px; height: 22px; }
+  body.calm #photoBtn { opacity: 0; pointer-events: none; transition: opacity 1.8s ease; }
+  body.photo #app > *:not(canvas):not(#photoBar):not(#photoFrame):not(#photoFlash):not(#err) { visibility: hidden !important; }
+  #photoBar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(460px, 94%); z-index: 30; padding: 8px 12px; background: #fffbf2ee; }
+  #photoBar[hidden] { display: none; } .phr { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; } .phr > b { font-size: 18px; } #phCap { font-size: 12px; color: #6a5a7a; }
+  .phl { width: 52px; font-weight: 600; font-size: 12px; } #phTime { flex: 1; } #phTimeL { width: 40px; font-variant-numeric: tabular-nums; }
+  .phc { display: flex; flex-wrap: wrap; gap: 4px; } .phc button { border: 2px solid var(--ink); background: #fff; border-radius: 999px; padding: 1px 9px; font: 600 12px Fredoka, sans-serif; color: var(--ink); cursor: pointer; } .phc button.on { background: #ffe08a; }
+  .phb { justify-content: flex-end; } .phb small { margin-right: auto; color: #6a5a7a; font-size: 11px; }
+  #photoFrame { position: absolute; inset: 0; pointer-events: none; z-index: 29; display: none; } body.photo #photoFrame.fr-soft { display: block; background: radial-gradient(ellipse at center, rgba(42,36,66,0) 55%, rgba(42,36,66,.45) 100%); }
+  body.photo #photoFrame.fr-card { display: block; box-shadow: inset 0 0 0 14px #fffaf0, inset 0 -70px 0 14px #fffaf0; }
+  #photoFlash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 31; } #photoFlash.on { animation: phflash .5s ease-out; } @keyframes phflash { 0% { opacity: .85; } 100% { opacity: 0; } }
+  body.phone #photoBar { width: 100%; bottom: 0; border-radius: 18px 18px 0 0; box-sizing: border-box; }
   .dec { display: flex; align-items: center; gap: 6px; background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 4px 8px; margin: 4px 0; } .dec b { font-size: 13px; } .dec small { flex: 1; font-size: 11px; color: #5d567a; }
   button.sm { padding: 2px 8px; font-size: 13px; }
   .tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin: 6px 0 8px; }
@@ -589,7 +617,46 @@ body.phone #placeBar .pbb { flex-wrap: wrap; justify-content: center; }
 body.placing #topBtns, body.placing #tlabels { visibility: hidden; }
 body.phone.placing #side { display: none; }
 body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; } body.phone #placeBar .pbk { display: none; } body.phone #placeBar .pbt { flex: 1 0 100%; align-items: center; text-align: center; }
+/* creative build part 2: shaping the land (the land bar = the place bar's look) */
+#landBar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; max-width: calc(100% - 32px); box-sizing: border-box; animation: tin .3s ease-out; }
+#landBar .pbt { display: flex; flex-direction: column; min-width: 170px; max-width: 300px; } #landBar .pbt span { font-size: 16px; } #landBar .pbt span svg.ic { width: 18px; height: 18px; vertical-align: -3px; }
+#landBar #lbWhy { font-size: 12.5px; color: #2f7a35; font-weight: 600; } #landBar.bad #lbWhy { color: #c4304a; } #lbFx { font-size: 12px; color: #3e6a3a; } #lbFx.none { color: #7a6a8a; } #lbFx svg.ic { width: 14px; height: 14px; vertical-align: -2px; }
+#landBar .pbb { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } #landBar .pbb .ghost { height: 34px; padding: 0 10px; } #landBar .go { font-size: 16px; padding: 6px 14px; } #landBar .ghost:disabled, #landBar .go:disabled { opacity: .4; }
+#lbTools { display: flex; gap: 4px; } #lbTools button, #lbOpts button { border: 2px solid var(--ink); background: #fff; border-radius: 999px; padding: 2px 10px; font: 600 12.5px Fredoka, sans-serif; color: var(--ink); cursor: pointer; } #lbTools button.on, #lbOpts button.on { background: #ffe08a; }
+#lbOpts { display: flex; gap: 4px; flex-wrap: wrap; flex: 1 0 100%; } #lbOpts:empty { display: none; } #lbOpts button small { color: #7a6a8a; font-weight: 500; }
+#landBar .pbk { flex: 1 0 100%; text-align: center; font-size: 11px; color: #7a7396; margin-top: -2px; }
+body.phone #landBar { bottom: 12px; left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; } body.phone #landBar .pbk { display: none; } body.phone #landBar .pbt { flex: 1 0 100%; align-items: center; text-align: center; max-width: none; } body.phone #landBar .pbb { justify-content: center; } body.phone #lbOpts { justify-content: center; }
+.cri.land .crb { justify-content: flex-start; } .cri.land .crf b { color: var(--ink); }
 #decMenu { position: absolute; z-index: 8; padding: 6px 8px 8px; text-align: center; animation: tin .25s ease-out; } #decMenu b { display: block; font-size: 14px; margin-bottom: 5px; }
+/* creative build piece 5 "showing off": tour marking bar + pins, the visitor's guided tour bubble, stars, the Explore shelf */
+#tourBar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; max-width: calc(100% - 32px); box-sizing: border-box; animation: tin .3s ease-out; }
+#tourBar .pbt { display: flex; flex-direction: column; min-width: 170px; } #tourBar .pbt span { font-size: 16px; } #tourBar #tbWhy { font-size: 12.5px; color: #5d567a; font-weight: 600; }
+#tourBar.bad #tbWhy { color: #c4304a; } #tourBar.got #tbWhy { color: #2f7a35; }
+#tourBar .pbb { display: flex; gap: 6px; align-items: center; } #tourBar input { width: 240px; height: 34px; box-sizing: border-box; border: 2.5px solid var(--ink); border-radius: 10px; padding: 0 8px; font: 14px Fredoka, sans-serif; color: var(--ink); }
+#tourBar .go { font-size: 15px; padding: 6px 12px; } #tourBar .go:disabled { opacity: .45; } #tourBar .ghost { height: 34px; padding: 0 10px; }
+body.phone #tourBar { bottom: 12px; left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; } body.phone #tourBar .pbt { flex: 1 0 100%; align-items: center; text-align: center; }
+body.phone #tourBar .pbb { flex-wrap: wrap; justify-content: center; } body.phone #tourBar input { flex: 1 0 100%; width: auto; }
+#tourPins { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.tpin { position: absolute; transform: translate(-50%, -100%); min-width: 26px; height: 26px; padding: 0 4px; box-sizing: border-box; border-radius: 13px; background: #ffd23f; border: 2.5px solid var(--ink, #2a2442); display: flex; align-items: center; justify-content: center; font: 700 13px Fredoka, sans-serif; color: var(--ink, #2a2442); box-shadow: 0 2px 0 var(--ink, #2a2442); }
+.tpin::after { content: ''; position: absolute; left: 50%; bottom: -8px; width: 2.5px; height: 7px; background: var(--ink, #2a2442); transform: translateX(-50%); }
+.tpin.new { background: #9fe8ff; animation: tin .3s ease-out; }
+#guideSay { z-index: 7; max-width: 250px; font: 600 13.5px Fredoka, sans-serif; } #guideSay b { color: #b06e00; margin-right: 5px; } #guideSay small { display: block; color: #7a7396; font-size: 11px; margin-top: 2px; }
+#guideSay[hidden] { display: none; } body.phone #guideSay { max-width: 190px; font-size: 12.5px; }
+body.visit #tourChip { bottom: 86px; } body.phone.visit #tourChip { bottom: 74px; font-size: 11.5px; padding: 4px 10px; white-space: nowrap; }
+#visBar button.star.done { background: #fff2c4; } #visBar button.tour { background: #eef7ff; }
+body.phone #visBar button { min-width: 46px; padding: 3px 2px; font-size: 11px; }
+.stc { color: #b98500; display: inline-flex; align-items: center; gap: 1px; } .stc svg.ic { width: 13px; height: 13px; }
+.shelf { margin: 2px 0 10px; } .shelf h4 { margin: 6px 0 5px; display: flex; align-items: center; gap: 4px; font-size: 14px; } .shelf h4 svg.ic { width: 18px; height: 18px; }
+.wkcard { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: linear-gradient(135deg, #fff7d1, #ffe9a8); border: 2.5px solid var(--ink); border-radius: 16px; padding: 8px 10px; font: inherit; color: var(--ink); box-shadow: 0 3px 0 var(--ink), inset 0 0 0 2px #ffd23f; }
+.wkcard:hover:not(:disabled) { background: linear-gradient(135deg, #fffbe6, #ffefb8); } .wkcard .isw { width: 48px; height: 48px; } .wkcard b { font-size: 18px; display: block; line-height: 1.1; }
+.wkcard small { display: flex; align-items: center; gap: 3px; font-size: 12px; color: #5d567a; flex-wrap: wrap; } .wkcard .wkl { font: 700 11px Fredoka, sans-serif; color: #a26a00; text-transform: uppercase; letter-spacing: .5px; }
+.feat { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+.fcard { flex: 0 0 128px; display: flex; flex-direction: column; gap: 2px; text-align: left; background: #fff; border: 2.5px solid var(--ink); border-radius: 14px; padding: 6px 8px; font: inherit; color: var(--ink); position: relative; }
+.fcard:hover:not(:disabled) { background: #fff6d6; } .fcard b { font-size: 13.5px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fcard small { font-size: 11px; color: #5d567a; display: flex; align-items: center; gap: 2px; }
+.fcard .isw { width: 30px; height: 30px; } .fcard .nw { position: absolute; top: -7px; right: 6px; background: #9fe8ff; border: 2px solid var(--ink); border-radius: 8px; font: 700 10px Fredoka, sans-serif; padding: 0 5px; }
+.trow { display: flex; gap: 6px; align-items: center; margin: 4px 0; } .trow > b { flex: 0 0 22px; height: 22px; border-radius: 11px; background: #ffd23f; border: 2px solid var(--ink); display: grid; place-items: center; font-size: 12px; }
+.trow .tn { flex: 1; min-width: 0; display: flex; flex-direction: column; } .trow .tn small { font-size: 11px; color: #7a7396; }
+.trow input { width: 100%; box-sizing: border-box; height: 28px; border: 2px solid var(--ink); border-radius: 8px; padding: 0 6px; font: 13px Fredoka, sans-serif; } .trow .ghost { padding: 3px 7px; font-size: 12px; }
 #decMenu .dmb { display: flex; gap: 5px; } #decMenu .dmb .ghost { padding: 5px 10px; } body.phone #decMenu .dmb .ghost { padding: 8px 12px; font-size: 14px; }
 </style>
 </head>
@@ -611,8 +678,12 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
     </div>
   </div>
   <div id="resbar" class="card" hidden></div>
-  <div id="topBtns" hidden><button id="giftBtn" title="Daily gift">Gift</button><button id="expBtn" title="Sky trips: send pups to the floating isles">Trips</button><button id="evBtn" title="Events: what is happening on the island">Events</button><button id="bookBtn" title="The Book: tree memories, pups met, decorations, outfits">Book</button><button id="socBtn" title="Explore other players' islands" hidden>Explore</button><button id="buildBtn">Build</button><button id="camTree">Tree view</button></div>
+  <div id="topBtns" hidden><button id="giftBtn" title="Daily gift">Gift</button><button id="expBtn" title="Sky trips: send pups to the floating isles">Trips</button><button id="craftBtn" title="Craft decorations for your island">Craft</button><button id="evBtn" title="Events: what is happening on the island">Events</button><button id="bookBtn" title="The Book: tree memories, pups met, decorations, outfits">Book</button><button id="socBtn" title="Explore other players' islands" hidden>Explore</button><button id="buildBtn">Build</button><button id="camTree">Tree view</button></div>
   <div id="tlabels"></div>
+  <button id="photoBtn" class="card" title="Photo mode: take a picture of the island"></button>
+  <div id="photoFrame"></div><div id="photoFlash"></div>
+  <div id="photoBar" class="card" hidden><div class="phr"><b class="disp">Photo</b><span id="phCap"></span></div><div class="phr"><span class="phl">Time</span><input id="phTime" type="range" min="0" max="23.75" step="0.25"><span id="phTimeL"></span><button class="ghost sm" id="phNow">Now</button></div><div class="phr"><span class="phl">Season</span><span id="phSea" class="phc"></span></div><div class="phr"><span class="phl">Frame</span><span id="phFrame" class="phc"></span></div><div class="phr phb"><small>Drag to look around, wheel / pinch to zoom.</small><button class="ghost" id="phDone">Done</button><button class="go" id="phSave">Save image</button></div></div>
+  <div id="craftCard" class="card" hidden><div class="pch"><span id="crTitle" class="disp"></span><button id="crClose" title="Close">&#10005;</button></div><div id="crSets"></div><div id="crBody"></div></div>
   <div id="expCard" class="card" hidden><div class="pch"><span id="ecTitle" class="disp"></span><button id="ecClose" title="Close">&#10005;</button></div><div id="ecBody"></div></div>
   <div id="evCard" class="card" hidden><div class="pch"><span id="evTitle" class="disp"></span><button id="evClose" title="Close">&#10005;</button></div><div id="evBody"></div></div>
   <div id="needCard" class="card" hidden><div class="pch"><span id="ncTitle" class="disp"></span><button id="ncClose" title="Close">&#10005;</button></div><div id="ncBody"></div></div>
@@ -625,8 +696,12 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
   <div id="visHint" class="card" hidden>Walk with <b>WASD</b> / arrows (Shift = run) or click the ground. Drag to look around.</div>
   <div id="toasts"></div>
   <div id="tourChip" class="card" hidden>Tap anywhere to skip</div>
-  <div id="placeBar" class="card" hidden><div class="pbt"><span id="pbName" class="disp"></span><small id="pbWhy"></small></div><div class="pbb"><button class="ghost" id="pbRotL" title="Turn left (Q)"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2.2-5.1" /><path d="M4 4v4.5h4.5" /></svg></button><button class="ghost" id="pbRotR" title="Turn right (E)"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.2-5.1" /><path d="M20 4v4.5h-4.5" /></svg></button><button class="ghost" id="pbSnap" title="Snap to the grid + 15 degree turns (G)"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" /></svg></button><button class="ghost" id="pbCopy" title="Same turn as the last one (C)"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M5 15V6a1 1 0 0 1 1-1h9" /></svg></button><button class="ghost" id="pbCancel" title="Cancel (Esc)">Cancel</button><button class="go" id="pbOk">Place here</button></div><small class="pbk">Q / E turn (Shift: 45&deg;) &middot; G grid &middot; C same turn &middot; Esc cancel</small></div>
-  <div id="decMenu" class="card" hidden><b id="dmName" class="disp"></b><div class="dmb"><button class="ghost" data-a="move">Move</button><button class="ghost" data-a="turn">Turn</button><button class="ghost" data-a="pack">Pack away</button></div></div>
+  <div id="tourBar" class="card" hidden><div class="pbt"><span id="tbName" class="disp"></span><small id="tbWhy"></small></div><div class="pbb"><input id="tbNote" maxlength="60" placeholder="A note for visitors (optional)"><button class="go" id="tbAdd" disabled>Add stop</button><button class="ghost" id="tbDone">Done</button></div></div>
+  <div id="tourPins"></div>
+  <div id="guideSay" class="chatb" hidden></div>
+  <div id="landBar" class="card" hidden><div class="pbt"><span id="lbName" class="disp"></span><small id="lbWhy"></small><small id="lbFx" hidden></small></div><div class="pbb"><span id="lbTools"><button data-t="path">Path</button><button data-t="meadow">Meadow</button><button data-t="plant">Plant</button><button data-t="remove">Remove</button></span><button class="ghost" id="lbUndo" title="Undo the last change (Ctrl+Z)">Undo</button><button class="ghost" id="lbDone" title="Done (Esc)">Done</button><button class="go" id="lbOk" hidden>Here</button></div><div id="lbOpts"></div><small class="pbk" id="lbKeys"></small></div>
+  <div id="placeBar" class="card" hidden><div class="pbt"><span id="pbName" class="disp"></span><small id="pbWhy"></small><small id="pbFx" hidden></small></div><div class="pbb"><button class="ghost" id="pbRotL" title="Turn left (Q)"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2.2-5.1" /><path d="M4 4v4.5h4.5" /></svg></button><button class="ghost" id="pbRotR" title="Turn right (E)"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.2-5.1" /><path d="M20 4v4.5h-4.5" /></svg></button><button class="ghost" id="pbSnap" title="Snap to the grid + 15 degree turns (G)"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" /></svg></button><button class="ghost" id="pbCopy" title="Same turn as the last one (C)"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M5 15V6a1 1 0 0 1 1-1h9" /></svg></button><button class="ghost" id="pbCancel" title="Cancel (Esc)">Cancel</button><button class="go" id="pbOk">Place here</button></div><small class="pbk">Q / E turn (Shift: 45&deg;) &middot; G grid &middot; C same turn &middot; Esc cancel</small></div>
+  <div id="decMenu" class="card" hidden><b id="dmName" class="disp"></b><div class="dmb"><button class="ghost" data-a="move">Move</button><button class="ghost" data-a="turn">Turn</button><button class="ghost" data-a="pack">Pack away</button><button class="ghost" data-a="tour" id="dmTour" title="A stop on your guided tour for visitors">Tour stop</button></div></div>
   <div id="hint" class="card" hidden>Tap a pup, then give it a job. Tap <b>Build</b> to plan a home.</div>
   <div id="away" hidden><div class="card"><h2 id="awayTitle">While you were away</h2><ul id="awayList"></ul><button class="big" id="awayOk">Lovely!</button></div></div>
   <div id="gift" hidden><div class="card gcard"><div class="gh"><h2>Daily gift</h2><span id="gStreak" class="gs"></span><button id="gClose" title="Close">&#10005;</button></div><p id="gMsg" class="gm"></p><div id="gTiles" class="gtiles"></div><div id="gGot" class="ggot" hidden></div><div id="gMonth" class="gmon"></div><div class="gf"><button class="big" id="gClaim">Claim!</button><small>Missed a day? No problem: the calendar just waits for you.</small></div></div></div>
@@ -662,7 +737,7 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

@@ -123,6 +123,9 @@
       case 'snail': { const d = decorAt(s, ['glow-shrooms', 'fairy-ring']); add(d, 1); if (d.length) A = Math.min(1, 0.7 + 0.15 * (d.length - 1)); else { add(range('t', 8), 1); A = s.garden && s.garden.sprouts && s.garden.sprouts.length ? 0.5 : 0.3; } break; }
       case 'whale': add(range('s', 4), 1); A = s.level >= sp.minLv ? 1 : 0; break;
     }
+    // Round 3 update 2: crafted catalogue pieces this species loves (src/catalog.js crit) are spots too and draw it a little
+    const Cat = window.Catalog; if (Cat && sp.id !== 'whale') { const d = (s.placed || []).filter(x => Cat.BY[x.id] && Cat.BY[x.id].from === 'craft' && Cat.BY[x.id].crit.includes(sp.id)).map(x => 'd' + x.k);
+      if (d.length) { add(d, 1); A = Math.max(A, Math.min(1, 0.5 + 0.1 * d.length)); } }
     return { A, spots: L };
   }
   // the chance per slot (without the rarity cap rules), t = slot time
@@ -134,7 +137,8 @@
     const sw = k === null ? 1 : sp.sea[k];
     const at = attract(s, nav, sp, t); if (!at.A || !tw || !sw) return { p: 0, at };
     const rain = sp.rain && rainAt(s, t) ? C.RAIN_K : 1;
-    return { p: Math.min(0.5, C.P[sp.rar] * tw * sw * at.A * rain), at };
+    const ck = window.Catalog ? window.Catalog.critK(s, nav, sp.id) : 1;   // three of its favourite pieces close together (catalog.js)
+    return { p: Math.min(0.5, C.P[sp.rar] * tw * sw * at.A * rain * ck), at };
   }
 
   // ---------------------------------------------------------------- per sim step

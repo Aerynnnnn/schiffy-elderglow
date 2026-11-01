@@ -104,7 +104,7 @@
     }
     // (useBlk 'dec' = only the player's decorations block: the fallback for a walk the layout's own footprints leave no
     // clean way for, e.g. a berry bush on the river bank; free decor, 2026-11-01)
-    function blocksAt(x, z, mode) { const a = BH.get(Math.floor(x / BC) * 100003 + Math.floor(z / BC)), out = []; if (a) for (const b of a) if ((mode !== 'dec' || b.id === 'decor') && inBox(b, x, z)) out.push(b); return out; }
+    function blocksAt(x, z, mode) { const a = BH.get(Math.floor(x / BC) * 100003 + Math.floor(z / BC)), out = []; if (a) for (const b of a) if ((mode !== 'dec' || b.id === 'decor' || b.id === 'plant' || b.home) && inBox(b, x, z)) out.push(b); return out; }   // (planted trees + the player's own turned / free homes count as the player's things too)
     const blockAtM = (x, z, ex, mode) => { if (mode !== 'dec') return blockAt(x, z, ex); for (const b of blocksAt(x, z, 'dec')) if (!ex || !ex.has(b.k)) return b; return null; };
     function segOk(p, q, ex, useBlk) {
       const l = dxz(p, q), n = Math.max(1, Math.ceil(l / 0.4)), wa = wet(p[0], p[2]), wb = wet(q[0], q[2]), ma = wetM(p[0], p[2]), mb = wetM(q[0], q[2]);
@@ -251,6 +251,31 @@
       }
       out.push(b);
     }
+    // creative build part 2: the straight runs a trunk bend adds (out to the circle, back from it to the spot) were never
+    // checked against the player's decorations (300 pieces: door -> plaza blight legs clipped a crystal pillar). A run that
+    // passes through a decoration goes round it (footprints + decor first, decor only as the fallback, like offPath), as
+    // long as the way round keeps out of the trunk circle. Only runs WITH decor change: without decor this is never called.
+    function trunkClear(P, R) {
+      for (let i = 1; i < P.length; i++) {
+        const ax = P[i - 1][0] - TP[0], az = P[i - 1][2] - TP[2], dx = P[i][0] - P[i - 1][0], dz = P[i][2] - P[i - 1][2], L2 = dx * dx + dz * dz;
+        const t = L2 > 1e-9 ? Math.max(0, Math.min(1, -(ax * dx + az * dz) / L2)) : 0;
+        if (Math.hypot(ax + dx * t, az + dz * t) < R - 0.05 && t > 0 && t < 1) return false;
+      }
+      return true;
+    }
+    function bendDec(a, tmp, R) {
+      const out = []; let p = a;
+      for (const q of tmp) {
+        if (!segOk(p, q, null, 'dec')) {
+          const ex = unite(holding(p), holding(q));
+          for (const m of [detour(p, q, ex, true), detour(p, q, ex, 'dec'), detour(p, q, ex, 'dec', true)]) {
+            if (m && trunkClear([p].concat(m, [q]), R) && polyOk([p].concat(m, [q]), ex, 'dec')) { for (const c of m) out.push(c); break; }
+          }
+        }
+        out.push(q); p = q;
+      }
+      return out;
+    }
 
     // ---- legs: polyline + cumulative length, cached by endpoints (+ trunk radius)
     const legCache = new Map();
@@ -266,17 +291,25 @@
       const direct = A.n === B.n ? offPath(A.p, B.p) : null;
       if (direct && !direct.wet) add(direct);
       else {
-        const an = dryNode(A.p, A.n), bn = dryNode(B.p, B.n), P = path(an, bn);
-        add(offPath(A.p, N[P[0]].p));
-        P.forEach((i, k) => { if (k) { const m = edgePts.get(P[k - 1] + '>' + i); if (m) add(m); } raw.push(N[i].p); ids.push(i); });
-        add(offPath(N[P[P.length - 1]].p, B.p));
+        const an = dryNode(A.p, A.n), bn = dryNode(B.p, B.n), R = paintIn.length ? paintRoute(A, B, an, bn) : null;
+        if (R) {   // shaping the land: by a painted path (its points are off-graph points: ids -1, so saved nodes stay road nodes)
+          if (R[0] < N0) add(offPath(A.p, N[R[0]].p));
+          R.forEach((i, k) => { if (k && i < N0 && R[k - 1] < N0) { const m = edgePts.get(R[k - 1] + '>' + i); if (m) add(m); } raw.push(i < N0 ? N[i].p : PN[i - N0].p); ids.push(i < N0 ? i : -1); });
+          const e = R[R.length - 1]; if (e < N0) add(offPath(N[e].p, B.p));
+        } else {
+          const P = path(an, bn);
+          add(offPath(A.p, N[P[0]].p));
+          P.forEach((i, k) => { if (k) { const m = edgePts.get(P[k - 1] + '>' + i); if (m) add(m); } raw.push(N[i].p); ids.push(i); });
+          add(offPath(N[P[P.length - 1]].p, B.p));
+        }
       }
       raw.push(B.p); ids.push(-1);
       // drop near-duplicate points, bend around the trunk
       const pts = [raw[0]], nid = [ids[0]];
       for (let i = 1; i < raw.length; i++) {
         if (d3(raw[i], pts[pts.length - 1]) < 0.05) { if (ids[i] >= 0) nid[nid.length - 1] = ids[i]; continue; }
-        const tmp = []; bend(pts[pts.length - 1], raw[i], trunkR, tmp);
+        let tmp = []; bend(pts[pts.length - 1], raw[i], trunkR, tmp);
+        if (tmp.length > 1 && (decB.length || plB.length || homeB.length)) tmp = bendDec(pts[pts.length - 1], tmp, trunkR);
         for (let k = 0; k < tmp.length; k++) { pts.push(tmp[k]); nid.push(k === tmp.length - 1 ? ids[i] : -1); }
       }
       const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + d3(pts[i - 1], pts[i]));
@@ -308,7 +341,7 @@
         // no clean way round the footprints: the water-only line, as the pathing pass shipped it, unless it runs through one
         // of the player's decorations (free decor): then a way that keeps out of those (Decor's rules keep one open)
         m = detour(p, q, ex, false) || detour(p, q, ex, false, true);
-        if (m && decB.length && !polyOk([p].concat(m, [q]), ex, 'dec')) m = detour(p, q, ex, 'dec') || detour(p, q, ex, 'dec', true) || m;
+        if (m && (decB.length || plB.length || homeB.length) && !polyOk([p].concat(m, [q]), ex, 'dec')) m = detour(p, q, ex, 'dec') || detour(p, q, ex, 'dec', true) || m;
       }
       if (!m) { m = []; if (!segOk(p, q, null, false)) m.wet = true; }   // no dry way round: leg() goes by the road instead
       if (offCache.size > 3000) offCache.clear();
@@ -460,29 +493,107 @@
     // list over from S.placed ({k, f: [cx, cz, hx, hz] in m, x, z, r}); their boxes join the footprint hash like the
     // layout's, and every cache that saw the blockers (off-graph paths, legs, dry nodes, nap spots) is cleared when the
     // set changes. Road edges never change: decor may not stand on a road (roadDist), so no edge detour needs a redo.
-    let decB = [], decSig = '';
+    let decB = [], decSig = '', homeB = [];   // (homeB: the player's turned / free homes' boxes, src/homes.js below)
     function setDecor(list, sig) {
       if (sig === decSig) return false;
       for (const b of decB) cellsOf(b, k => { const a = BH.get(k); if (!a) return; const j = a.indexOf(b); if (j >= 0) a.splice(j, 1); if (!a.length) BH.delete(k); });
       decB = (list || []).map((d, i) => { const b = boxOf(d.x, d.z, d.r, d.f, 1, 'decor', 1e6 + i); b.dk = d.k; return b; });
       for (const b of decB) hashIn(b);
       offCache.clear(); legCache.clear(); dryC.clear(); for (const k in restCache) delete restCache[k];
+      if (paintIn.length) paintDirty = true;   // painted paths link to the roads round the decorations: re-link before the next leg
       decSig = sig; return true;
     }
     const decorAt = (x, z) => { for (const b of decB) if (inBox(b, x, z)) return b; return null; };
+
+    // ---- shaping the land (creative build part 2, src/land.js). Land.sync hands over {cut: [placement ids], plant: [{k, f, x,
+    // z, r}], paths: [{k, p: [[x, z], ...]}]}: a removed forest tree's footprint leaves the hash (back when the removal is
+    // undone), a planted tree's joins it (id 'plant'), painted paths become extra graph nodes (ids N0 + i) with cheap edges
+    // along them (PREF of their length, so pups prefer them) + straight, clear links to the nearest road nodes (LINK m) and
+    // between paths. leg() takes a painted path only when that way is cheaper; empty land = no node, no link, the old nav.
+    const N0 = N.length, LINK = 22, PREF = 0.7;
+    let landSig = '', cutB = [], plB = [], PN = [], linkAdj = new Map(), paintSegs = [], paintIn = [], paintDirty = false;
+    const unhash = b => cellsOf(b, k => { const a = BH.get(k); if (!a) return; const j = a.indexOf(b); if (j >= 0) a.splice(j, 1); if (!a.length) BH.delete(k); });
+    const rehash = b => cellsOf(b, k => { let a = BH.get(k); if (!a) BH.set(k, a = []); a.push(b); a.sort((x, y) => x.k - y.k); });   // (back in the layout's order)
+    function setLand(Ld, sig) {
+      if (sig === landSig) return false;
+      for (const b of cutB) rehash(b); cutB = [];
+      for (const b of plB) unhash(b); plB = [];
+      const cut = new Set((Ld && Ld.cut) || []);
+      if (cut.size) for (const b of blk) if (cut.has(b.id) && b.role === 'forest') { unhash(b); cutB.push(b); }
+      plB = ((Ld && Ld.plant) || []).map((d, i) => { const b = boxOf(d.x, d.z, d.r, d.f, 1, 'plant', 2e6 + i); b.role = 'plant'; b.pk = d.k; return b; });
+      for (const b of plB) hashIn(b);
+      paintIn = (Ld && Ld.paths) || []; buildPaint();
+      offCache.clear(); legCache.clear(); dryC.clear(); pathCache.clear(); for (const k in restCache) delete restCache[k];
+      landSig = sig; return true;
+    }
+    // the y of a painted point: its nearest road node's (the game draws pups on the ground; the sim only needs lengths)
+    const yNear = (x, z) => { let bi = -1, bd = Infinity; for (let i = 0; i < N0; i++) { if (N[i].bridge) continue; const d = (N[i].p[0] - x) * (N[i].p[0] - x) + (N[i].p[2] - z) * (N[i].p[2] - z); if (d < bd) { bd = d; bi = i; } } return bi >= 0 ? N[bi].p[1] : TP[1]; };
+    function buildPaint() {
+      PN = []; linkAdj = new Map(); paintSegs = []; paintDirty = false;
+      for (const P of paintIn) {
+        const base = PN.length;
+        P.p.forEach(([x, z]) => PN.push({ p: r3([x, yNear(x, z), z]), adj: [], path: P.k }));
+        for (let j = base + 1; j < PN.length; j++) { const l = d3(PN[j - 1].p, PN[j].p); PN[j - 1].adj.push([N0 + j, l * PREF, l]); PN[j].adj.push([N0 + j - 1, l * PREF, l]); paintSegs.push([PN[j - 1].p, PN[j].p]); }
+      }
+      for (let i = 0; i < PN.length; i++) {
+        const p = PN[i].p, c = [];
+        for (let n = 0; n < N0; n++) { if (N[n].bridge || N[n].door || wetM(N[n].p[0], N[n].p[2])) continue; const d = dxz(N[n].p, p); if (d <= LINK) c.push([d, n]); }   // (a shore node's water slack never mid-walk)
+        c.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        let got = 0;
+        for (const [, n] of c) { if (got >= 2) break; if (!segOk(p, N[n].p, holding(N[n].p), true)) continue; const l = d3(p, N[n].p); PN[i].adj.push([n, l, l]); let a = linkAdj.get(n); if (!a) linkAdj.set(n, a = []); a.push([N0 + i, l, l]); got++; }
+        for (let j = i + 1; j < PN.length; j++) if (PN[j].path !== PN[i].path && dxz(PN[j].p, p) < 4 && segOk(p, PN[j].p, null, true)) { const l = d3(p, PN[j].p); PN[i].adj.push([N0 + j, l * PREF, l]); PN[j].adj.push([N0 + i, l * PREF, l]); }
+      }
+    }
+    // the cheapest way from A to B that uses a painted path (multi-source Dijkstra: A's own node via its off-graph walk, or
+    // straight onto a painted point within LINK m; the same at B's end) -> node ids, or null when the best way uses none
+    function paintRoute(A, B, an, bn) {
+      if (paintDirty) buildPaint();
+      if (!PN.length) return null;
+      const M = N0 + PN.length, g = new Float64Array(M).fill(Infinity), from = new Int32Array(M).fill(-1), done = new Uint8Array(M), heap = [];
+      const push = (f, k) => { heap.push([f, k]); let c = heap.length - 1; while (c > 0) { const pa = (c - 1) >> 1; if (heap[pa][0] < heap[c][0] || (heap[pa][0] === heap[c][0] && heap[pa][1] <= heap[c][1])) break; [heap[pa], heap[c]] = [heap[c], heap[pa]]; c = pa; } };
+      const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; const lt = (a, b) => heap[a][0] < heap[b][0] || (heap[a][0] === heap[b][0] && heap[a][1] < heap[b][1]); if (l < heap.length && lt(l, m)) m = l; if (r < heap.length && lt(r, m)) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
+      const offLen = (p, q, m) => polyLen([p].concat(m, [q]));
+      const ends = (p, n0, out) => {   // (node, cost) pairs to enter / leave the graph at p
+        const r = [[n0, out ? offLen(N[n0].p, p, offPath(N[n0].p, p)) : offLen(p, N[n0].p, offPath(p, N[n0].p))]], ex = holding(p), c = [];
+        for (let i = 0; i < PN.length; i++) { const d = dxz(PN[i].p, p); if (d <= LINK) c.push([d, i]); }
+        c.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        let got = 0; for (const [, i] of c) { if (got >= 3) break; if (segOk(p, PN[i].p, ex, true)) { r.push([N0 + i, d3(p, PN[i].p)]); got++; } }
+        return r;
+      };
+      const S0 = ends(A.p, an, false), E0 = ends(B.p, bn, true), endC = new Map(); for (const [n, c] of E0) endC.set(n, c);
+      for (const [n, c] of S0) if (c < g[n]) { g[n] = c; from[n] = -1; push(c, n); }
+      let best = Infinity, bestN = -1;
+      while (heap.length) {
+        const [f, k] = pop(); if (done[k]) continue; done[k] = 1; if (f >= best) break;
+        if (endC.has(k) && f + endC.get(k) < best) { best = f + endC.get(k); bestN = k; }
+        const A2 = k < N0 ? (linkAdj.has(k) ? adj[k].concat(linkAdj.get(k)) : adj[k]) : PN[k - N0].adj;
+        for (const e of A2) { const nb = e[0], ng = f + e[1]; if (ng < g[nb]) { g[nb] = ng; from[nb] = k; push(ng, nb); } }
+      }
+      if (bestN < 0) return null;
+      const seq = []; for (let x = bestN; x !== -1; x = from[x]) seq.push(x); seq.reverse();
+      return seq.some(i => i >= N0) ? seq : null;
+    }
+    // m from (x, z) to the nearest painted strip's middle line (capped at max)
+    function paintDist(x, z, max) {
+      let d = max === undefined ? Infinity : max;
+      for (const [a, b] of paintSegs) { const dx = b[0] - a[0], dz = b[2] - a[2], l2 = dx * dx + dz * dz, t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[2]) * dz) / l2)) : 0; d = Math.min(d, Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t)); }
+      return d;
+    }
+    const plantAt = (x, z) => { for (const b of plB) if (inBox(b, x, z)) return b; return null; };
     // the road graph's walked lines (edges + their detours) in a 12 m hash: how far (x, z) is from the nearest road
     const RS = new Map();
     {
-      const add = (a, b) => { const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[2], b[2]), z1 = Math.max(a[2], b[2]);
-        for (let i = Math.floor(x0 / BC); i <= Math.floor(x1 / BC); i++) for (let j = Math.floor(z0 / BC); j <= Math.floor(z1 / BC); j++) { const k = i * 100003 + j; let s = RS.get(k); if (!s) RS.set(k, s = []); s.push([a, b]); } };
-      adj.forEach((e, a) => { for (const [b] of e) { if (b < a) continue; const m = edgePts.get(a + '>' + b) || [], P = [N[a].p].concat(m, [N[b].p]); for (let i = 1; i < P.length; i++) add(P[i - 1], P[i]); } });
+      const add = (a, b, ea, eb) => { const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[2], b[2]), z1 = Math.max(a[2], b[2]);
+        for (let i = Math.floor(x0 / BC); i <= Math.floor(x1 / BC); i++) for (let j = Math.floor(z0 / BC); j <= Math.floor(z1 / BC); j++) { const k = i * 100003 + j; let s = RS.get(k); if (!s) RS.set(k, s = []); s.push([a, b, ea, eb]); } };
+      adj.forEach((e, a) => { for (const [b] of e) { if (b < a) continue; const m = edgePts.get(a + '>' + b) || [], P = [N[a].p].concat(m, [N[b].p]); for (let i = 1; i < P.length; i++) add(P[i - 1], P[i], a, b); } });
     }
-    // the nearest road line within max m of (x, z): { d, a, b } (the segment's ends), or { d: max } when none
-    function roadNear(x, z, max) {
+    // the nearest road line within max m of (x, z): { d, a, b } (the segment's ends), or { d: max } when none (exN: skip the
+    // edges of that road node, e.g. a turned home's own old door path: src/homes.js)
+    function roadNear(x, z, max, exN) {
       const r = { d: max, a: null, b: null }, c = Math.ceil(max / BC);
       for (let i = Math.floor(x / BC) - c; i <= Math.floor(x / BC) + c; i++) for (let j = Math.floor(z / BC) - c; j <= Math.floor(z / BC) + c; j++) {
         const s = RS.get(i * 100003 + j); if (!s) continue;
-        for (const [a, b] of s) { const dx = b[0] - a[0], dz = b[2] - a[2], l2 = dx * dx + dz * dz, t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[2]) * dz) / l2)) : 0, d = Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t);
+        for (const [a, b, ea, eb] of s) { if (exN !== undefined && (ea === exN || eb === exN)) continue; const dx = b[0] - a[0], dz = b[2] - a[2], l2 = dx * dx + dz * dz, t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[2]) * dz) / l2)) : 0, d = Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t);
           if (d < r.d) { r.d = d; r.a = a; r.b = b; } }
       }
       return r;
@@ -493,6 +604,75 @@
     function reachOk(p, q) { const ex = unite(holding(p), holding(q)); return segOk(p, q, ex, true) || !!detour(p, q, ex, true) || segOk(p, q, ex, 'dec') || !!detour(p, q, ex, 'dec'); }
     function polyOk(P, ex, mode) { for (let i = 1; i < P.length; i++) if (!segOk(P[i - 1], P[i], ex, mode)) return false; return true; }
 
+    // ---- buildings (creative build part 2, piece 4, src/homes.js). Homes.sync hands over [{pid, piece, x, z, ry, s, free}]:
+    // a fixed plot that was TURNED (90 deg steps round its placement) or SWAPPED to another house piece gets its own footprint
+    // box (the layout's leaves the hash), its door + out are re-made from the piece's local door, and a turned one hangs off a
+    // road node by a door leg (homeLink) instead of its layout door node (q.base keeps the layout's fields). A FREE plot (pid
+    // FREE0 + id, a home on open land) is a new plotBy entry that is NOT in nav.plots (the pups' plot lists stay the layout's).
+    // Empty list = the old nav, byte for byte.
+    const FREE0 = 900000, DOOR_R = 25, LINK_MAX = 80;
+    const DOORL = {};   // piece -> [local x, local z, door yaw - ry, door height] (the same on every placement of a piece)
+    for (const p of PL) {
+      if (DOORL[p.piece] || (p.role !== 'house' && p.role !== 'faction') || !p.doors || !p.doors[0]) continue;
+      const D = p.doors[0], c = Math.cos(p.ry || 0), sn = Math.sin(p.ry || 0), s = p.s || 1, dx = (D[0] - p.pos[0]) / s, dz = (D[2] - p.pos[2]) / s;
+      DOORL[p.piece] = [dx * c - dz * sn, dx * sn + dz * c, D[3] * Math.PI / 180 - (p.ry || 0), (D[1] - p.pos[1]) / s];
+    }
+    function homeGeo(piece, x, y, z, ry, s) {
+      const d = DOORL[piece] || [0, 3, 1.5 * Math.PI, 0.4], c = Math.cos(ry), sn = Math.sin(ry), yw = ry + d[2], r6 = v => Math.round(v * 1e6) / 1e6;
+      return { door: r3([x + (d[0] * c + d[1] * sn) * s, y + d[3] * s, z + (-d[0] * sn + d[1] * c) * s]), out: [r6(Math.cos(yw)), r6(-Math.sin(yw))] };
+    }
+    let homeSig = '', homeHid = [], homeMod = [], freeQ = [];
+    // the door leg of a turned / free home: the builders' stand 3 m out of the door -> the nearest road node (not a bridge or
+    // door node) whose walk from there is dry, clear of every footprint and <= LINK_MAX m. ok = that, the door + stand are dry
+    // and free, and a road (or a painted path linked to a road) passes within DOOR_R m of the door. why: door | road | blocked
+    function homeLink(q) {
+      const st = r3([q.door[0] + q.out[0] * 3, q.door[1], q.door[2] + q.out[1] * 3]), own = new Set(homeB.filter(b => b.id === q.pid).map(b => b.k));
+      const res = { n: -1, ok: false, why: null, len: 0, st };
+      if (wetM(q.door[0], q.door[2]) || wetM(st[0], st[2]) || blocksAt(st[0], st[2]).some(b => !own.has(b.k)) || !segOk(q.door, st, own, true)) res.why = 'door';   // (a porch house's stand is inside its own footprint, as on the layout)
+      const c = []; for (let i = 0; i < N0; i++) { if (N[i].bridge || N[i].door) continue; const d = dxz(N[i].p, st); if (d <= LINK_MAX) c.push([d, i]); }
+      c.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      for (const [, i] of c) {
+        const m = offPath(st, N[i].p); if (m.wet) continue; const P = [st].concat(m, [N[i].p]);
+        if (polyLen(P) > LINK_MAX || !polyOk(P, unite(holding(st), holding(N[i].p)), true)) continue;
+        res.n = i; res.len = polyLen(P); break;
+      }
+      if (res.n < 0) { res.n = c.length ? c[0][1] : doorNode; if (!res.why) res.why = 'blocked'; return res; }
+      let near = roadNear(q.door[0], q.door[2], DOOR_R).d < DOOR_R;
+      if (!near && paintIn.length) {
+        if (paintDirty) buildPaint();
+        const linked = new Set(); for (const pn of PN) if (pn.adj.some(e => e[0] < N0)) linked.add(pn.path);
+        near = PN.some(pn => linked.has(pn.path) && dxz(pn.p, q.door) <= DOOR_R && segOk(st, pn.p, null, true));
+      }
+      if (!near && !res.why) res.why = 'road';
+      res.ok = !res.why; return res;
+    }
+    function setHomes(list, sig) {
+      if (sig === homeSig) return false;
+      for (const q of homeMod) { Object.assign(q, q.base); delete q.base; delete q.road; delete q.link; }
+      for (const q of freeQ) delete plotBy[q.pid];
+      for (const b of homeB) unhash(b); for (const b of homeHid) rehash(b);
+      homeB = []; homeHid = []; homeMod = []; freeQ = [];
+      offCache.clear(); legCache.clear(); dryC.clear();
+      (list || []).forEach((h, i) => {
+        let q = plotBy[h.pid];
+        if (h.free) { if (q) return; q = { pid: h.pid, kind: 'house', lv: 1, faction: null, free: true, d: 0 }; plotBy[h.pid] = q; freeQ.push(q); }
+        else {
+          if (!q || q.kind !== 'house') return;
+          q.base = { piece: q.piece, pos: q.pos, ry: q.ry, s: q.s, out: q.out, door: q.door, n: q.n }; homeMod.push(q);
+          for (const b of blk) if (b.id === q.pid) { unhash(b); homeHid.push(b); }
+        }
+        const y = h.free ? yNear(h.x, h.z) : q.base.pos[1], g = homeGeo(h.piece, h.x, y, h.z, h.ry, h.s || 1);
+        q.piece = h.piece; q.pos = r3([h.x, y, h.z]); q.ry = h.ry; q.s = h.s || 1; q.door = g.door; q.out = g.out; q.r = dxz(q.pos, TP);
+        q.road = !!(h.free || h.turn);   // a turned / free home hangs off a road node by its door leg (an untouched door keeps its door node)
+        const f = FOOT[h.piece]; if (f) { const b = boxOf(h.x, h.z, h.ry, f, q.s, q.pid, 3e6 + i); b.role = 'house'; b.home = true; homeB.push(b); hashIn(b); }
+      });
+      offCache.clear(); legCache.clear(); dryC.clear(); for (const k in restCache) delete restCache[k];
+      if (paintIn.length) paintDirty = true;
+      for (const q of homeMod.concat(freeQ)) { q.link = homeLink(q); if (q.road) q.n = q.link.n; }
+      offCache.clear(); legCache.clear(); dryC.clear();
+      homeSig = sig; return true;
+    }
+
     const restCache = {};
     const api = {
       nodes: N, adj, path, leg, at, nodeNear, tree, TP, doorNode, water, orbs, other, gather, plots, plotBy, spawns, dist, decorSpots, blightSpots, blightInner, wardSpots, dry,
@@ -502,12 +682,19 @@
       wet, cellWet, onDeck, deckY, decks, blockAt, holding, segOk, offPath, detour, edgeFix, blk, edgePts,
       // free decor: setDecor(list, sig) (src/decor.js), decorAt(x, z) -> decor box | null, decorSig(), roadDist(x, z, max), reachOk(p, q), boxOf
       wcell: WC, setDecor, decorAt, decorSig: () => decSig, decorBoxes: () => decB, roadDist, roadNear, reachOk, boxOf, inBox, blocksAt, placements: PL,
+      // shaping the land: setLand(land, sig) (src/land.js), landSig(), paintDist(x, z, max), plantAt(x, z) -> planted box | null,
+      // paint() = the painted graph points, cutBoxes() / plantBoxes()
+      setLand, landSig: () => landSig, paintDist, plantAt, paint: () => { if (paintDirty) buildPaint(); return PN; }, cutBoxes: () => cutB, plantBoxes: () => plB, N0,
+      // buildings (src/homes.js): setHomes(list, sig), homeSig(), freePlots() (free plot entries), homeBoxes(), homeGeo(piece, x, y,
+      // z, ry, s) -> {door, out}, homeLink(q) -> {n, ok, why, len, st}, DOORL, FREE0, DOOR_R, yNear(x, z)
+      setHomes, homeSig: () => homeSig, freePlots: () => freeQ, homeBoxes: () => homeB, homeGeo, homeLink, DOORL, FREE0, DOOR_R, yNear,
       // fingerprint of every data-driven spot list (saves store indices into them): equal in the game and sim_check
       spotSig() { const f = a => a.map(s => (s.pid !== undefined ? s.pid : '') + '@' + s.p.map(v => Math.round(v * 10)).join(',')).join(';'); return 'decor ' + decorSpots.length + ':' + hashStr(f(decorSpots)) + ' blight ' + blightSpots.length + ':' + hashStr(f(blightSpots)) + ' ward ' + wardSpots.length + ':' + hashStr(f(wardSpots)); },
       // where the k-th builder stands at a plot (3 m out of its door, side by side)
       site(pid, k) {
         const q = plotBy[pid]; if (!q) return null;
         const o = q.out, side = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 2.4, out = q.kind === 'market' ? 0 : 3 + (k > 4 ? 2.5 : 0);
+        if (q.road) return { p: r3([q.door[0] + o[0] * out - o[1] * side, q.door[1], q.door[2] + o[1] * out + o[0] * side]), n: q.n };   // a turned / free home: its door leg's road node (src/homes.js)
         // pathing pass: hung off the path node just outside the door (not the door node itself: the builder walked in at
         // the door and back out to its spot)
         const outN = (adj0[q.n] || []).map(e => e[0]).find(i => !N[i].door);
@@ -533,6 +720,7 @@
             if (list.length >= 32) break;
             if (api.clear && !api.clear(c.p[0], c.p[2], scale)) continue;
             if (decB.length && decorAt(c.p[0], c.p[2])) continue;   // free decor: a nap spot under a decoration moves on
+            if (plB.length && plantAt(c.p[0], c.p[2])) continue;    // (and under a planted tree)
             if (list.some(q => Math.hypot(q[0] - c.p[0], q[2] - c.p[2]) < 4.5)) continue;
             list.push(r3(c.p));
           }

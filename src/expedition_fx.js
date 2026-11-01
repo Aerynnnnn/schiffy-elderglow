@@ -128,7 +128,7 @@
 
     // ---- placed decorations: instanced kit pieces (same geometry + material as the map), scale-in pop when placed
     // (free decor, 2026-11-01: each stands at its own x / z / yaw; up to 64 of one piece; `hideK` = the one being moved)
-    const extra = {}, CAP = 64;
+    const extra = {}, CAP = 300;   // (Round 3 update 2: up to Decor.C.MAX of one piece)
     function extraMesh(key) {
       if (extra[key] !== undefined) return extra[key];
       const b = batchOf[key]; if (!b || !b.geo) return (extra[key] = null);
@@ -140,15 +140,36 @@
     const born = {}; let decSig = '';
     api.hideK = null;
     api.decorPos = k => { const x = api.S && api.S.placed.find(y => y.k === k); if (!x) return null; return [x.x, ground(x.x, x.z, nav.TP[1]), x.z]; };
+    // phones draw only the nearest PH_N pieces to the orbit target (creative build part 2, GAME_DESIGN "Update 2" f; view only,
+    // S untouched): re-picked when the target moved > PICK_M m or every PICK_S s, the drawn set only rebuilt when it changed
+    const PH_N = opt && opt.phone ? 180 : Infinity, PICK_M = 8, PICK_S = 1.5;
+    let pick = null, pickAt = -1e9, pickX = 0, pickZ = 0, pickL = -1;
+    api.decorPick = () => ({ cap: PH_N, drawn: pick ? pick.size : (api.S ? api.S.placed.length : 0), keys: pick ? [...pick] : null, at: [pickX, pickZ] });   // (tests)
+    function repick(S, t) {
+      if (S.placed.length <= PH_N) { const had = !!pick; pick = null; return had; }
+      const f = opt && opt.focus ? opt.focus() : null, fx = f ? f.x : nav.TP[0], fz = f ? f.z : nav.TP[2];
+      if (pick && S.placed.length === pickL && t - pickAt < PICK_S && t >= pickAt && Math.hypot(fx - pickX, fz - pickZ) < PICK_M) return false;
+      pickAt = t; pickX = fx; pickZ = fz; pickL = S.placed.length;
+      const d = S.placed.map(x => [(x.x - fx) * (x.x - fx) + (x.z - fz) * (x.z - fz), x.k]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const s = new Set(); for (let i = 0; i < PH_N; i++) s.add(d[i][1]);
+      let same = !!pick; if (same) for (const k of s) if (!pick.has(k)) { same = false; break; }
+      pick = s; return !same;
+    }
+    // cheap per-frame test (no strings): the full signature is only built when this checksum changed
+    let decSum = NaN;
+    const sumOf = (P, h) => { let a = P.length * 7919 + (h === null ? -1 : h); for (const x of P) a = (a * 31 + x.k * 131 + x.x * 1009 + x.z * 2003 + x.r * 30011 + x.id.length) % 1e12; return a; };
     function updateDecor(S, t) {
       api.S = S;
-      const key = x => x.id + ':' + x.k + '@' + x.x + ',' + x.z + ',' + x.r, sig = S.placed.map(key).join('|') + '#' + api.hideK;
+      const moved = PH_N < Infinity && repick(S, t);
       let anim = false; for (const k in born) if (t - born[k] < 0.8) anim = true;
-      if (sig === decSig && !anim) return;
+      const sum = sumOf(S.placed, api.hideK);
+      if (sum === decSum && !anim && !moved) return;
+      decSum = sum;
+      const key = x => x.id + ':' + x.k + '@' + x.x + ',' + x.z + ',' + x.r, sig = S.placed.map(key).join('|') + '#' + api.hideK;
       if (sig !== decSig) { const had = new Set(decSig.split('#')[0].split('|')); for (const x of S.placed) if (!had.has(key(x)) && decSig !== '-') born[x.k] = t; decSig = sig; }   // placed or moved: pops in
       for (const k in extra) if (extra[k]) extra[k].list.length = 0;
       for (const x of S.placed) {
-        if (x.k === api.hideK) continue;
+        if (x.k === api.hideK || (pick && !pick.has(x.k) && !(born[x.k] !== undefined && t - born[x.k] < 3))) continue;   // (a piece just placed / moved always shows)
         const D = Exped.DECOR[x.id], em = D && extraMesh(D.piece), p = api.decorPos(x.k); if (!em || !p || em.list.length >= CAP) continue;
         const a = born[x.k] !== undefined ? Math.min(1, (t - born[x.k]) / 0.7) : 1, pop = a < 1 ? Math.sin(a * Math.PI * 0.5) * (1 + 0.25 * Math.sin(a * Math.PI)) : 1;
         q.setFromAxisAngle(Y, x.r); v.set(p[0], p[1], p[2]); SC.setScalar(D.s * Math.max(0.02, pop));
@@ -175,15 +196,27 @@
       }
       a.needsUpdate = true; guideM.geometry.setDrawRange(0, n / 3);
     };
+    // Round 3 update 2: a soft ring of a piece's reach round the ghost (warm = it helps here, grey = no effect here)
+    const ringM = (() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(65 * 3), 3));
+      const m = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffd36a, transparent: true, opacity: 0.9, depthTest: false })); m.renderOrder = 7; m.frustumCulled = false; m.visible = false; scene.add(m); return m; })();
+    api.ring = (c, R, on) => {
+      if (!c) { ringM.visible = false; return; }
+      const A = ringM.geometry.attributes.position.array;
+      for (let k = 0; k <= 64; k++) { const a = k / 64 * Math.PI * 2, x = c[0] + Math.cos(a) * R, z = c[1] + Math.sin(a) * R; A[k * 3] = x; A[k * 3 + 1] = ground(x, z, nav.TP[1]) + 0.35; A[k * 3 + 2] = z; }
+      ringM.geometry.attributes.position.needsUpdate = true; ringM.material.color.setHex(on ? 0xffd36a : 0xb8b0c8); ringM.material.opacity = on ? 0.95 : 0.6; ringM.visible = true;
+    };
     api.ghost = (id, x, z, r, ok, t, grid) => {
       gridM.visible = !!id && !!grid;
       if (gridM.visible) { const gx = Math.round(x / grid) * grid, gz = Math.round(z / grid) * grid; gridM.position.set(gx, ground(gx, gz, nav.TP[1]) + 0.2, gz); gridM.scale.setScalar(grid); }
       if (!id) { ghost.g.visible = false; return; }
-      const D = Exped.DECOR[id], b = D && batchOf[D.piece]; if (!b || !b.geo) { ghost.g.visible = false; return; }
+      // (creative build part 2, buildings: id 'home:<house piece>' = a home's ghost, its footprint + a marker on its door)
+      const hp = typeof id === 'string' && id.startsWith('home:') ? id.slice(5) : null;
+      const D = hp ? { piece: hp, s: 1 } : Exped.DECOR[id], b = D && batchOf[D.piece]; if (!b || !b.geo) { ghost.g.visible = false; return; }
       if (ghost.id !== id) {
         while (ghost.g.children.length) ghost.g.remove(ghost.g.children[0]);
         const body = new THREE.Group(); body.scale.setScalar(D.s); body.add(new THREE.Mesh(b.geo, ghost.mat)); b.see.forEach(s => body.add(new THREE.Mesh(s.geo, ghost.mat))); ghost.g.add(body);
-        const f = Decor.footOf(id), pl = new THREE.Mesh(new THREE.PlaneGeometry(2 * f[2] + 0.6, 2 * f[3] + 0.6), ghost.fmat); pl.rotation.x = -Math.PI / 2; pl.position.set(f[0], 0.25, f[1]); pl.renderOrder = 6; ghost.g.add(pl);
+        if (hp && nav.DOORL && nav.DOORL[hp]) { const d = nav.DOORL[hp], dm = new THREE.Mesh(new THREE.CircleGeometry(1.1, 20), ghost.fmat); dm.rotation.x = -Math.PI / 2; dm.position.set(d[0] + Math.cos(d[2]) * 3, 0.3, d[1] - Math.sin(d[2]) * 3); dm.renderOrder = 6; ghost.g.add(dm); }
+        const f = hp ? Nav.FOOT[hp] : Decor.footOf(id), pl = new THREE.Mesh(new THREE.PlaneGeometry(2 * f[2] + 0.6, 2 * f[3] + 0.6), ghost.fmat); pl.rotation.x = -Math.PI / 2; pl.position.set(f[0], 0.25, f[1]); pl.renderOrder = 6; ghost.g.add(pl);
         const e = new THREE.LineSegments(new THREE.EdgesGeometry(pl.geometry), ghost.emat); e.rotation.copy(pl.rotation); e.position.copy(pl.position); e.renderOrder = 7; ghost.g.add(e);
         ghost.id = id;
       }

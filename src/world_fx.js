@@ -331,7 +331,7 @@
       const nR = Math.sin(x * 0.043 + z * 0.029) * 0.55 + Math.sin(z * 0.067 - x * 0.051 + 1.7) * 0.3 + Math.sin((x + z) * 0.13) * 0.15;
       return dR - u.x - nR * NOISE() < -EDGE() * 0.35;
     }
-    let first = true, lastR = -1, homeSig = '', homes = [], camX = 1e9, camZ = 1e9, winterK = -1, nightK = -1, wetK = -1;
+    let landK = '', first = true, lastR = -1, homeSig = '', homes = [], camX = 1e9, camZ = 1e9, winterK = -1, nightK = -1, wetK = -1;
     const api = { curios, K, stats: () => ({ curios: curios.length, awake: curios.filter(c => c.awake).length, flower: K.flower ? K.flower.items.length : 0, bench: K.bench.items.length, stone: K.stone.items.length, puddle: pud.items.length }) };
     // homes: built cottages -> a laundry line on one side, a pile of pup things on the other (side + which by hash of the plot)
     function syncHomes(S) {
@@ -351,7 +351,7 @@
     function write(k, camP, extraS) {
       if (!k) return; let j = 0; const T = k.items;
       for (const it of T) {
-        if (it.shown <= 0) continue;
+        if (it.shown <= 0 || it.onPaint) continue;
         if (k.cull && (it.x - camP.x) * (it.x - camP.x) + (it.z - camP.z) * (it.z - camP.z) > k.cull * k.cull) continue;
         if (j >= k.max) break;
         const pop = it.t < POP ? back(it.t / POP) : 1, s = it.s * pop * it.shown * (extraS ? extraS(it) : 1); if (s < 0.01) continue;
@@ -387,6 +387,8 @@
       }
       first = false;
       if (any) rebuildWake();
+      // creative build part 2: flowers / stones / benches of lane A that a painted path now runs over step aside (hidden)
+      { const ls = nav.landSig ? nav.landSig() : ''; if (ls !== landK) { landK = ls; for (const key of ['flower', 'stone', 'bench']) { const k = K[key]; if (!k) continue; for (const it of k.items) it.onPaint = !!ls && nav.paintDist(it.x, it.z, 3) < (key === 'bench' ? 2.6 : 1.5); k.sig = ''; } } }
       // 3. animation: swings sway (awake), cloth flutters gently, lamps lit only when awake
       for (const it of K.seat.items) { const c = it.hang; it.swing = c.awake ? Math.sin(t * 1.4 + c.x) * 0.28 * Math.min(1, (t - c.wakeT) / 3) : 0; }
       // 4. write the instance lists when something changed or the camera moved (distance culls)
@@ -422,6 +424,7 @@
     const OM = new THREE.Matrix4();
     api.glowPieces = fn => { for (const c of curios) if (c.kind === 'lantern' && c.awake) { const a = c.yaw; const k = SCALE.lantern; fn('EG_Brazier', OM.makeScale(0.5, 0.5, 0.5).setPosition(c.x + Math.cos(a) * 2.05 * k, c.y + 5.3 * k - 3, c.z - Math.sin(a) * 2.05 * k), 'curio:' + Math.round(c.x) + ':' + Math.round(c.z)); } };
     api.sparkle = sparkle;
+    api.flowerKit = () => ({ geo: K.flower ? K.flower.m.geometry : null, mat: lit });   // (land_fx.js meadows: the same clump + material)
     api.NAMES = NAMES;
     // vibe 2 lane C (pup moments keep clear of things): anything placed with a footprint (houses, halls, trees, rocks, plots, decor /
     // ward / blight spots) + this module's own props (benches, laundry lines, pup piles, curiosities incl. sleeping ones)

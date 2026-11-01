@@ -68,24 +68,37 @@
   function Plots(scene, map, nav, ground) {
     const batchOf = {}; for (const b of map.batches) batchOf[b.key] = b;
     const Y = new THREE.Vector3(0, 1, 0), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), CO = new THREE.Color();
-    // ---- per plot: footprint (house batch box), frame, ground height
-    const info = nav.plots.map(q => {
-      const b = batchOf[q.piece];
+    // ---- per plot: footprint (house batch box), frame, ground height. fit() again when a home turns / swaps its piece
+    // (creative build part 2, src/homes.js: nav.setHomes changes the plot's piece / ry / door in place)
+    function fit(x) {
+      const q = x.q, b = batchOf[q.piece];
       let w = 10, d = 10, h = 7, cx = 0, cz = 0;
       if (b) { const bx = b.box; w = (bx.max.x - bx.min.x) * q.s; d = (bx.max.z - bx.min.z) * q.s; h = (bx.max.y - Math.max(0, bx.min.y)) * q.s; cx = (bx.max.x + bx.min.x) / 2 * q.s; cz = (bx.max.z + bx.min.z) / 2 * q.s; }
       if (q.kind === 'market') { w = d = 46; h = 6; }
       w = Math.min(w, 60); d = Math.min(d, 60);
       const cs = Math.cos(q.ry), sn = Math.sin(q.ry);
-      const c = [q.pos[0] + cx * cs + cz * sn, q.pos[2] - cx * sn + cz * cs];   // rotation.y of (cx, 0, cz)
-      const gy = ground(c[0], c[1], q.pos[1]);
+      x.c = [q.pos[0] + cx * cs + cz * sn, q.pos[2] - cx * sn + cz * cs];   // rotation.y of (cx, 0, cz)
+      x.gy = ground(x.c[0], x.c[1], q.pos[1]); x.w = Math.max(6, w); x.d = Math.max(6, d); x.h = Math.max(3, h);
+      x.fitK = q.piece + ',' + q.ry + ',' + q.pos[0] + ',' + q.pos[2];
+      return x;
+    }
+    function mkInfo(q) {
       // the plot's own layout model(s): the house / faction hall instance; the market square = every layout piece of role market
-      const inst = []; for (const bb of map.batches) for (const i of bb.inst) if (q.pid >= 0 ? i.pid === q.pid : (q.kind === 'market' && i.pid >= 0 && map.layout.placements[i.pid] && map.layout.placements[i.pid].role === 'market')) inst.push({ b: bb, i, m0: i.m.clone(), role0: i.role });
-      return { q, w: Math.max(6, w), d: Math.max(6, d), h: Math.max(3, h), c, gy, inst, state: '', k: -1, show: q.pos[1] < 25 || q.kind !== 'house' };
-    });
+      const inst = []; if (!q.free) for (const bb of map.batches) for (const i of bb.inst) if (q.pid >= 0 ? i.pid === q.pid : (q.kind === 'market' && i.pid >= 0 && map.layout.placements[i.pid] && map.layout.placements[i.pid].role === 'market')) inst.push({ b: bb, i, m0: i.m.clone(), role0: i.role });
+      return fit({ q, inst, state: '', k: -1, show: q.pos[1] < 25 || q.kind !== 'house' || !!q.free });
+    }
+    const info = nav.plots.map(mkInfo);
     const byPid = {}; info.forEach(x => { byPid[x.q.pid] = x; });
+    // free homes come + go with the island (nav.freePlots() = this island's, Sim.step keeps the nav in sync)
+    function syncInfo() {
+      const fq = nav.freePlots ? nav.freePlots() : [];
+      for (let i = info.length - 1; i >= 0; i--) { const x = info[i]; if (x.q.free && (!fq.includes(x.q) || byPid[x.q.pid] !== x)) { info.splice(i, 1); if (byPid[x.q.pid] === x) delete byPid[x.q.pid]; } }
+      for (const q of fq) if (!byPid[q.pid] && info.length < CAP) { const x = mkInfo(q); info.push(x); byPid[q.pid] = x; }
+      for (const x of info) { const q = x.q; if (x.fitK !== q.piece + ',' + q.ry + ',' + q.pos[0] + ',' + q.pos[2]) fit(x); }
+    }
 
-    // ---- markers (instanced): patch + post + 3 sign faces
-    const N = info.length;
+    // ---- markers (instanced): patch + post + 3 sign faces (room for the free homes too)
+    const CAP = info.length + 16, N = CAP;
     const patch = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: PATCH, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), N);
     patch.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3); patch.renderOrder = 1; patch.frustumCulled = false; scene.add(patch);
     const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.2, 3.2, 6).translate(0, 1.6, 0), toon(0x8a5a34), N); post.castShadow = true; post.frustumCulled = false; scene.add(post);
@@ -179,6 +192,60 @@
       return (extra[key] = { m, ink, see, h: Math.max(0.5, b.box.max.y), list: [] });
     }
 
+    // ---- creative build part 2, buildings (src/homes.js): a home in the player's colours, turned, with another roof (piece) or
+    // standing on open land is drawn HERE (its layout instance stays hidden): one InstancedMesh per house piece with the map's
+    // own lit material + 3 per-instance palette colours. Each vertex knows its part from its kit material colour (roof moss /
+    // shingles, plaster walls, plank trim; measured once per piece) and keeps its shade within the part. Glow parts (warm
+    // windows) are never repainted; colour restoring, seasons + snow, the night grade all stay the map shader's.
+    const lin = h => new THREE.Color(h).convertSRGBToLinear(), lum = c => 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
+    // [part 1 roof / 2 walls / 3 trim, kit colour, the colour its shade is measured against, only above this share of the height]
+    const PARTS = [[1, 0x5DA65A, 0x5DA65A], [1, 0x8C5A48, 0x8C5A48], [1, 0x6A4236, 0x8C5A48], [1, 0x6FBF5A, 0x5DA65A, 0.45], [1, 0x4A8A4E, 0x5DA65A],
+      [2, 0xE6D9BC, 0xE6D9BC], [2, 0xF2E8D2, 0xE6D9BC], [3, 0xB07A4E, 0xB07A4E], [3, 0x98663F, 0xB07A4E], [3, 0x7A5236, 0xB07A4E]]
+      .map(([p, h, r, yk]) => ({ p, c: lin(h), shade: lum(lin(h)) / lum(lin(r)), yk }));
+    const PALC = window.Homes ? Homes.PAL.map(p => [lin(p.roof), lin(p.wall), lin(p.trim)]) : [];
+    const palStats = {};
+    function pkOf(b) {
+      const col = b.geo.attributes.color, pos = b.geo.attributes.position, un = b.geo.attributes.unlit, n = col.count, a = new Float32Array(n * 2), H = Math.max(0.5, b.box.max.y), st = [0, 0, 0, 0];
+      for (let i = 0; i < n; i++) {
+        if (un && un.getX(i) > 0.5) { st[0]++; continue; }
+        const r = col.getX(i), g = col.getY(i), bl = col.getZ(i);
+        const P = PARTS.find(P => Math.abs(P.c.r - r) < 0.012 && Math.abs(P.c.g - g) < 0.012 && Math.abs(P.c.b - bl) < 0.012 && (!P.yk || pos.getY(i) > P.yk * H));
+        if (P) { a[2 * i] = P.p; a[2 * i + 1] = P.shade; st[P.p]++; } else st[0]++;
+      }
+      palStats[b.key] = { none: st[0], roof: st[1], wall: st[2], trim: st[3] }; return a;
+    }
+    let palM = null;
+    function palMat() {
+      if (palM) return palM; const base = batchOf.EG_House_A && batchOf.EG_House_A.mesh && batchOf.EG_House_A.mesh.material; if (!base) return null;
+      palM = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: base.gradientMap, vertexColors: true });
+      palM.onBeforeCompile = s => {
+        base.onBeforeCompile(s);
+        s.vertexShader = 'attribute vec2 pk;\nattribute vec3 pRoof;\nattribute vec3 pWall;\nattribute vec3 pTrim;\n' + s.vertexShader.replace('#include <color_vertex>', `#include <color_vertex>
+          if (pk.x > 0.5) { vec3 pc = pk.x < 1.5 ? pRoof : (pk.x < 2.5 ? pWall : pTrim); if (pc.r >= 0.0) vColor.xyz = pc * pk.y; }`);
+      };
+      palM.customProgramCacheKey = () => 'eg-home-pal'; return palM;
+    }
+    const homes = {}, HC = 48;
+    function homeMesh(key) {
+      if (homes[key] !== undefined) return homes[key];
+      const b = batchOf[key]; if (!b || !b.geo || !palMat()) return (homes[key] = null);
+      const g = new THREE.BufferGeometry(); for (const k in b.geo.attributes) g.setAttribute(k, b.geo.attributes[k]); g.setIndex(b.geo.index); g.boundingSphere = b.geo.boundingSphere; g.boundingBox = b.geo.boundingBox;
+      g.setAttribute('pk', new THREE.BufferAttribute(pkOf(b), 2));
+      const at = () => new THREE.InstancedBufferAttribute(new Float32Array(HC * 3).fill(-1), 3), pr = at(), pw = at(), pt = at();
+      g.setAttribute('pRoof', pr); g.setAttribute('pWall', pw); g.setAttribute('pTrim', pt);
+      const m = new THREE.InstancedMesh(g, palMat(), HC); m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
+      let ink = null; if (b.inkMesh && b.ink) { ink = new THREE.InstancedMesh(b.ink, b.inkMesh.material, HC); ink.instanceMatrix = m.instanceMatrix; ink.count = 0; ink.frustumCulled = false; scene.add(ink); }
+      const see = b.see.map(s => { const im = new THREE.InstancedMesh(s.geo, s.mat, HC); im.instanceMatrix = m.instanceMatrix; im.count = 0; im.frustumCulled = false; scene.add(im); return im; });
+      return (homes[key] = { m, ink, see, pr, pw, pt, list: [] });
+    }
+    // a free home stands on the lowest ground under its footprint corners (never a floating corner)
+    function homeY(x) {
+      const q = x.q; if (!q.free) return q.pos[1];
+      let y = ground(q.pos[0], q.pos[2], q.pos[1]); const hw = x.w / 2 * 0.8, hd = x.d / 2 * 0.8, cs = Math.cos(q.ry), sn = Math.sin(q.ry);
+      for (const [lx, lz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) { const wx = x.c[0] + lx * cs + lz * sn, wz = x.c[1] - lx * sn + lz * cs; y = Math.min(y, ground(wx, wz, y)); }
+      return y - 0.1;
+    }
+
     // ---- scaffold: one instanced unit box for every pole / rail of every site
     const scaf = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), toon(0xb07a45), 600); scaf.count = 0; scaf.castShadow = true; scaf.frustumCulled = false; scene.add(scaf);
     function scaffoldInto(x, list, hgt) {   // poles at the corners + along the sides, rails at 1/3 + 2/3 + top
@@ -227,6 +294,7 @@
     // S = sim state; pupsPose(i) -> pose; dt seconds
     api.update = (S, t, dt, level, poses) => {
       // 1. per plot state
+      syncInfo();
       const sites = [], BUILD = !!api.build, sigA = [];
       let mi = 0, ci = 0, gi = 0; const bi = { open: 0, lock: 0, blue: 0 };
       const RU = window.ElderMap && ElderMap.uRest ? ElderMap.uRest.value : null, RC = window.ElderMap && ElderMap.uRestC ? ElderMap.uRestC.value : null;
@@ -274,12 +342,18 @@
       if (sg !== stoneSig) { stoneSig = sg; rebuildFoundations(sigA); }
       // 2. buildings: homes move their own map instance; composites fill the extra meshes; scaffold for sites in progress
       for (const k in extra) if (extra[k]) extra[k].list.length = 0;
+      for (const k in homes) if (homes[k]) homes[k].list.length = 0;
       const sc = [];
       for (const x of sites) {
         const rising = x.st === 'build' ? Math.max(0, (x.f - SCAF) / (1 - SCAF)) : x.st === 'done' ? 1 : -1;
         if (x.st === 'done' && x.state === 'build') burst(x);
         const sy = rising < 0 ? 0 : Math.max(0.06, rising * (2 - rising));   // ease-out: walls shoot up, the roof settles
-        if ((x.type === 'home' || (Sim.C.B[x.type] && Sim.C.B[x.type].piece)) && x.inst.length) {   // cottages + faction halls + the market: their own layout model rises
+        const e = S.plots[x.q.pid], vari = x.type === 'home' && (x.q.free || x.q.base || (e && e.col));
+        if (vari) {   // buildings: drawn in the home meshes (layout instance hidden)
+          if (x.inst.length && x.k !== 'v') setHome(x, false, 1); x.k = 'v';
+          const hm = rising >= 0 && x.q.pid !== api.hidePid && homeMesh(x.q.piece);   // (hidePid: the free home being moved, its ghost shows instead)
+          if (hm) { Q.setFromAxisAngle(Y, x.q.ry); V.set(x.q.pos[0], homeY(x), x.q.pos[2]); SC.setScalar(x.q.s); hm.list.push({ m: M4.compose(V, Q, SC).clone().multiply(SY.makeScale(1, sy, 1)), col: (e && e.col) || 0, pid: x.q.pid }); }
+        } else if ((x.type === 'home' || (Sim.C.B[x.type] && Sim.C.B[x.type].piece)) && x.inst.length) {   // cottages + faction halls + the market: their own layout model rises
           const key = rising < 0 ? -1 : Math.round(sy * 200);
           if (x.k !== key || x.state !== x.st) { if (rising < 0) setHome(x, false, 1); else setHome(x, true, sy); x.k = key; }
         } else if (rising >= 0) {
@@ -296,6 +370,15 @@
         const em = extra[k]; if (!em) continue;
         em.list.forEach((m, j) => em.m.setMatrixAt(j, m)); em.m.count = em.list.length; em.m.instanceMatrix.needsUpdate = true;
         if (em.ink) em.ink.count = em.list.length; em.see.forEach(s => { s.count = em.list.length; });
+      }
+      for (const k in homes) {
+        const hm = homes[k]; if (!hm) continue; const n = Math.min(HC, hm.list.length);
+        for (let j = 0; j < n; j++) {
+          const it = hm.list[j], P = it.col ? PALC[it.col - 1] : null; hm.m.setMatrixAt(j, it.m);
+          if (P) { hm.pr.setXYZ(j, P[0].r, P[0].g, P[0].b); hm.pw.setXYZ(j, P[1].r, P[1].g, P[1].b); hm.pt.setXYZ(j, P[2].r, P[2].g, P[2].b); } else { hm.pr.setXYZ(j, -1, -1, -1); hm.pw.setXYZ(j, -1, -1, -1); hm.pt.setXYZ(j, -1, -1, -1); }
+        }
+        hm.m.count = n; hm.m.visible = n > 0; hm.m.instanceMatrix.needsUpdate = true; hm.pr.needsUpdate = hm.pw.needsUpdate = hm.pt.needsUpdate = true;
+        if (hm.ink) { hm.ink.count = n; hm.ink.visible = n > 0; } hm.see.forEach(s => { s.count = n; s.visible = n > 0; });
       }
       sc.forEach((a, j) => {
         Q.setFromAxisAngle(Y, a[6]); if (a[7]) Q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), a[7]));
@@ -334,7 +417,11 @@
     api.burst = burst;
     // day / night: the game's own building pieces that have Glow* parts (braziers, shrooms, fairy rings...) as light
     // sources: fn(kit key, world matrix, stable id); plot signs + patches dim at night (they are unlit)
-    api.glowPieces = fn => { for (const k in extra) { const em = extra[k]; if (!em || !batchOf[k].glow || !Object.keys(batchOf[k].glow).length) continue; em.list.forEach((m, j) => fn(k, m, 'plot:' + k + ':' + j)); } };
+    api.glowPieces = fn => {
+      for (const k in extra) { const em = extra[k]; if (!em || !batchOf[k].glow || !Object.keys(batchOf[k].glow).length) continue; em.list.forEach((m, j) => fn(k, m, 'plot:' + k + ':' + j)); }
+      for (const k in homes) { const hm = homes[k]; if (!hm || !batchOf[k].glow || !Object.keys(batchOf[k].glow).length) continue; hm.list.forEach(it => fn(k, it.m, 'home:' + it.pid)); }   // (warm windows of the player's homes)
+    };
+    api.homes = homes; api.palStats = palStats; api.syncInfo = syncInfo;
     let nightK = -1;
     api.setNight = n => {
       const k = Math.round(n * 50) / 50; if (k === nightK) return; nightK = k;

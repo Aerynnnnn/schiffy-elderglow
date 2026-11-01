@@ -14,6 +14,10 @@
     dice: SV('<rect x="4" y="4" width="16" height="16" rx="3.5" fill="#fff"/><circle cx="8.5" cy="8.5" r="1.4" fill="#2a2442"/><circle cx="15.5" cy="15.5" r="1.4" fill="#2a2442"/><circle cx="12" cy="12" r="1.4" fill="#2a2442"/>'),
     search: SV('<circle cx="10.5" cy="10.5" r="6" fill="#fff"/><path d="M15 15l5.5 5.5" fill="none" stroke-width="3"/>'),
     lock: SV('<path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none"/><rect x="5.5" y="11" width="13" height="9" rx="2" fill="#b9a7ff"/>'),
+    // piece 5: the "beautiful" star, the week crown, the tour flag
+    star: SV('<path d="M12 3.2l2.6 5.5 6 .8-4.4 4.1 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.5l6-.8z" fill="#ffd23f"/>'),
+    crown: SV('<path d="M4 18l-1-10 5 4 4-7 4 7 5-4-1 10z" fill="#ffd23f"/><path d="M4 18h16" fill="none"/>'),
+    tour: SV('<path d="M6 21V4" fill="none"/><path d="M6 4h9l-2 3.5 2 3.5H6" fill="#9fe8ff"/><circle cx="16.5" cy="18" r="2.5" fill="#ffd23f"/><path d="M6 18h8" fill="none" stroke-dasharray="2 2"/>'),
   };
   const OUTBOX = slot => 'schiffy-elderglow.outbox' + slot;
   const readBox = slot => { try { const a = JSON.parse(localStorage.getItem(OUTBOX(slot)) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
@@ -26,6 +30,16 @@
     // step 7: the game passes its one backend (shared with the cloud save: one supabase-js client per page)
     const net = g.net || window.Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: /^[a-z0-9]{1,12}$/.test(Q.get('mockdb') || '') ? Q.get('mockdb') : '', samples: () => window.Social.samples(nav) });
     let signed = false, prof = null, tab = 'recent', query = '', list = null, mine = null, news = null, busy = false;
+    // piece 5 "showing off" (server/patch_5.sql): P5 = null (not asked yet) | true | false (the patch is missing: no stars, no
+    // shelf, never an error); SN = star counts by island id, STARRED = ids this player starred, shelf = the Explore shelf
+    let P5 = null, shelf = null, shelfAt = 0; const SN = {}, STARRED = new Set();
+    const p5 = r => { if (r && r.setup) { P5 = false; return false; } if (r && r.ok) P5 = true; return !!(r && r.ok); };
+    async function starsFor(ids) {
+      if (P5 === false || !ids.length) return;
+      const r = await net.starInfo(ids); if (!p5(r)) return;
+      for (const k in r.n) SN[k] = r.n[k]; for (const id of r.mine || []) STARRED.add(id);
+    }
+    const stc = id => (P5 && SN[id] !== undefined ? ` &middot; <span class="stc" title="visitors who found it beautiful">${IX.star}${SN[id]}</span>` : '');
     const S = () => g.S;
     const seasonNow = () => { const k = window.Seasons.of(S()); return k === null ? -1 : k; };
 
@@ -46,6 +60,8 @@
       if (r.ok) { s.social.pubAt = Date.now(); g.save(); }
       return r;
     }
+    // a changed tour goes out a few seconds later (the server takes one upload per 20 s)
+    let pubT = 0; function pubSoon() { clearTimeout(pubT); pubT = setTimeout(() => { lastPub = 0; publish(true); }, 4000); }
     // ---------- home sync: own outbox first (what this player gave away on visits), then gifts for this island, then news
     async function homeSync(showCard) {
       const s = S(); if (g.mode !== 'home' || !s) return;
@@ -57,8 +73,10 @@
       const gifts = await net.inbox(), got = Array.isArray(gifts) ? window.Social.applyGifts(s, gifts) : [];
       if (Array.isArray(gifts) && gifts.length) { if (g.touch) g.touch(); g.save(); await net.claim(gifts.map(x => x.id)); }   // claimed AFTER the save: a crash in between re-delivers, the ids make it a no-op
       const nw = await net.news(s.social.seenAt || 0);
-      const nn = { got, visits: (nw && nw.visits) || [], notes: (nw && nw.notes) || [], likesNew: (nw && nw.likesNew) || 0, likes: (nw && nw.likes) || 0 };
-      if (got.length || nn.visits.length || nn.notes.length || nn.likesNew) {
+      const sw = P5 === false ? null : await net.starNews(s.social.seenAt || 0); p5(sw);   // piece 5: "N visitors found your island beautiful"
+      const nn = { got, visits: (nw && nw.visits) || [], notes: (nw && nw.notes) || [], likesNew: (nw && nw.likesNew) || 0, likes: (nw && nw.likes) || 0,
+        starsNew: sw && sw.ok ? sw.since : 0, stars: sw && sw.ok ? sw.total : 0 };
+      if (got.length || nn.visits.length || nn.notes.length || nn.likesNew || nn.starsNew) {
         news = nn; s.social.tot.visitors += nn.visits.length; s.social.tot.notes += nn.notes.length; s.social.tot.likes = nn.likes;
         s.social.seenAt = Date.now();
         const who = [...new Set(nn.visits.map(v => v.from).concat(got.map(x => x.from)).filter(Boolean))];
@@ -80,13 +98,14 @@
       if (waters.length) h += `<li class="good">${IC.water}<div>${waters.length} watered your tree: ${IC.water}+${waters.length * window.Social.C.W_HOST.water} ${IC.sap}+${waters.length * window.Social.C.W_HOST.sap}</div></li>`;
       for (const x of gifts.slice(0, 6)) h += `<li class="good">${IC.gift}<div><b>${esc(x.from || 'A visitor')}</b> left a gift: ${x.kind === 'decor' ? IC.decor + esc(window.Exped.DECOR[x.item].name) : (IC[x.item === 'seeds' ? 'seed' : x.item] || '') + '+' + x.n}</div></li>`;
       if (n.likesNew) h += `<li>${IC.heart}+${n.likesNew} like${n.likesNew > 1 ? 's' : ''} (${n.likes} in all)</li>`;
+      if (n.starsNew) h += `<li class="good">${IX.star}<div>${n.starsNew === 1 ? 'A visitor' : n.starsNew + ' visitors'} found your island beautiful${n.stars > n.starsNew ? ` (${n.stars} in all)` : ''}</div></li>`;
       for (const x of n.notes.slice(0, 4)) h += `<li class="evl">${IX.note}<div>"${esc(x.text)}"<small>${esc(x.from)} &middot; ${ago(x.at)}</small></div></li>`;
       return h;
     }
     function awayDone() { news = null; }
 
     // ---------- Explore card
-    function open() { $('socCard').hidden = false; render(); if (!signed) ensureSignIn().then(render); }
+    function open(t) { if (typeof t === 'string') { tab = t; list = null; } $('socCard').hidden = false; render(); if (!signed) ensureSignIn().then(render); }
     function close() { $('socCard').hidden = true; }
     const setupForm = (why) => {
       const s = S(), isl = (prof && prof.island) || (s && s.social.island) || '', host = (prof && prof.host) || (s && s.social.host) || 'Schiffy';
@@ -107,6 +126,7 @@
       let h = `<div class="stabs">${tabs.map(([k, ic, t]) => `<button data-st="${k}" class="${tab === k ? 'on' : ''}">${ic}${t}</button>`).join('')}</div>`;
       if (tab === 'mine') h += mineHtml();
       else {
+        if (tab !== 'search') h += shelfHtml();   // piece 5: Island of the week + Featured, right under the tabs
         if (tab === 'search') h += `<div class="srch"><input id="socQ" maxlength="24" placeholder="Island name" value="${esc(query)}"><button class="go sm" id="socGo">${IX.search}</button></div>`;
         if (!list) h += '<p class="sub">Looking for islands...</p>';
         else if (!list.length) h += `<p class="sub">${tab === 'search' ? 'No island with that name yet.' : 'No public islands yet. Be the first!'}</p>`;
@@ -114,25 +134,54 @@
       }
       b.innerHTML = h;
       if (!list && tab !== 'mine') load();
+      if (tab !== 'search' && tab !== 'mine' && P5 !== false && (!shelf || Date.now() - shelfAt > 60000)) loadShelf();
+    }
+    // ---- piece 5: the Explore shelf (Island of the week + Featured); nothing at all while patch_5 is missing or nobody has stars
+    async function loadShelf() {
+      shelfAt = Date.now(); const r = await net.shelf(); if (!p5(r)) { shelf = null; return; }
+      shelf = r; for (const c of [r.week, r.last].concat(r.featured || [])) if (c) SN[c.id] = c.stars;
+      if (!$('socCard').hidden && tab !== 'mine' && tab !== 'search') render();
+    }
+    function shelfHtml() {
+      if (P5 === false || !shelf || (!shelf.week && !shelf.last && !(shelf.featured || []).length)) return '';
+      const col = c => /^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a';
+      const w = shelf.week || shelf.last, own = c => c.mine || (mine && mine.id === c.id);
+      let h = '<div class="shelf">';
+      if (w) h += `<button class="wkcard" data-isl="${esc(w.id)}"${own(w) ? ' disabled' : ''}><span class="isw" style="background:${col(w)}">${IC.sprout}</span><span><span class="wkl">${IX.crown} ${shelf.week ? 'Island of the week' : "Last week's island"}</span><b class="disp">${esc(w.name)}</b>
+        <small>${esc(w.host)}'s island &middot; Lv ${w.lv | 0}</small><small class="stc">${IX.star}${shelf.week ? `${w.week | 0} visitor${w.week === 1 ? '' : 's'} found it beautiful this week` : `${w.stars | 0} in all`}${own(w) ? ' &middot; <i>yours!</i>' : ''}</small></span></button>`;
+      const F = shelf.featured || [];
+      if (F.length) h += `<h4>${IX.star} Featured</h4><div class="feat">${F.map(c => `<button class="fcard" data-isl="${esc(c.id)}"${own(c) ? ' disabled' : ''}>${c.new ? '<span class="nw">new</span>' : ''}<span class="isw" style="background:${col(c)}">${IC.sprout}</span><b>${esc(c.name)}</b><small>${esc(c.host)} &middot; Lv ${c.lv | 0}</small><small class="stc">${IX.star}${c.stars | 0}${c.week ? ` &middot; ${c.week} this week` : ''}</small></button>`).join('')}</div>`;
+      return h + '</div>';
     }
     function cardHtml(c) {
       const stage = window.Growth.stageName(Math.max(1, Math.min(8, c.lv || 1)));
-      return `<button class="icard${c.mine ? ' mine' : ''}" data-isl="${esc(c.id)}"${c.mine ? ' disabled' : ''}><span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a'}">${IC.sprout}</span><span class="ici"><b>${esc(c.name)}</b><small>${esc(c.host)}'s island &middot; ${esc(stage)} (Lv ${c.lv | 0})</small><small>${IC.heart}${c.likes | 0} &middot; ${c.sample ? 'sample island' : 'updated ' + ago(c.updated)}${c.mine ? ' &middot; <i>yours</i>' : ''}</small></span></button>`;
+      return `<button class="icard${c.mine ? ' mine' : ''}" data-isl="${esc(c.id)}"${c.mine ? ' disabled' : ''}><span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a'}">${IC.sprout}</span><span class="ici"><b>${esc(c.name)}</b><small>${esc(c.host)}'s island &middot; ${esc(stage)} (Lv ${c.lv | 0})</small><small>${IC.heart}${c.likes | 0}${stc(c.id)} &middot; ${c.sample ? 'sample island' : 'updated ' + ago(c.updated)}${c.mine ? ' &middot; <i>yours</i>' : ''}</small></span></button>`;
     }
     function mineHtml() {
       const s = S(), so = s.social;
-      let h = `<div class="myisl"><span class="isw lg" style="background:${window.Social.colOf(s.health, seasonNow())}">${IC.sprout}</span><div><b class="disp">${esc(prof.island)}</b><small>host ${esc(prof.host)} &middot; ${IC.heart}${mine ? mine.likes : so.tot.likes} likes &middot; ${so.pubAt ? 'shared ' + ago(so.pubAt) : 'not shared yet'}</small></div></div>
+      let h = `<div class="myisl"><span class="isw lg" style="background:${window.Social.colOf(s.health, seasonNow())}">${IC.sprout}</span><div><b class="disp">${esc(prof.island)}</b><small>host ${esc(prof.host)} &middot; ${IC.heart}${mine ? mine.likes : so.tot.likes} likes<span id="socMyStars">${mine && P5 && SN[mine.id] !== undefined ? ` &middot; <span class="stc">${IX.star}${SN[mine.id]}</span> found it beautiful` : ''}</span> &middot; ${so.pubAt ? 'shared ' + ago(so.pubAt) : 'not shared yet'}</small></div></div>
         <label class="tog"><input type="checkbox" id="socPub" ${so.pub ? 'checked' : ''}><i></i>${so.pub ? 'Public: anyone can visit' : 'Private: hidden from Explore'}</label>
         <p class="sub small">Your island is shared every 10 minutes while you play and when you leave (layout, pups, tree; never your resources).</p>
         <div class="pf"><button class="ghost" id="socEdit">Change names</button><button class="go sm" id="socPubNow">Share now</button></div>
+        ${tourHtml()}
         <h4>${IX.note} Your guestbook</h4><div id="socGb"><p class="sub">...</p></div>
         <h4>${IX.lock} Keep my island safe</h4><div id="socCloud">${g.cloudStatus ? g.cloudStatus() : ''}</div>
         <p class="sub small">Add your email to open this island on your phone or another computer (no password, a 6-digit code).</p>
         <div class="acctrow"><button class="go sm" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>`;
       setTimeout(loadGb, 0); return h;
     }
+    // piece 5: the host's guided tour (up to 6 stops; marked in the world through g.tourPick, notes through the guestbook filter)
+    function tourHtml() {
+      const T = window.Tour, L = T.stops(S(), nav), n = L.length, M = T.C.MAX;
+      let h = `<h4>${IX.tour} Guided tour <small class="sub">(${n} / ${M} stops)</small></h4><p class="sub small">Visitors tap <b>Tour</b> and Schiffy walks your stops in order, reading your notes. Kind words only (no links), ${T.C.NOTE} letters a note.</p><div id="socTour">`;
+      h += L.map((st, i) => `<div class="trow"><b>${i + 1}</b><span class="tn"><small>${esc(g.stopName ? g.stopName(st) : st.t)}</small><input data-tn="${i}" maxlength="${T.C.NOTE}" value="${esc(st.note)}" placeholder="A note (optional)"></span>
+        <button class="ghost" data-tsave="${i}" title="Save the note">Save</button>${i ? `<button class="ghost" data-tup="${i}" title="Earlier in the tour">&#9650;</button>` : ''}<button class="ghost" data-tdel="${i}" title="Remove this stop">&#10005;</button></div>`).join('');
+      h += `</div><p id="socTourWhy" class="why2"></p><div class="pf">${n ? `<button class="ghost" id="socTourShow">Show the stops</button>` : '<small class="sub">No stops yet: visitors see no Tour button.</small>'}${n < M && g.tourPick ? `<button class="go sm" id="socTourAdd">${IX.tour} Add a stop</button>` : ''}</div>`;
+      return h;
+    }
     async function loadGb() {
       const el = $('socGb'); if (!el) return; if (!mine) mine = await net.myIsland();
+      if (mine && P5 !== false) { await starsFor([mine.id]); const ms = $('socMyStars'); if (ms && P5 && SN[mine.id] !== undefined) ms.innerHTML = ` &middot; <span class="stc">${IX.star}${SN[mine.id]}</span> found it beautiful`; }
       const L = mine ? await net.guestbook(mine.id) : [];
       el.innerHTML = Array.isArray(L) && L.length ? L.map(n => `<div class="gbn">${IX.note}<div>"${esc(n.text)}"<small>${esc(n.from)} &middot; ${ago(n.at)}</small></div><button class="rp" data-rep="${esc(n.id)}" title="Report this note">${IX.flag}</button></div>`).join('') : '<p class="sub">No notes yet.</p>';
     }
@@ -140,6 +189,7 @@
       busy = true;
       const r = await net.browse({ sort: tab === 'search' ? 'recent' : tab, q: tab === 'search' ? query : '', limit: 24 });
       list = Array.isArray(r) ? r : []; busy = false; render();
+      if (list.length && P5 !== false) { await starsFor(list.map(c => c.id)); if (P5 && !$('socCard').hidden) render(); }   // piece 5: star counts on the cards
     }
     async function makeAccount(fromVisit) {
       const a = window.Social.nameCheck($('socIsl').value, 'island'), b = window.Social.nameCheck($('socHost').value, 'host');
@@ -174,6 +224,17 @@
         if (t.id === 'socGo') { query = ($('socQ').value || '').trim(); list = null; render(); return; }
         if (t.id === 'socEdit') { prof = Object.assign({}, prof); $('socBody').innerHTML = setupForm('Change your island or host name.'); return; }
         if (t.id === 'socPubNow') { const r = await publish(true); toast(r && r.ok ? `${IX.globe} Island shared` : 'Could not share: ' + esc(r ? r.why : 'no account'), 2600); render(); return; }
+        // piece 5: the tour editor (My island)
+        if (t.dataset.tsave !== undefined || t.dataset.tup !== undefined || t.dataset.tdel !== undefined) {
+          const s = S(), T = window.Tour, why = $('socTourWhy');
+          if (t.dataset.tsave !== undefined) { const i = +t.dataset.tsave, inp = $('socBody').querySelector(`input[data-tn="${i}"]`), res = {};
+            if (!T.edit(s, i, inp ? inp.value : '', res)) { if (why) why.textContent = 'Note: ' + res.why; return; } toast(`${IX.tour} Note saved`, 1600); }
+          else if (t.dataset.tup !== undefined) T.move(s, +t.dataset.tup, -1);
+          else T.remove(s, +t.dataset.tdel);
+          g.save(); pubSoon(); render(); return;
+        }
+        if (t.id === 'socTourAdd' && g.tourPick) { close(); g.tourPick(); return; }
+        if (t.id === 'socTourShow' && g.tourPick) { close(); g.tourPick(null, true); return; }
         if (t.id === 'cuOpenSafe' && g.openSafe) { g.openSafe('main'); return; }
         if (t.id === 'cuOpenHave' && g.openSafe) { g.openSafe('have'); return; }
       });
@@ -191,24 +252,29 @@
       const st = window.Social.visitState(isl.snap, nav); if (!st) return null;
       // the visitor's own island, read-only: what it can give, what it already watered (never saved from here)
       let own = null; try { const raw = JSON.parse(localStorage.getItem(g.SAVE_KEY) || 'null'); own = raw && window.Sim.sanitize(raw.state, nav); } catch (e) {}
-      V = { island: isl, own, liked: await net.liked(id) };
+      V = { island: isl, own, liked: await net.liked(id), tour: !!(st.tour && st.tour.length) };
       if (isl.snap.sea >= 0) window.Seasons.fix = isl.snap.sea;   // the host's season (visual), never saved
-      net.visit(id);
+      await net.visit(id);   // (awaited: the server's star rule wants a visit first)
+      await starsFor([id]);  // piece 5: its star count + whether this visitor already starred it (nothing while patch_5 is missing)
       return st;
     }
     const today = () => window.Social.day(Date.now());
     function visitHud() {
       const isl = V.island, c = window.Growth.stageName(Math.max(1, Math.min(8, isl.lv || 1)));
-      $('visBan').innerHTML = `<span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(isl.col || '') ? isl.col : '#9fd88a'}">${IC.sprout}</span><div><small>Visiting</small><b class="disp">${esc(isl.name)}</b><small>${esc(isl.host)}'s island &middot; ${esc(c)} (Lv ${isl.lv | 0}) &middot; ${IC.heart}<span id="visLikes">${isl.likes | 0}</span></small></div><button class="go sm" id="visHome">${IX.home}Home</button>`;
+      $('visBan').innerHTML = `<span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(isl.col || '') ? isl.col : '#9fd88a'}">${IC.sprout}</span><div><small>Visiting</small><b class="disp">${esc(isl.name)}</b><small>${esc(isl.host)}'s island &middot; ${esc(c)} (Lv ${isl.lv | 0}) &middot; ${IC.heart}<span id="visLikes">${isl.likes | 0}</span>${P5 ? ` &middot; <span class="stc" title="visitors who found it beautiful">${IX.star}<span id="visStars">${SN[isl.id] | 0}</span></span>` : ''}</small></div><button class="go sm" id="visHome">${IX.home}Home</button>`;
       $('visBan').hidden = false; $('visBar').hidden = false;
       const box = readBox(SLOT), canW = !V.own || window.Social.waterOk(V.own, isl.id, today(), box);
       $('visBar').innerHTML = `<button id="vWater" class="${canW ? '' : 'done'}" title="Water their tree (once a day): a little boost for both trees">${IC.water}<span>${canW ? 'Water' : 'Watered'}</span></button>
         <button id="vGift" title="Leave a gift from your own island">${IC.gift}<span>Gift</span></button>
         <button id="vLike" class="${V.liked ? 'done' : ''}" title="Like this island">${IC.heart}<span>${V.liked ? 'Liked' : 'Like'}</span></button>
+        ${P5 ? `<button id="vStar" class="star${STARRED.has(isl.id) ? ' done' : ''}" title="Found it beautiful? Tell the host (once)">${IX.star}<span>${STARRED.has(isl.id) ? 'Beautiful!' : 'Beautiful'}</span></button>` : ''}
+        ${V.tour && g.startGuide ? `<button id="vTour" class="tour" title="Take the host's guided tour">${IX.tour}<span>Tour</span></button>` : ''}
         <button id="vNote" title="Guestbook">${IX.note}<span>Notes</span></button>
         <button id="vMore" title="Other islands">${IX.globe}<span>Islands</span></button>`;
       $('visHome').onclick = () => { location.href = homeUrl(); };
-      $('vWater').onclick = water; $('vGift').onclick = () => panel('gift'); $('vLike').onclick = like; $('vNote').onclick = () => panel('note'); $('vMore').onclick = open;
+      $('vWater').onclick = water; $('vGift').onclick = () => panel('gift'); $('vLike').onclick = like; $('vNote').onclick = () => panel('note'); $('vMore').onclick = () => open();
+      if ($('vStar')) $('vStar').onclick = star;
+      if ($('vTour')) $('vTour').onclick = () => { $('visPanel').hidden = true; g.startGuide(); };
       if (document.body.classList.contains('phone')) $('visHint').innerHTML = 'Tap the ground to walk there. Drag to look around.';
       $('visHint').hidden = false; setTimeout(() => { const h = $('visHint'); if (h) h.style.opacity = 0; }, 9000);
     }
@@ -228,6 +294,21 @@
       const r = await net.like(V.island.id);
       if (r.ok || r.why === 'liked') { V.liked = true; $('vLike').classList.add('done'); $('vLike').querySelector('span').textContent = 'Liked'; if (r.ok) { $('visLikes').textContent = (+$('visLikes').textContent + 1); g.onLike(); toast(`${IC.heart} You liked <b>${esc(V.island.name)}</b>`, 2000); } }
       else toast('Could not like: ' + esc(r.why), 2400);
+    }
+    // piece 5: "beautiful" = once per visitor per island, no undo (positive-only; the server keeps the same rules)
+    async function star() {
+      if (needProfile()) return; const isl = V.island;
+      if (STARRED.has(isl.id)) { toast(`${IX.star} You already found <b>${esc(isl.name)}</b> beautiful`, 2000); return; }
+      let r = await net.star(isl.id);
+      if (r.why === 'visit first') { await net.visit(isl.id); r = await net.star(isl.id); }
+      if (r.setup) { P5 = false; const b = $('vStar'); if (b) b.remove(); return; }   // the patch is missing: the button just goes away
+      if (r.ok || r.why === 'starred') {
+        STARRED.add(isl.id); const b = $('vStar'); if (b) { b.classList.add('done'); b.querySelector('span').textContent = 'Beautiful!'; }
+        if (r.ok) { SN[isl.id] = r.stars; const n = $('visStars'); if (n) n.textContent = r.stars; if (g.onStar) g.onStar(); toast(`${IX.star} You found <b>${esc(isl.name)}</b> beautiful! ${esc(isl.host)} will hear about it`, 2600); }
+        else toast(`${IX.star} You already found <b>${esc(isl.name)}</b> beautiful`, 2000);
+        return;
+      }
+      toast(`${IX.star} ${r.why === 'rate' ? 'So many beautiful islands today! Try again a little later' : 'Could not mark it: ' + esc(r.why)}`, 2600);
     }
     async function panel(kind) {
       if (needProfile()) return;
@@ -284,7 +365,7 @@
     function startVisit() { bind(); bindVisit(); document.body.classList.add('visit'); visitHud(); }
     // step 7: signed in as another account (email code / magic link): forget the old account's profile + island
     function accountChanged() { signed = false; prof = null; mine = null; list = null; if (!$('socCard').hidden) { render(); ensureSignIn().then(render); } }
-    return { net, open, close, render, publish, homeSync, accountChanged, awayHtml, awayDone, visitLoad, startHome, startVisit, homeUrl, visitUrl, goVisit, get V() { return V; }, get prof() { return prof; }, get news() { return news; }, readBox: () => readBox(SLOT) };
+    return { net, open, close, render, publish, homeSync, pubSoon, loadShelf, get P5() { return P5; }, get shelf() { return shelf; }, SN, STARRED, accountChanged, awayHtml, awayDone, visitLoad, startHome, startVisit, homeUrl, visitUrl, goVisit, get V() { return V; }, get prof() { return prof; }, get news() { return news; }, readBox: () => readBox(SLOT) };
   }
   window.SocialUI = SocialUI;
 })();

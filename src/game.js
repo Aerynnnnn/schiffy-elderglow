@@ -25,7 +25,8 @@
   // fetch run while the map loads) so a newer cloud copy is in place before load() reads the save. Off for visits (never
   // saved), ?nosave=1, ?reset=1 (test sessions) and ?cloud=0. ?mockdb=NAME = a separate pretend server.
   const MOCKDB = /^[a-z0-9]{1,12}$/.test(Q.get('mockdb') || '') ? Q.get('mockdb') : '';
-  const NET = Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: MOCKDB, samples: () => Social.samples(nav), offline: () => window.__netOffline === true });
+  const NET = Net.make({ slot: SLOT.replace(/^\./, ''), mockdb: MOCKDB, samples: () => Social.samples(nav), offline: () => window.__netOffline === true,
+    p5: Q.get('p5') === '0' ? false : undefined });   // piece 5 tests: ?p5=0 = the pretend server acts as if server/patch_5.sql was never run
   const CLOUD_ON = !VISIT && Q.get('nosave') !== '1' && Q.get('reset') !== '1' && Q.get('cloud') !== '0';
   const cloud = VISIT ? null : Cloud.Sync({ net: NET, key: SAVE_KEY, storage: localStorage, save: () => save(), device: Cloud.device(navigator.userAgent, PHONE),
     on: { conflict: i => { if (cloudUI) cloudUI.showPick(i); else pendingPick = i; }, status: () => { if (cloudUI) cloudUI.status(); } } });
@@ -108,6 +109,7 @@
     dusk: SV('<path d="M4 16a8 8 0 0 1 16 0z" fill="#ff9c6a"/><path d="M2.5 16h19M5 19.5h14M12 4v3M5.5 7.5l1.6 1.6M18.5 7.5l-1.6 1.6" fill="none"/>'),
     seed: SV('<path d="M12 21c-4.2 0-6.5-3.2-6.5-7.2C5.5 9 9 5 12 3c3 2 6.5 6 6.5 10.8 0 4-2.3 7.2-6.5 7.2z" fill="#c9a26a"/><path d="M12 8v9" fill="none"/>'),
     gift: SV('<rect x="3.5" y="9" width="17" height="11.5" rx="1.5" fill="#ff8fc8"/><rect x="2.5" y="6.5" width="19" height="4" rx="1.2" fill="#ffb3dc"/><path d="M12 6.5v14" fill="none"/><path d="M12 6.5C10 2.5 6.5 3 7 5.2c.4 1.6 3.4 1.3 5 1.3 1.6 0 4.6.3 5-1.3.5-2.2-3-2.7-5 1.3z" fill="#ffd23f"/>'),
+    photo: SV('<rect x="3" y="7" width="18" height="13" rx="2.5" fill="#9fd8ff"/><path d="M8.5 7l1.6-2.6h3.8L15.5 7" fill="#cfe9ff"/><circle cx="12" cy="13.5" r="3.6" fill="#fff6dc"/><circle cx="17.6" cy="10" r="0.9" fill="#ffd23f" stroke="none"/>'),
     scarf: SV('<path d="M4 8c5 3 11 3 16 0l-1 4c-4 2.5-10 2.5-14 0z" fill="#9b7bff"/><path d="M14 12.5l1.5 8 3-1-1.5-7.8" fill="#c69bff"/>'),
     jar: SV('<rect x="6" y="7" width="12" height="13.5" rx="3" fill="#cfe9ff"/><rect x="7.5" y="3.5" width="9" height="3.5" rx="1" fill="#b07a45"/><circle cx="10" cy="12" r="1.3" fill="#ffe066" stroke="none"/><circle cx="14" cy="15.5" r="1.3" fill="#ffe066" stroke="none"/><circle cx="11" cy="17.5" r="1" fill="#c8ff7a" stroke="none"/>'),
     board: SV('<path d="M3 13.5h18c-1 4-4.5 6.5-9 6.5s-8-2.5-9-6.5z" fill="#c98a4b"/><path d="M12 13.5V8" fill="none"/><path d="M4 8.5C7 3.5 17 3.5 20 8.5c-4-1.5-12-1.5-16 0z" fill="#7fd36a"/>'),
@@ -195,7 +197,7 @@
     return (STATUS[p.job] || {})[p.phase] || '';
   }
 
-  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, crFx = null, wfx = null, life = null, steer = null, booted = false, bootAt = 0;   // wfx = vibe pass 2 living world (src/world_fx.js)
+  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, crFx = null, wfx = null, landFx = null, life = null, steer = null, booted = false, bootAt = 0;   // wfx = vibe pass 2 living world (src/world_fx.js)
   const newSeed = () => (+Q.get('seed') >>> 0) || ((Math.random() * 4294967296) >>> 0) || 1;   // ?seed=N (tests)   // a fresh island's event seed (the sim itself never uses Math.random)
   const ev = [];
 
@@ -423,7 +425,7 @@
   }
   const have = k => k === 'sap' ? S.sap : S.res[k];
   const costHtml = cost => Object.keys(cost).map(k => `<span class="cost${have(k) + 1e-9 < cost[k] ? ' short' : ''}">${IC[k]}${cost[k]}</span>`).join('');
-  const plotName = q => q.faction ? q.faction.name : `Plot ${q.i + 1}`;
+  const plotName = q => q.faction ? q.faction.name : q.free ? 'Your own spot' : `Plot ${q.i + 1}`;
 
   // ---- UI build
   function buildUI() {
@@ -489,7 +491,8 @@
           toast(`${IC[B_ICON[b.dataset.type]]} Blueprint: ${bName(b.dataset.type, q)}${builders ? '' : ' &middot; give a pup the Build job'}`, 3000); save();
         }
       } else if (b.dataset.act === 'exp') { closePlot(); openExp(); return; }
-      else if (b.dataset.act === 'cancel') { if (Sim.cancel(S, curPlot, nav)) { toast('Blueprint cancelled, materials back in the pile', 2400); save(); } }
+      else if (b.dataset.act === 'cancel') { const fr = q && q.free; if (Sim.cancel(S, curPlot, nav)) { toast('Blueprint cancelled, materials back in the pile', 2400); save(); if (fr) { closePlot(); refreshBuild(true); return; } } }
+      else if (['col', 'roof', 'turn', 'hmove', 'hdown'].includes(b.dataset.act)) { homeAct(b.dataset.act, b); if (curPlot === null) { refreshBuild(true); return; } }
       renderPlot(true); refreshBuild(true);
     });
     // vibe pass 1: closing the away card plays the short tour of what changed (skippable), then the queued cards follow
@@ -623,7 +626,7 @@
   let sayOpen = false, sayT = 0, sayTimer = null;
   const overlayOpen = () => ['away', 'gift', 'mem', 'haul', 'book', 'diary'].some(id => $(id) && !$(id).hidden) || !!document.querySelector('#pickCard:not([hidden]), #safeCard:not([hidden])');
   function trySpeak(force) {
-    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || wardI >= 0 || boatCam || tour || CQ.length || RST.wave || PM))) return null;   // (not while placing a decoration)
+    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || wardI >= 0 || boatCam || tour || CQ.length || RST.wave || PM || LM))) return null;   // (not while placing a decoration / shaping the land)
     const r = session.speak(S); if (!r) return null;
     showSay(r.w, r.e); save(); return r;
   }
@@ -925,7 +928,7 @@
     }
     follow = -1; pups.select(-1); flyTo(tgt.clone().add(dir.multiplyScalar(d)).add(up), tgt, 1.3);
   }
-  const findWhere = d => { const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the trader' : 'a daily-gift present'; };
+  const findWhere = d => { if (Catalog.BY[d] && Catalog.BY[d].from === 'craft') return 'craft it: the Craft card'; const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the trader' : 'a daily-gift present'; };
 
   // ---- daily gift (src/daily.js): calendar popup, opened by itself on the first open of a local day
   let giftPending = false, giftJust = null;
@@ -1043,11 +1046,11 @@
   function renderPlot(force) {
     if (curPlot === null) return;
     const q = nav.plotBy[curPlot], e = S.plots[curPlot]; if (!q) return;
-    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + S.pups.filter(p => p.job === 'build').length;
+    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid + (e.rot || 0) + (e.col || 0) + (e.piece || '') + q.piece + q.ry : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + S.pups.filter(p => p.job === 'build').length;
     if (!force && sig === plotSig) return; plotSig = sig;
     const builders = Math.max(1, S.pups.filter(p => p.job === 'build').length), nb = S.pups.filter(p => p.job === 'build').length;
     const fType = q.faction ? Object.keys(Sim.C.B).find(t => Sim.C.B[t].piece === q.piece) : null;   // step 5: the hall this plot holds
-    $('pcTitle').innerHTML = `${q.faction ? (fType ? IC[B_ICON[fType]] : IC.lock) : e ? IC[B_ICON[e.type]] : IC.home} ${plotName(q)} <small>${Math.round(q.d)} m walk</small>`;
+    $('pcTitle').innerHTML = `${q.faction ? (fType ? IC[B_ICON[fType]] : IC.lock) : e ? IC[B_ICON[e.type]] : IC.home} ${plotName(q)} ${q.free ? '<small>on open land</small>' : `<small>${Math.round(q.d)} m walk</small>`}`;
     let h = '';
     if (q.faction && !e && q.lv > S.level) h = `<p class="lockd">${IC.lock} <b>${q.faction.name}</b> &middot; ${q.faction.what}.<br>The old hall wakes up when the Elder Tree reaches <b>level ${q.faction.lv}</b> (${Growth.stageName(q.faction.lv)} stage; now ${S.level}).</p>${fType ? `<p class="sub">${gives(fType, q)}</p>` : ''}`;
     else if (!e && q.lv > S.level) h = `<p class="lockd">${IC.lock} This land opens when the Elder Tree reaches <b>level ${q.lv}</b> (now ${S.level}).</p>`;
@@ -1060,14 +1063,44 @@
         h += `<div class="bo${why ? ' off' : ''}">${IC[B_ICON[type]]}<div class="bi"><b>${bName(type, q)}</b><small>${gives(type, q)}</small><div class="cs">${costHtml(cost)}<span class="tm">${IC.clock}${fmtT(work / builders)}${nb > 1 ? ` with ${nb}` : ''}</span></div></div>${why ? `<span class="why">${IC.lock}${why}</span>` : `<button class="go" data-act="order" data-type="${type}">Build</button>`}</div>`;
       }
       h += `<p class="sub small">Builders pay when they start and fetch missing wood / stone themselves. Glow sap comes from a healthy tree.</p>`;
-    } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the trip board</button>` : ''}`;
+    } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}${q.free ? ' on a spot you picked' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the trip board</button>` : ''}` + homeTools(q, e);
     else {
       const work = Sim.workOf(e.type, q), f = e.prog / work, on = S.pups.filter(p => p.tgt === curPlot && p.phase === 'build').length;
       const stage = !e.paid ? 'Blueprint (waiting for materials)' : f < plots.SCAF ? 'Scaffold' : f < 0.98 ? 'Frame' : 'Finishing';
       h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage} ${Math.floor(f * 100)}%</span></div>
-        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} left` : `Needs ${costHtml(Sim.costOf(e.type, q))}`}</p><button class="ghost" data-act="cancel">Cancel blueprint${e.paid ? ' (refund)' : ''}</button>`;
+        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} left` : `Needs ${costHtml(Sim.costOf(e.type, q))}`}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Cancel blueprint${e.paid ? ' (refund)' : ''}</button>`;
     }
     $('pcBody').innerHTML = h;
+  }
+  // creative build part 2, buildings (src/homes.js): a home's colours (6 palettes + the kit's own), another roof (the next house
+  // piece of its class), a quarter turn; a free home also moves + comes down (a built one only when nobody needs its beds)
+  const HOME_WHY = { far: 'Too far out: more land opens as the tree grows', tree: 'Too close to the Elder Tree', plaza: 'The plaza in front of the tree stays open', door: 'The door would face a wall, water or a bridge',
+    road: 'The door must be within 25 m of a path', blocked: 'The pups could not walk to its door (or to a job nearby)', bridge: 'Not on a bridge', path: 'It would stand on a path', water: 'Not in the water',
+    building: 'Another building is in the way', nature: 'A tree or rock is in the way', decor: 'A decoration is in the way', job: 'The pups work right there', full: `The island has ${Homes.C.MAX} homes of your own already`,
+    level: `Treehouses come at tree level ${Homes.C.TREE_LV}`, beds: 'Pups live here: build another home first', none: 'Not here', land: 'Not on open ground' };
+  function homeTools(q, e) {
+    if (!q || !e || VISIT) return '';
+    const home = e.type === 'home', turnable = q.free || Homes.canTurn(q), roofs = home ? Homes.choices(S, nav, curPlot) : [];
+    if (!home && !turnable) return '';
+    let h = '<div class="hmt">';
+    if (home) h += `<div class="hmsw"><span>Colours</span>${['', ...Homes.PAL].map((p, i) => `<button class="hsw${(e.col || 0) === i ? ' on' : ''}" data-act="col" data-col="${i}" title="${i ? p.name : 'Kit colours'}" style="${i ? `background:linear-gradient(135deg,${p.roof} 0 48%,${p.wall} 48% 78%,${p.trim} 78%)` : ''}">${i ? '' : '&#8634;'}</button>`).join('')}</div>`;
+    h += '<div class="hmb">';
+    if (roofs.length > 1) h += `<button class="ghost sm" data-act="roof">${IC.home} Change roof</button>`;
+    if (turnable) h += `<button class="ghost sm" data-act="turn">&#8635; Turn</button>`;
+    if (q.free) h += `<button class="ghost sm" data-act="hmove">Move</button>` + (e.done ? `<button class="ghost sm" data-act="hdown">Take down</button>` : '');
+    return h + '</div></div>';
+  }
+  function homeAct(a, el) {
+    const pid = curPlot, q = nav.plotBy[pid], e = S.plots[pid]; if (!q || !e) return;
+    const r = {};
+    if (a === 'col') { if (Homes.paint(S, pid, +el.dataset.col)) { save(); snd.sfx('pop'); } }
+    else if (a === 'roof') { const p = Homes.swap(S, nav, pid, r); if (p) { save(); syncPups(); snd.sfx('built'); toast(`${IC.home} A new roof!`, 1600); } else toast(`${IC.home} No other roof fits here: ${HOME_WHY[r.why] || 'not here'}`, 2600); }
+    else if (a === 'turn') {
+      if (Homes.turn(S, nav, pid, r)) { save(); syncPups(); snd.sfx('pop'); if (r.k > 1) toast(`${IC.home} Turned ${r.k * 90}&deg; (a quarter turn would not fit: ${HOME_WHY[r.why] || 'not here'})`, 3200); }
+      else toast(`${IC.home} It cannot turn here: ${HOME_WHY[r.why] || 'not here'}`, 2800);
+    } else if (a === 'hmove') { const f = Homes.freeOf(S, pid); closePlot(); startHome(f.piece, pid); return; }
+    else if (a === 'hdown') { if (Homes.takeDown(S, nav, pid, r)) { save(); syncPups(); closePlot(); snd.sfx('close'); toast(`${IC.home} Taken down: half the materials are back in the pile`, 2600); return; } toast(`${IC.home} ${HOME_WHY[r.why] || 'Not now'}`, 2600); }
+    plotSig = ''; renderPlot(true);
   }
 
   // ---- expeditions (src/expedition.js): trip board card (destinations, trips, hauls, decor), team picker, haul reveal
@@ -1092,7 +1125,7 @@
     return { txt: el < FLY ? 'flying out' : left < FLY ? 'flying home!' : `exploring &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
   }
   function openExp(view) {
-    closePlot(); closeEvents(); closeNeed(); expView = view || { v: 'home' }; $('expCard').hidden = false; renderExp(true);
+    closePlot(); closeEvents(); closeNeed(); closeCraft(); expView = view || { v: 'home' }; $('expCard').hidden = false; renderExp(true);
   }
   function closeExp() { expView = null; $('expCard').hidden = true; }
   function renderExp(force) {
@@ -1128,7 +1161,7 @@
     // decorations: what you own (not placed) + what's out on the island
     const own = {}; for (const id of S.inv.decor) own[id] = (own[id] || 0) + 1;
     const ids = Object.keys(own);
-    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length} on the island</small></h4>`;
+    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length} on the island</small><button class="go sm" data-x="craft" style="margin-left:auto">Craft</button></h4>`;
     if (!ids.length) h += `<div class="qe">Expeditions bring back wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to place anywhere on your island.</div>`;
     else h += `<p class="sub small">Place one anywhere on open ground. Tap one on the island to move, turn or pack it away.</p>`;
     for (const id of ids) {
@@ -1182,6 +1215,93 @@
     const eye = b.position.clone().sub(fwd.multiplyScalar(46 * k)).add(new THREE.Vector3(0, 20 * k, 0)), a = Math.min(1, dt * (boatCam.t < 1.2 ? 2.5 : 5));
     controls.target.lerp(tgt, a); camera.position.lerp(eye, a);
   }
+  // ---- Round 3 update 2: photo mode. Hides the HUD; the camera orbits / tilts freely; time-of-day + season PREVIEW (view only:
+  // the sky + season tint read PHOTO, the sim's clock and season never change); a frame; Save image = a PNG download (no upload).
+  let PHOTO = null;   // { h: preview hour | null = now, sea: season index | null = now, frame: 'none' | 'soft' | 'card' }
+  const PH_SEA = ['Now', 'Spring', 'Summer', 'Autumn', 'Winter'], PH_FRAME = [['none', 'No frame'], ['soft', 'Soft'], ['card', 'Card']];
+  function openPhoto() {
+    if (!booted || PHOTO) return; closeExp(); closePlot(); closeEvents(); closeNeed(); closeCraft(); closeWard(); closeSay(); closeDecMenu(); if (soc) soc.close(); endPlace();
+    follow = -1; pups.select(-1); tween = null; boatCam = null;
+    PHOTO = { h: null, sea: null, frame: 'soft' }; document.body.classList.add('photo'); $('photoBar').hidden = false; renderPhoto(); snd.sfx('open');
+  }
+  function closePhoto() { if (!PHOTO) return; PHOTO = null; document.body.classList.remove('photo'); $('photoBar').hidden = true; $('photoFrame').className = ''; snd.sfx('close'); }
+  function renderPhoto() {
+    if (!PHOTO) return; const h = PHOTO.h === null ? Sim.dayH(S) : PHOTO.h;
+    $('phTime').value = h.toFixed(2); $('phTimeL').textContent = PHOTO.h === null ? 'Now' : String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.floor(h % 1 * 60)).padStart(2, '0');
+    $('phSea').innerHTML = PH_SEA.map((n, i) => `<button data-sea="${i - 1}" class="${(PHOTO.sea === null ? -1 : PHOTO.sea) === i - 1 ? 'on' : ''}">${n}</button>`).join('');
+    $('phFrame').innerHTML = PH_FRAME.map(([k, n]) => `<button data-fr="${k}" class="${PHOTO.frame === k ? 'on' : ''}">${n}</button>`).join('');
+    $('photoFrame').className = PHOTO.frame === 'none' ? '' : 'fr-' + PHOTO.frame;
+    $('phCap').textContent = photoCaption();
+  }
+  function photoCaption() {
+    const so = VISIT ? null : S.social, nm = VISIT && soc && soc.V ? (soc.V.name || '') : so && so.island ? so.island : 'My island';
+    const d = new Date(); return `${nm} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
+  function savePhoto() {
+    renderer.render(scene, camera);   // the drawing buffer is only valid right after a render (no preserveDrawingBuffer)
+    const src = renderer.domElement, w = src.width, h = src.height, c = document.createElement('canvas'), g = c.getContext('2d'), fr = PHOTO ? PHOTO.frame : 'none';
+    if (fr === 'card') {
+      const b = Math.round(Math.min(w, h) * 0.04), band = Math.round(h * 0.1); c.width = w + 2 * b; c.height = h + b + band;
+      g.fillStyle = '#fffaf0'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, b, b);
+      g.fillStyle = '#3e3860'; g.font = `${Math.round(band * 0.38)}px "Lilita One", Fredoka, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(photoCaption(), c.width / 2, h + b + band / 2);
+    } else {
+      c.width = w; c.height = h; g.drawImage(src, 0, 0);
+      if (fr === 'soft') { const r = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.hypot(w, h) * 0.6); r.addColorStop(0, 'rgba(42,36,66,0)'); r.addColorStop(1, 'rgba(42,36,66,0.45)'); g.fillStyle = r; g.fillRect(0, 0, w, h); }
+    }
+    const d = new Date(), name = `elderglow-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}.png`;
+    c.toBlob(bl => { if (!bl) return; const a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }, 'image/png');
+    snd.sfx('sting_gift'); const fl = $('photoFlash'); fl.classList.remove('on'); void fl.offsetWidth; fl.classList.add('on');
+    return { w: c.width, h: c.height, name };
+  }
+  // ---- Round 3 update 2: the Craft card (src/catalog.js). Pick a set, see the cost + what a piece does (or "pure decoration"),
+  // Craft = paid at once, into the shed; Place starts place mode; Undo = a crafted one still in the shed comes back for its cost.
+  let craftSet = 'path', craftOpen = false;
+  const COST_IC = { wood: 'wood', stone: 'stone', food: 'food', crystal: 'crystal', sap: 'sap', seeds: 'seed' };
+  const CRAFT_WHY = { level: lv => `Tree level ${lv}`, rare: () => 'Found, not crafted' };
+  function openCraft(set) { if (VISIT) return; closeExp(); closePlot(); closeEvents(); closeNeed(); if (set) craftSet = set; craftOpen = true; $('craftCard').hidden = false; renderCraft(); snd.sfx('open'); }
+  function closeCraft() { if (!craftOpen) return; craftOpen = false; $('craftCard').hidden = true; }
+  function renderCraft() {
+    if (!craftOpen) return;
+    $('crTitle').innerHTML = `${IC.decor} Craft for the island`;
+    $('crSets').innerHTML = Catalog.SETS.filter(t => Catalog.LIST.some(e => e.set === t.id)).map(t => `<button data-set="${t.id}" class="${t.id === craftSet ? 'on' : ''}">${t.name}</button>`).join('') +
+      `<button data-set="land" class="${craftSet === 'land' ? 'on' : ''}">Shape the land</button>` +   // creative build part 2
+      `<button data-set="homes" class="${craftSet === 'homes' ? 'on' : ''}">Place a home</button>`;   // (buildings: a home on open land)
+    if (craftSet === 'land') { $('crBody').innerHTML = landCraftHtml(); return; }
+    if (craftSet === 'homes') { $('crBody').innerHTML = homesCraftHtml(); return; }
+    let h = '';
+    for (const e of Catalog.LIST.filter(x => x.set === craftSet)) {
+      const shed = Catalog.inShed(S, e.id), out = S.placed.filter(x => x.id === e.id).length, F = e.fx ? Catalog.FX[e.fx] : null, c = Catalog.canCraft(S, e.id);
+      const lock = e.from === 'craft' && c.why === 'level';
+      h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC[F ? F.ic : 'decor'] || IC.decor}<b>${esc(e.name)}</b><small>${out ? out + ' placed' : ''}${out && shed ? ' &middot; ' : ''}${shed ? shed + ' in the shed' : ''}</small></div>`;
+      if (e.from === 'craft') h += `<div class="crc">${Object.keys(e.cost).map(k => `<span class="${c.need && c.need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${e.cost[k]}</span>`).join('')}</div>`;
+      h += F ? `<div class="crf">${IC.star}${esc(F.txt)}</div>` : `<div class="crf pure">Pure decoration</div>`;
+      h += `<div class="crb">${e.from !== 'craft' ? `<span class="why">${e.from === 'gift' ? 'A daily-gift present' : 'Found on sky trips'}</span>` : !c.ok ? `<span class="why">${c.why === 'cost' ? 'Not enough yet' : CRAFT_WHY[c.why] ? CRAFT_WHY[c.why](e.lv) : ''}</span>` : ''}`;
+      if (S.inv.craft[e.id] > 0 && shed > 0) h += `<button class="ghost sm" data-x="undo" data-id="${e.id}" title="Give it back: the full cost returns">Undo</button>`;
+      if (shed > 0) h += `<button class="ghost sm" data-x="place" data-id="${e.id}">Place</button>`;
+      if (e.from === 'craft') h += `<button class="go sm" data-x="craft" data-id="${e.id}"${c.ok ? '' : ' disabled'}>Craft</button>`;
+      h += `</div></div>`;
+    }
+    $('crBody').innerHTML = h;
+  }
+  function craftAct(x, id) {
+    if (x === 'craft') { const r = Catalog.craft(S, id); if (!r.ok) return; save(); refreshTree(); snd.sfx('built'); toast(`${IC.decor} ${esc(decorName(id))} crafted: it's in the shed`, 2000); }
+    else if (x === 'undo') { if (!Catalog.uncraft(S, id)) return; save(); refreshTree(); snd.sfx('close'); toast(`${esc(decorName(id))} taken apart: the cost is back`, 1800); }
+    else if (x === 'place') { closeCraft(); startPlace(id); return; }
+    else if (x === 'land') { closeCraft(); startLand(id); return; }
+    else if (x === 'home') { const k = Homes.KINDS.find(k => k.k === id); if (k) { closeCraft(); startHome(k.piece); } return; }
+    renderCraft();
+  }
+  // the Craft card's "Place a home" tab: a cottage / big cottage / treehouse anywhere on open land (its door within 25 m of a
+  // path); it goes down as a blueprint the builders build like any plot (the usual cost, paid when they start)
+  function homesCraftHtml() {
+    const n = (S.free || []).length; let h = `<p class="sub">Put a home anywhere on open land. Its door needs a path within 25 m; the builders build it like any plot. ${n} of ${Homes.C.MAX} placed.</p>`;
+    for (const k of Homes.KINDS) {
+      const q = { piece: k.piece }, cost = Sim.costOf('home', q), lock = k.lv && S.level < k.lv, full = n >= Homes.C.MAX;
+      h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC.home}<b>${k.name}</b><small>${IC.bed} +${Sim.bedsFor(q)} beds</small></div><div class="crc">${Object.keys(cost).map(c => `<span>${IC[COST_IC[c]] || ''}${cost[c]}</span>`).join('')}</div>`;
+      h += `<div class="crf">${IC.star}Paid when the builders start; colours, roof + turn from its plot card</div><div class="crb">${lock ? `<span class="why">Tree level ${k.lv}</span>` : full ? '<span class="why">As many as the island holds</span>' : ''}<button class="go sm" data-x="home" data-id="${k.k}"${lock || full ? ' disabled' : ''}>Place</button></div></div>`;
+    }
+    return h;
+  }
   // haul reveal: items pop in one by one; closing it marks the haul as opened
   let haulK = -1;
   function openHaul(k) {
@@ -1227,11 +1347,34 @@
     const c = Decor.check(S, nav, id, x, z, r, k, { reach: !!full }); if (!c.ok) return c;
     return wfx && wfx.propHit && wfx.propHit(x, z, Decor.radOf(id) * 0.85) ? { ok: false, why: 'decor' } : c;
   }
+  // (buildings: a home on open land uses the same place mode: PM.home = {piece, pid (moving) | null}, the rules are Homes.check)
+  function homeCheck(piece, x, z, r, pid, full) {
+    if (ground.raw(x, z) === null) return { ok: false, why: 'land' };
+    const c = Homes.check(S, nav, { pid: pid !== null && pid !== undefined ? pid : Homes.FREE0 + Homes.nextId(S), piece, x, z, ry: r, s: 1, free: true }, { reach: !!full }); if (!c.ok) return c;
+    const f = Nav.FOOT[piece]; return wfx && wfx.propHit && wfx.propHit(x + f[0], z + f[1], Math.max(f[2], f[3]) * 0.85) ? { ok: false, why: 'decor' } : c;
+  }
   function pmShow() {
-    $('pbWhy').textContent = PM.ok ? (PM.done ? (PHONE ? 'Looks lovely here!' : 'Click to put it here') : 'Looking...') : WHY[PM.why] || 'Not here';
+    $('pbWhy').textContent = PM.ok ? (PM.done ? (PHONE ? 'Looks lovely here!' : 'Click to put it here') : 'Looking...') : (PM.home ? HOME_WHY : WHY)[PM.why] || 'Not here';
+    pmFx();
     $('placeBar').classList.toggle('bad', !PM.ok); $('pbOk').disabled = !PM.ok;
   }
-  function pmCheck(full) { if (!PM) return; const c = decorCheck(PM.id, PM.x, PM.z, PM.r, PM.k, full); PM.ok = c.ok; PM.why = c.why; PM.done = !!full || !c.ok; pmShow(); }
+  // Round 3 update 2: what this piece would do right here (src/catalog.js preview) + a soft ring of its reach round the ghost
+  let pmFxKey = '';
+  const FX_HELP = { light: 'by a path: lantern keepers bring more light', garden: 'by a garden: the beds grow more', bloom: 'by a garden: the beds grow a little more', rest: 'a cozy seat: every pup a bit happier',
+    spirit: 'a happy spot: Spirit rises a little', protect: 'by a blight spot: it grows slower there', gather: 'by a work yard: gatherers bring more' };
+  const FX_NEED = { light: 'put it within 8 m of a path', garden: 'put it near a berry garden or a root bed', bloom: 'put it near a berry garden or a root bed', rest: 'put it near the plaza or a home',
+    spirit: 'put it near the plaza or the stage', protect: 'put it near where blight grows', gather: 'put it by a woodshed, stone pile or berry garden' };
+  function pmFx() {
+    if (PM.home) { const el = $('pbFx'); el.hidden = false; el.className = PM.ok ? '' : 'none'; el.innerHTML = `${IC.bed} +${Sim.bedsFor({ piece: PM.home.piece })} beds &middot; ${PM.home.pid !== null ? 'it moves here as it is' : 'a blueprint the builders build here'}`; if (expFx.ring) expFx.ring(null); return; }
+    const e = Catalog.BY[PM.id], F = e && e.fx ? Catalog.FX[e.fx] : null, el = $('pbFx');
+    if (!F) { el.hidden = false; el.className = 'none'; el.textContent = 'Pure decoration'; if (expFx.ring) expFx.ring(null); return; }
+    const key = PM.id + PM.x + ',' + PM.z + PM.ok; if (key === pmFxKey) return; pmFxKey = key;
+    const pv = PM.ok ? Catalog.preview(S, nav, PM.id, PM.x, PM.z) : null, on = !!(pv && pv.helps);
+    el.hidden = false; el.className = on ? '' : 'none';
+    el.innerHTML = `${IC[F.ic] || IC.star} ${on ? FX_HELP[e.fx] : 'No effect here: ' + FX_NEED[e.fx]}`;
+    if (expFx.ring) expFx.ring([PM.x, PM.z], F.R, on);
+  }
+  function pmCheck(full) { if (!PM) return; const c = PM.home ? homeCheck(PM.home.piece, PM.x, PM.z, PM.r, PM.home.pid, full) : decorCheck(PM.id, PM.x, PM.z, PM.r, PM.k, full); PM.ok = c.ok; PM.why = c.why; PM.done = !!full || !c.ok; pmShow(); }
   // place-mode prefs (a UI pref, NOT the save; its own key so the calm view's pref writes never drop it): grid snap on / off,
   // the last turn used ("Same turn" copies it, so rows line up). Snap on = a 1 m grid + 15 degree turns (Shift: 45);
   // snap off = free: any spot, 3 degree turns (hold Q / E or a turn button to keep turning)
@@ -1272,7 +1415,7 @@
     if (VISIT || !booted) return false;
     const o = k !== undefined && k !== null ? S.placed.find(y => y.k === k) : null;
     if ((k !== undefined && k !== null && !o) || (!o && Exped.ownedFree(S, id) < 1)) return false;
-    closeExp(); closePlot(); closeEvents(); closeNeed(); closeDecMenu(); if (soc) soc.close();
+    closeExp(); closePlot(); closeEvents(); closeNeed(); closeDecMenu(); closeCraft(); if (soc) soc.close(); endLand();
     follow = -1; pups.select(-1); refreshRoster(true);
     PM = { id: o ? o.id : id, k: o ? o.k : null, x: NaN, z: NaN, rx: NaN, rz: NaN, r: o ? o.r : 0, ok: false, why: 'land', done: false, t: performance.now(), drag: false, guides: [] };
     $('pbSnap').classList.toggle('on', !!DPREF.snap); $('pbCopy').disabled = typeof DPREF.lastR !== 'number';
@@ -1284,11 +1427,36 @@
     if (o) { const p = new THREE.Vector3(o.x, ground(o.x, o.z, nav.TP[1]) + 3, o.z), off = camera.position.clone().sub(controls.target); if (off.length() > 120) off.setLength(120); flyTo(p.clone().add(off), p, 0.8); }
     return true;
   }
-  function endPlace() { if (!PM) return; PM = null; expFx.hideK = null; expFx.ghost(null); expFx.guides(null); $('placeBar').hidden = true; document.body.classList.remove('placing'); controls.enabled = true; }
+  function startHome(piece, pid) {
+    if (VISIT || !booted || !Homes.CLASS[piece]) return false;
+    const f = pid !== undefined && pid !== null ? Homes.freeOf(S, pid) : null; if (pid !== undefined && pid !== null && !f) return false;
+    if (PM) endPlace(); closeExp(); closePlot(); closeEvents(); closeNeed(); closeDecMenu(); closeCraft(); if (soc) soc.close(); endLand();
+    follow = -1; pups.select(-1); refreshRoster(true);
+    PM = { id: 'home:' + piece, home: { piece, pid: f ? +pid : null }, k: null, x: NaN, z: NaN, rx: NaN, rz: NaN, r: f ? f.r : 0, ok: false, why: 'land', done: false, t: performance.now(), drag: false, guides: [] };
+    plots.hidePid = f ? +pid : null;
+    $('pbSnap').classList.toggle('on', !!DPREF.snap); $('pbCopy').disabled = true;
+    const kd = Homes.KINDS.find(k => Homes.CLASS[k.piece] === Homes.CLASS[piece]);
+    const g = f ? [f.x, 0, f.z] : pickGround(W() / 2, H() * 0.55);
+    $('pbName').innerHTML = `${IC.home} ${f ? 'Move' : 'Place'} <b>${esc(kd ? kd.name : 'a home')}</b>`;
+    $('placeBar').hidden = false; document.body.classList.add('placing'); snd.sfx('open');
+    pmMove(g ? g[0] : controls.target.x, g ? g[2] : controls.target.z);
+    if (f) { const p = new THREE.Vector3(f.x, ground(f.x, f.z, nav.TP[1]) + 3, f.z), off = camera.position.clone().sub(controls.target); if (off.length() > 140) off.setLength(140); flyTo(p.clone().add(off), p, 0.8); }
+    return true;
+  }
+  function endPlace() { if (!PM) return; if (PM.home) plots.hidePid = null; PM = null; expFx.hideK = null; expFx.ghost(null); expFx.guides(null); if (expFx.ring) expFx.ring(null); $('placeBar').hidden = true; document.body.classList.remove('placing'); controls.enabled = true; }
   function pmConfirm() {
     if (!PM) return false;
     if (!PM.done || !PM.ok) pmCheck(true);
     if (!PM.ok) { snd.sfx('close'); return false; }
+    if (PM.home) {   // buildings: a home on open land (a blueprint) or a free home moved
+      const res = {}, mv = PM.home.pid !== null, piece = PM.home.piece;
+      const pid = mv ? (Homes.move(S, nav, PM.home.pid, PM.x, PM.z, PM.r, res) ? PM.home.pid : -1) : Homes.place(S, nav, piece, PM.x, PM.z, PM.r, res);
+      if (pid < 0) { PM.ok = false; PM.why = res.why; PM.done = true; pmShow(); snd.sfx('close'); return false; }
+      save(); snd.sfx('built'); syncPups(); refreshBuild(true);
+      const builders = S.pups.filter(p => p.job === 'build').length, kd = Homes.KINDS.find(k => Homes.CLASS[k.piece] === Homes.CLASS[piece]);
+      toast(`${IC.home} ${mv ? 'Moved!' : `Blueprint: ${esc(kd ? kd.name : 'a home')} on open land${builders ? '' : ' &middot; give a pup the Build job'}`}`, 3000);
+      endPlace(); return true;
+    }
     const res = {}, id = PM.id, moving = PM.k !== null;
     const done = moving ? Decor.move(S, nav, PM.k, PM.x, PM.z, PM.r, res) : Decor.place(S, nav, id, PM.x, PM.z, PM.r, res) >= 0;
     if (!done) { PM.ok = false; PM.why = res.why; PM.done = true; pmShow(); snd.sfx('close'); return false; }
@@ -1326,12 +1494,239 @@
       // a quarter turn in place (or the next of 8 that fits); never through the rules' back door
       for (let n = 1; n < 8; n++) { const r = (o.r + n * Math.PI / 4) % (Math.PI * 2); if (decorCheck(o.id, o.x, o.z, r, k, true).ok && Decor.move(S, nav, k, o.x, o.z, r)) { DPREF.lastR = o.r; saveDPref(); save(); snd.sfx('pop'); return; } }
       toast(`${IC.decor} No room to turn it here`, 1800);
-    } else if (a === 'pack') { closeDecMenu(); if (Decor.remove(S, nav, k)) { save(); syncPups(); snd.sfx('close'); toast(`${IC.decor} ${esc(decorName(o.id))} packed away in the shed`, 2000); } }
+    } else if (a === 'tour') startTourPick({ t: 'd', r: k });   // piece 5: this piece as a stop on the guided tour
+    else if (a === 'pack') { closeDecMenu(); if (Decor.remove(S, nav, k)) { save(); syncPups(); snd.sfx('close'); toast(`${IC.decor} ${esc(decorName(o.id))} packed away in the shed`, 2000); } }
   }
   function placeDecor(id) { return startPlace(id); }   // (kept for tests + the old callers: place mode for that decoration)
+
+  // ---- creative build piece 5: the guided tour. HOME: tour mode (Explore -> My island -> Add a stop, or a placed piece's "Tour stop"):
+  // tap a decoration, a building or a spot (pins show the stops so far), type a note (the guestbook filter, 60 letters), Add stop.
+  // VISIT: the Tour button -> Schiffy walks the host's stops (walker.tour) with the notes as a bubble over her; any input ends it.
+  const TOUR_WHY = { full: 'The tour has 6 stops: remove one first', dup: 'That is already a stop', gone: 'That is not there any more', far: 'Pick a spot on the island (dry land, near a path)' };
+  let TPM = null;   // { tgt: {t, r, x, z} | null, label }
+  const stopName = st => st.t === 'd' ? (() => { const o = S.placed.find(p => p.k === st.r); return o ? decorName(o.id) : 'A spot'; })()
+    : st.t === 'h' ? (S.plots[st.r] ? bName(S.plots[st.r].type, nav.plotBy[st.r]) : 'A spot') : 'A spot';
+  function startTourPick(tgt, show) {
+    if (VISIT) return; endPlace(); if (LM) endLand(); closeDecMenu(); closePlot(); if (soc) soc.close();
+    TPM = { tgt: null, label: '', show: !!show }; $('tourBar').hidden = false; $('tbNote').value = ''; snd.sfx('open');
+    if (tgt) tourTarget(tgt); else tpShow();
+  }
+  function endTourPick(back) { if (!TPM) return; TPM = null; $('tourBar').hidden = true; $('tourPins').innerHTML = ''; if (soc) { soc.pubSoon(); if (back) soc.open('mine'); } }
+  function tourTarget(tgt) { if (!TPM) return; TPM.tgt = tgt; TPM.label = stopName(tgt); snd.sfx('tap'); tpShow(); setTimeout(() => { const n = $('tbNote'); if (n && !PHONE) n.focus(); }, 0); }
+  function tpShow(why) {
+    const n = (S.tour || []).length, full = n >= Tour.C.MAX, el = $('tourBar');
+    $('tbName').innerHTML = `${IC.decor} ${TPM.show ? 'Your tour' : full ? 'Your tour is full' : `Tour stop ${n + 1} of ${Tour.C.MAX}`}`;
+    el.classList.toggle('bad', !!why); el.classList.toggle('got', !why && !!TPM.tgt);
+    $('tbWhy').textContent = why || (TPM.show ? `${n} stop${n === 1 ? '' : 's'}: the numbers show where. Tap a spot to add another.` : TPM.tgt ? `Stop: ${TPM.label}. Add a note for visitors (optional).` : full ? 'Remove a stop in Explore > My island to add another.' : (PHONE ? 'Tap' : 'Click') + ' a decoration, a home or a spot on the island.');
+    $('tbAdd').disabled = !TPM.tgt || full; $('tbNote').hidden = !TPM.tgt;
+  }
+  function tourPickAt(mx, my) {   // what the tap is on: a placed piece, then a building, then the ground
+    TPM.show = false;
+    if (S.placed.length) { const k = pickDecor(mx, my); if (k !== null) return tourTarget({ t: 'd', r: k }); }
+    const x = plots.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34); if (x && S.plots[x.q.pid]) return tourTarget({ t: 'h', r: x.q.pid });
+    const g = pickGround(mx, my); if (g) return tourTarget({ t: 's', x: g[0], z: g[2] });
+  }
+  function tourAdd() {
+    if (!TPM || !TPM.tgt) return; const res = {}, i = Tour.add(S, nav, Object.assign({ note: $('tbNote').value }, TPM.tgt), res);
+    if (i < 0) { tpShow(TOUR_WHY[res.why] || 'Note: ' + res.why); snd.sfx('close'); return; }
+    save(); snd.sfx('pop'); toast(`${IC.decor} Tour stop ${i + 1} added`, 1600); TPM.tgt = null; $('tbNote').value = ''; tpShow();
+  }
+  // pins over the stops (tour mode) + the guide's bubble over Schiffy (a visit): DOM, placed after each render
+  const tpV = new THREE.Vector3();
+  const scr = (x, y, z) => { tpV.set(x, y, z).project(camera); return tpV.z < 1 && Math.abs(tpV.x) < 1.1 && Math.abs(tpV.y) < 1.1 ? [(tpV.x + 1) / 2 * W(), (1 - tpV.y) / 2 * H()] : null; };
+  let GUIDE = null;   // { i, n, text, at }
+  function tourFrame() {
+    if (TPM) {
+      const L = Tour.stops(S, nav).map(s => ({ x: s.x, z: s.z, n: s.i + 1 })); if (TPM.tgt) { const p = TPM.tgt.t === 's' ? [TPM.tgt.x, TPM.tgt.z] : Tour.posOf(S, nav, TPM.tgt); L.push({ x: p[0], z: p[1], n: '+', nw: 1 }); }
+      const box = $('tourPins'); while (box.children.length < L.length) box.appendChild(document.createElement('div')); while (box.children.length > L.length) box.lastChild.remove();
+      L.forEach((s, k) => { const el = box.children[k], p = scr(s.x, ground(s.x, s.z, nav.TP[1]) + 7, s.z); el.className = 'tpin' + (s.nw ? ' new' : ''); el.textContent = s.n; el.style.display = p ? '' : 'none'; if (p) { el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px'; } });
+    }
+    if (GUIDE && walker) { const w = walker.pos(), p = scr(w[0], w[1] + 9, w[2]), el = $('guideSay'); el.style.display = p && GUIDE.text ? '' : 'none'; if (p) { el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px'; } }
+  }
+  function startGuide() {
+    if (!VISIT || !walker || !S.tour) return false;
+    const stops = Tour.stops(S, nav), n = stops.length, el = $('guideSay'), chip = $('tourChip');
+    const say = (html, i) => { GUIDE = { i, n, text: html }; el.innerHTML = html; el.hidden = false; el.classList.remove('in'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in'))); };
+    chip.textContent = `Tour: stop 1 of ${n} · tap anywhere or press a key to stop`; chip.hidden = false; $('visHint').hidden = true;
+    const ok = walker.tour(stops, nav.trunkR(fx.scale), {
+      onLeg: i => { chip.textContent = `Tour: stop ${i + 1} of ${n} · tap anywhere or press a key to stop`; say(`<b>${i + 1} / ${n}</b>On the way...`, i); },
+      onStop: (i, s) => { snd.sfx('pop'); stopCam(s); say(`<b>${i + 1} / ${n}</b>${s.note ? '"' + esc(s.note) + '"' : esc(i ? 'And here!' : 'Here it is!')}<small>${esc(SOC_HOST())}'s tour</small>`, i); },
+      onEnd: skipped => { GUIDE = null; el.hidden = true; el.classList.remove('in'); chip.hidden = true; chip.textContent = 'Tap anywhere to skip'; if (!skipped) toast(`${IC.decor} That was ${esc(SOC_HOST())}'s tour. Lovely!`, 2600); },
+    });
+    if (!ok) chip.hidden = true;
+    return ok;
+  }
+  // at a stop: the camera swings round behind Schiffy so the stop is in front of her (the walker keeps following her)
+  function stopCam(s) {
+    const w = walker.pos(), dx = w[0] - s.x, dz = w[2] - s.z, L = Math.hypot(dx, dz);
+    let ux = L > 1.5 ? dx / L : camera.position.x - w[0], uz = L > 1.5 ? dz / L : camera.position.z - w[2]; const l2 = Math.hypot(ux, uz) || 1; ux /= l2; uz /= l2;
+    const d = W() < H() ? 40 : 30, ex = w[0] + (ux * 0.9 - uz * 0.45) * d, ez = w[2] + (uz * 0.9 + ux * 0.45) * d, ey = Math.max(w[1], ground(ex, ez, w[1])) + 15;
+    flyTo(new THREE.Vector3(ex, ey, ez), new THREE.Vector3(w[0], w[1] + 4, w[2]), 1.3);
+  }
+  const SOC_HOST = () => (soc && soc.V && soc.V.island ? soc.V.island.host : 'The host');
+  addEventListener('pointerdown', e => { if (walker && walker.guide && !(e.target && e.target.closest && e.target.closest('#vTour'))) walker.endTour(true); }, true);
+  $('tbAdd').onclick = tourAdd; $('tbDone').onclick = () => { endTourPick(true); snd.sfx('close'); };
+  addEventListener('keydown', e => {
+    if (!TPM) return; const typing = /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '');
+    if (e.code === 'Escape') { endTourPick(true); snd.sfx('close'); } else if (e.code === 'Enter') tourAdd(); else return;
+    if (!typing || e.code === 'Escape' || e.code === 'Enter') e.preventDefault();
+  });
+
+  // ---- creative build part 2: shaping the land (src/land.js rules, src/land_fx.js view). The Craft card's "Shape the land" tab
+  // opens the land bar: Path (drag a brush along the ground: stepping stones or packed earth; pups prefer painted paths), Meadow
+  // (a flower patch, 3 sizes, 4 kinds, walked on), Plant (a Woods tree, 1 seed + 4 berries, sapling -> full over 2 days), Remove (a
+  // forest tree on open land for wood once, or your own path / meadow / planted tree). Green / red + why like place mode; Undo =
+  // the last change made this session. PC: left drag paints / click does it (right drag turns the view); phone: one finger paints
+  // or taps, two fingers move the camera, "Here" confirms a tap.
+  const LAND_WHY = Object.assign({}, WHY, { short: 'Drag a little further', long: `Paths are capped at ${Land.C.TOTAL} m in all`, full: 'The island has as many as it can hold',
+    gather: 'The pups gather here: this tree stays', cost: 'Not enough yet', level: 'Needs a taller Elder Tree', none: 'Nothing of yours or a forest tree here' });
+  const MEADOW_R = [3.5, 5.5, 8], MEADOW_N = ['Mixed', 'Pink', 'Gold', 'Blue'], STYLE_N = ['Stepping stones', 'Packed earth'];
+  const LAND_TOOLS = { path: 'Paint a path', meadow: 'Lay a meadow', plant: 'Plant a tree', remove: 'Remove' };
+  let LM = null;   // land mode: { tool, style, kind, size, mf, raw (stroke), paint (painting now), pid (pointer), x, z, ok, why, bad, target, t }
+  const landUndo = [];   // this session's changes, last first out
+  const landYaw = (x, z) => Math.round(((Math.abs(x * 7.31 + z * 3.17) % 6.283)) * 1000) / 1000;
+  function landCraftHtml() {
+    const l = S.land, used = Land.total(S), cp = Land.canPlant(S, 0);
+    const row = (id, ic, name, txt, small, extra) => `<div class="cri land"><div class="crh">${IC[ic] || IC.decor}<b>${name}</b><small>${small}</small></div>${extra || ''}<div class="crf">${txt}</div><div class="crb"><button class="go sm" data-x="land" data-id="${id}">${id === 'remove' ? 'Remove' : id === 'plant' ? 'Plant' : id === 'meadow' ? 'Lay flowers' : 'Paint'}</button></div></div>`;
+    return `<p class="crf pure" style="margin:4px 2px">Shape the island your way. Everything follows the same rules as decorations: dry, open land, off the pups' work spots.</p>` +
+      row('path', 'build', 'Paint a path', 'Drag along the ground: stepping stones or packed earth. The pups like painted paths and take them when they are the shorter way.', `${Math.round(used)} of ${Land.C.TOTAL} m`) +
+      row('meadow', 'sprout', 'Flower meadow', 'A patch of flowers to walk through. Next to a berry garden it helps the beds grow a little more.', `${l.meadows.length} of ${Land.C.MEADOWS}`) +
+      row('plant', 'tree', 'Plant a tree', `Oaks + spruces from a seed: a sapling that grows into a full tree over 2 days. The pups walk round it.`, `${l.planted.length} of ${Land.C.PLANT}`,
+        `<div class="crc">${Object.keys(Land.C.COST).map(k => `<span class="${cp.need && cp.need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${Land.C.COST[k]}</span>`).join('')}</div>`) +
+      row('remove', 'wood', 'Remove', `A forest tree on open land gives ${Land.C.CUT_WOOD} wood, once (the trees the pups gather from stay). Also rubs out your own paths, meadows and planted trees.`, `${l.cut.length} trees removed`);
+  }
+  function startLand(tool) {
+    if (VISIT || !booted) return false;
+    if (PM) endPlace(); closeExp(); closePlot(); closeEvents(); closeNeed(); closeDecMenu(); closeCraft(); if (soc) soc.close();
+    follow = -1; pups.select(-1); refreshRoster(true);
+    LM = LM || { tool: 'path', style: 0, kind: 1, size: 1, mf: 0, raw: null, paint: false, pid: null, x: NaN, z: NaN, ok: false, why: 'land', target: null, t: 0, bad: null };
+    $('landBar').hidden = false; document.body.classList.add('placing'); controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; snd.sfx('open');
+    lmTool(tool || LM.tool);
+    const g = pickGround(W() / 2, H() * 0.55); if (g) lmHover(g[0], g[2]);
+    return true;
+  }
+  function endLand() {
+    if (!LM) return; LM = null; $('landBar').hidden = true; document.body.classList.remove('placing'); controls.enabled = true; controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    expFx.ghost(null); if (expFx.ring) expFx.ring(null); if (landFx) landFx.stroke(null);
+  }
+  function lmTool(t) {
+    if (!LM || !LAND_TOOLS[t]) return; LM.tool = t; LM.failed = false; LM.raw = null; LM.paint = false; LM.target = null; expFx.ghost(null); if (expFx.ring) expFx.ring(null); if (landFx) landFx.stroke(null);
+    for (const b of $('lbTools').querySelectorAll('button')) b.classList.toggle('on', b.dataset.t === t);
+    $('lbOk').hidden = !(PHONE && t !== 'path');
+    $('lbKeys').innerHTML = t === 'path' ? 'Drag to paint &middot; right drag turns the view &middot; Ctrl+Z undo &middot; Esc done' : 'Click to ' + (t === 'remove' ? 'remove' : t === 'plant' ? 'plant' : 'lay flowers') + ' &middot; Ctrl+Z undo &middot; 1-4 tools &middot; Esc done';
+    lmOpts(); if (isFinite(LM.x)) lmHover(LM.x, LM.z); else lmShow();
+  }
+  function lmOpts() {
+    const t = LM.tool, b = (k, v, on, txt) => `<button data-o="${k}" data-v="${v}" class="${on ? 'on' : ''}">${txt}</button>`; let h = '';
+    if (t === 'path') h = STYLE_N.map((n, i) => b('style', i, LM.style === i, n)).join('') + `<button disabled><small>${Math.round(Land.total(S))} / ${Land.C.TOTAL} m</small></button>`;
+    else if (t === 'meadow') h = ['Small', 'Medium', 'Large'].map((n, i) => b('size', i, LM.size === i, n)).join('') + MEADOW_N.map((n, i) => b('mf', i, LM.mf === i, n)).join('');
+    else if (t === 'plant') h = Land.KINDS.map((id, i) => { const e = Catalog.BY[id], c = Land.canPlant(S, i); return b('kind', i, LM.kind === i, esc(e.name) + (c.why === 'level' ? ` <small>L${e.lv}</small>` : '')); }).join('');
+    $('lbOpts').innerHTML = h;
+  }
+  function lmShow() {
+    if (!LM) return; const t = LM.tool, el = $('lbFx');
+    $('lbName').innerHTML = `${IC[{ path: 'build', meadow: 'sprout', plant: 'tree', remove: 'wood' }[t]]} <b>${LAND_TOOLS[t]}</b>`;
+    let why = LM.ok ? '' : (LAND_WHY[LM.why] || 'Not here'), fx = '';
+    if (t === 'path') { why = LM.paint ? (LM.ok ? 'Looks good: let go to lay it' : why) : LM.ok === 'done' ? 'Path laid!' : LM.failed ? why : (LM.why === 'land' || !LM.raw ? (PHONE ? 'Drag a finger along the ground' : 'Hold the mouse button and drag along the ground') : why); fx = LM.fx || 'The pups take painted paths when they are the shorter way'; }
+    else if (t === 'meadow') { if (LM.ok) why = PHONE ? 'Tap Here to lay the flowers' : 'Click to lay the flowers'; fx = LM.fx || 'Walked on: blocks nobody'; }
+    else if (t === 'plant') { const c = Land.canPlant(S, LM.kind); if (!c.ok && (LM.ok || !isFinite(LM.x))) { why = c.why === 'cost' ? `Needs ${Object.keys(c.need).map(k => c.need[k] + ' more ' + (k === 'food' ? 'berries' : k)).join(' + ')}` : LAND_WHY[c.why] || why; LM.ok = false; } else if (LM.ok) why = PHONE ? 'Tap Here to plant it' : 'Click to plant it here';
+      fx = `${IC.seed}${Land.C.COST.seeds} + ${IC.food}${Land.C.COST.food} &middot; a sapling, full grown in 2 days`; }
+    else if (t === 'remove') { const g = LM.target; if (g && g.ok) why = g.what; fx = g && g.ok ? g.fx : 'Point at a forest tree, or your own path / meadow / planted tree'; }
+    $('lbWhy').textContent = why; el.hidden = !fx; el.className = LM.fxOn ? '' : 'none'; el.innerHTML = fx;
+    $('landBar').classList.toggle('bad', t === 'path' ? (LM.paint ? !LM.ok : !!LM.failed) : !LM.ok); $('lbOk').disabled = !LM.ok;
+    $('lbUndo').disabled = !landUndo.length;
+  }
+  // the pointer is over (x, z): preview what the tool would do there (cheap rules; the walk test for planting runs on confirm)
+  function lmHover(x, z) {
+    if (!LM) return; LM.x = Math.round(x * 10) / 10; LM.z = Math.round(z * 10) / 10; LM.fx = ''; LM.fxOn = false; const t = LM.tool;
+    if (ground.raw(x, z) === null) { LM.ok = false; LM.why = 'land'; }
+    else if (t === 'meadow') {
+      const r = MEADOW_R[LM.size], c = Land.checkMeadow(S, nav, LM.x, LM.z, r); LM.ok = c.ok; LM.why = c.why;
+      const pv = c.ok ? Catalog.landPreview(S, nav, 'meadow', { x: LM.x, z: LM.z, r }) : null; if (pv && pv.helps) { LM.fx = `${IC.nourish} By a garden: the beds grow a little more`; LM.fxOn = true; }
+      if (expFx.ring) expFx.ring([LM.x, LM.z], r, c.ok);
+    } else if (t === 'plant') {
+      const r = landYaw(LM.x, LM.z), c = Land.checkPlant(S, nav, LM.kind, LM.x, LM.z, r, { reach: false, free: true }); LM.ok = c.ok && !(wfx && wfx.propHit && wfx.propHit(LM.x, LM.z, 2)); LM.why = c.ok ? 'decor' : c.why;
+      expFx.ghost(Land.KINDS[LM.kind], LM.x, LM.z, r, LM.ok, performance.now() / 1000, 0);
+    } else if (t === 'remove') {
+      LM.target = landTarget(LM.x, LM.z); LM.ok = !!(LM.target && LM.target.ok); LM.why = LM.target ? LM.target.why : 'none';
+      if (expFx.ring) expFx.ring(LM.target ? LM.target.c : null, LM.target ? LM.target.R : 1, LM.ok);
+      if (landFx) landFx.stroke(LM.target && LM.target.kind === 'path' ? LM.target.pts : null, false);
+    }
+    LM.t = performance.now(); lmShow();
+  }
+  // what Remove would take at (x, z): your planted tree > your meadow > your painted path > a forest tree
+  function landTarget(x, z) {
+    const k1 = Land.plantedAt(S, x, z, 3.5); if (k1 !== null) { const it = S.land.planted.find(t => t.k === k1), e = Land.kindOf(it.t); return { kind: 'plant', k: k1, ok: true, c: [it.x, it.z], R: 3, what: `Dig up this ${e.name.toLowerCase()}`, fx: 'Planted trees come back as nothing: the seed is in the ground' }; }
+    const k2 = Land.meadowAt(S, x, z); if (k2 !== null) { const m = S.land.meadows.find(q => q.k === k2); return { kind: 'meadow', k: k2, ok: true, c: [m.x, m.z], R: m.r, what: 'Pick these flowers', fx: 'The meadow goes' }; }
+    const k3 = Land.pathAt(S, x, z, 1.6); if (k3 !== null) { const P = S.land.paths.find(q => q.k === k3); return { kind: 'path', k: k3, ok: true, c: [x, z], R: 1.5, pts: Land.ptsOf(P), what: 'Rub out this path', fx: `${Math.round(Land.lenOf(Land.ptsOf(P)))} m of ${STYLE_N[P.s].toLowerCase()}` }; }
+    const tr = Land.treeAt(S, nav, x, z, 4.5); if (tr) { const p = map.layout.placements[tr.pid]; return { kind: 'tree', pid: tr.pid, ok: tr.ok, why: tr.why, c: [tr.pos[0], tr.pos[2]], R: 3.2 * (p.s || 1), what: `Remove this ${/Spruce/.test(p.piece) ? 'spruce' : 'oak'}: +${Land.C.CUT_WOOD} wood`, fx: `${IC.wood} +${Land.C.CUT_WOOD} wood, once; the ground joins open land` }; }
+    return null;
+  }
+  function lmConfirm() {
+    if (!LM) return false; const t = LM.tool, res = {};
+    if (!isFinite(LM.x)) return false;
+    if (t === 'meadow') { const k = LM.ok ? Land.addMeadow(S, nav, LM.x, LM.z, MEADOW_R[LM.size], LM.mf, res) : -1; if (k < 0) { snd.sfx('close'); return false; } landUndo.push({ kind: 'meadow', k }); snd.sfx('pop'); landDone('Flowers laid'); }
+    else if (t === 'plant') {
+      const r = landYaw(LM.x, LM.z), k = LM.ok ? Land.plant(S, nav, LM.kind, LM.x, LM.z, r, res) : -1;
+      if (k < 0) { LM.ok = false; LM.why = res.why || LM.why; lmShow(); snd.sfx('close'); return false; }
+      landUndo.push({ kind: 'plant', k }); snd.sfx('built'); landDone(`${Land.kindOf(LM.kind).name} planted: it grows over 2 days`);
+    } else if (t === 'remove') {
+      const g = LM.target; if (!g || !g.ok) { snd.sfx('close'); return false; }
+      if (g.kind === 'plant') { const it = Object.assign({}, S.land.planted.find(x => x.k === g.k)); Land.unplant(S, nav, g.k, false); landUndo.push({ kind: 'replant', it }); landDone('Dug up'); }
+      else if (g.kind === 'meadow') { const m = Object.assign({}, S.land.meadows.find(x => x.k === g.k)); Land.removeMeadow(S, g.k); landUndo.push({ kind: 'remeadow', m }); landDone('Flowers picked'); }
+      else if (g.kind === 'path') { const P = S.land.paths.find(x => x.k === g.k); landUndo.push({ kind: 'repath', pts: Land.ptsOf(P), s: P.s }); Land.removePath(S, nav, g.k); landDone('Path rubbed out'); }
+      else if (g.kind === 'tree') { if (!Land.cut(S, nav, g.pid, res)) { snd.sfx('close'); return false; } landUndo.push({ kind: 'cut', pid: g.pid }); const p = g.c; if (wfx) wfx.sparkle(p[0], ground(p[0], p[1], nav.TP[1]) + 2, p[1], 14, true); floater([p[0], ground(p[0], p[1], nav.TP[1]) + 8, p[1]], `+${Land.C.CUT_WOOD} ${IC.wood}`); landDone(`Tree removed: +${Land.C.CUT_WOOD} wood`); }
+      snd.sfx('pop');
+    }
+    lmHover(LM.x, LM.z); return true;
+  }
+  function landDone(msg) { save(); syncPups(); refreshTree(); toast(`${IC.sprout} ${msg}`, 1800); if (LM) { lmOpts(); lmShow(); } }
+  function lmUndo() {
+    const u = landUndo.pop(); if (!u) return false; let ok = true;
+    if (u.kind === 'path') ok = Land.removePath(S, nav, u.k);
+    else if (u.kind === 'meadow') ok = Land.removeMeadow(S, u.k);
+    else if (u.kind === 'plant') ok = Land.unplant(S, nav, u.k, true);   // a fresh planting comes back: seed + berries
+    else if (u.kind === 'cut') { ok = Land.uncut(S, nav, u.pid); if (!ok) toast(`${IC.wood} Undo needs the ${Land.C.CUT_WOOD} wood back first`, 2200); }
+    else if (u.kind === 'repath') ok = Land.addPath(S, nav, u.pts, u.s) >= 0;
+    else if (u.kind === 'remeadow') ok = Land.addMeadow(S, nav, u.m.x, u.m.z, u.m.r, u.m.f) >= 0;
+    else if (u.kind === 'replant') ok = Land.replant(S, nav, u.it);
+    if (!ok) { if (u.kind !== 'cut') toast('That can\'t come back here any more', 1800); snd.sfx('close'); }
+    else { save(); syncPups(); refreshTree(); snd.sfx('tap'); }
+    if (LM) { lmOpts(); if (isFinite(LM.x)) lmHover(LM.x, LM.z); else lmShow(); }
+    return ok;
+  }
+  // the path brush: raw pointer points on the ground (>= 0.4 m apart) -> the land rules every 80 ms -> laid on release
+  let lmCheckT = 0;
+  function lmStroke(x, z, end) {
+    if (!LM || LM.tool !== 'path') return;
+    const R = LM.raw || (LM.raw = []), last = R[R.length - 1];
+    if (x !== null && (!last || Math.hypot(x - last[0], z - last[1]) >= 0.4)) R.push([x, z]);
+    const now = performance.now();
+    if (!end && now - lmCheckT < 80) return; lmCheckT = now;
+    const pts = Land.resample(R, 2.5), c = pts.length >= 2 ? Land.checkPath(S, nav, pts) : { ok: false, why: 'short' };
+    LM.ok = c.ok; LM.why = c.why; LM.bad = c.i; LM.fx = ''; LM.fxOn = false;
+    if (c.ok) { const pv = Catalog.landPreview(S, nav, 'path', { k: -1, s: LM.style, p: [].concat(...pts.map(p => [Math.round(p[0] * 10), Math.round(p[1] * 10)])) }); if (pv.helps) { LM.fx = `${IC.wood} Leads to a work yard: gatherers bring more`; LM.fxOn = true; } }
+    if (landFx) landFx.stroke(pts, c.ok, c.i);
+    if (end) {
+      LM.paint = false; controls.enabled = true;
+      if (c.ok) { const k = Land.addPath(S, nav, pts, LM.style); if (k >= 0) { landUndo.push({ kind: 'path', k }); snd.sfx('built'); landDone(`${STYLE_N[LM.style]} laid: ${Math.round(Land.lenOf(pts))} m`); LM.ok = 'done'; } }
+      else { snd.sfx('close'); LM.failed = true; }
+      LM.raw = null; setTimeout(() => { if (LM && !LM.paint && landFx) landFx.stroke(null); }, c.ok ? 300 : 1400);
+    }
+    lmShow();
+  }
   function buildExpUI() {
     $('expBtn').onclick = () => { if (expView) closeExp(); else openExp(); };
     $('ecClose').onclick = closeExp;
+    // photo mode
+    $('photoBtn').innerHTML = IC.photo || IC.star; $('photoBtn').onclick = openPhoto; $('phDone').onclick = closePhoto; $('phSave').onclick = savePhoto;
+    $('phTime').oninput = e => { if (PHOTO) { PHOTO.h = +e.target.value; renderPhoto(); } }; $('phNow').onclick = () => { if (PHOTO) { PHOTO.h = null; renderPhoto(); } };
+    $('phSea').addEventListener('click', e => { const b = e.target.closest('button[data-sea]'); if (b && PHOTO) { const v = +b.dataset.sea; PHOTO.sea = v < 0 ? null : v; renderPhoto(); } });
+    $('phFrame').addEventListener('click', e => { const b = e.target.closest('button[data-fr]'); if (b && PHOTO) { PHOTO.frame = b.dataset.fr; renderPhoto(); } });
+    addEventListener('keydown', e => { if (PHOTO && e.key === 'Escape') closePhoto(); });
+    $('craftBtn').onclick = () => { if (craftOpen) closeCraft(); else openCraft(); }; $('crClose').onclick = closeCraft;
+    $('crSets').addEventListener('click', e => { const b = e.target.closest('button[data-set]'); if (b) { craftSet = b.dataset.set; renderCraft(); $('craftCard').scrollTop = 0; } });
+    $('crBody').addEventListener('click', e => { const b = e.target.closest('button[data-x]'); if (b && !b.disabled) craftAct(b.dataset.x, b.dataset.id); });
     // free decor: the place bar + the menu over a placed decoration
     $('pbOk').onclick = () => pmConfirm(); $('pbCancel').onclick = () => { endPlace(); snd.sfx('close'); };
     // turn buttons: a tap = one step, holding keeps turning (free rotation with snap off)
@@ -1343,6 +1738,10 @@
     $('pbSnap').onclick = () => pmSnap(); $('pbCopy').onclick = () => pmCopy();
     $('pbSnap').classList.toggle('on', !!DPREF.snap);
     $('decMenu').addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) decMenuAct(b.dataset.a); });
+    // creative build part 2: the land bar
+    $('lbTools').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { lmTool(b.dataset.t); snd.sfx('tap'); } });
+    $('lbOpts').addEventListener('click', e => { const b = e.target.closest('button[data-o]'); if (!b || !LM) return; LM[b.dataset.o] = +b.dataset.v; lmOpts(); if (isFinite(LM.x)) lmHover(LM.x, LM.z); snd.sfx('tap'); });
+    $('lbUndo').onclick = () => lmUndo(); $('lbDone').onclick = () => { endLand(); snd.sfx('close'); }; $('lbOk').onclick = () => lmConfirm();
     $('hOk').onclick = closeHaul;
     $('hDecor').onclick = () => { closeHaul(); openExp(); setTimeout(() => { const e = document.querySelector('#ecBody .dec'); if (e) e.scrollIntoView({ block: 'center' }); }, 50); };
     $('hWard').onclick = () => { closeHaul(); openWard(wardWho()); };
@@ -1359,6 +1758,7 @@
       else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('Trip called off: supplies back in the pantry', 2400); save(); } }
       else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
       else if (x === 'place') { placeDecor(b.dataset.id); }
+      else if (x === 'craft') { openCraft(); return; }
       else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k, nav)) { save(); syncPups(); toast('Put away in the shed', 1600); } }
       else if (x === 'findplot') { closeExp(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
       renderExp(true);
@@ -1740,6 +2140,34 @@
     if (!PM || (e.pointerType === 'mouse' ? e.buttons : !PM.drag)) return;   // a mouse drag orbits the camera; a touch drag on the ghost slides it
     const [mx, my] = canvasXY(e), g = pickGround(mx, my); if (g) pmMove(g[0], g[2]);
   });
+  // land mode (creative build part 2): the path brush paints with the left button / one finger (the camera stays put; right
+  // drag / two fingers move it); the other tools follow the mouse, a tap moves the preview (phone: "Here" confirms)
+  const lmTouches = new Set();
+  const lmCancelStroke = () => { if (!LM || !LM.paint) return; LM.paint = false; LM.raw = null; controls.enabled = true; if (landFx) landFx.stroke(null); lmShow(); };
+  addEventListener('pointerdown', e => {
+    if (!LM || e.target !== renderer.domElement) return;
+    if (e.pointerType !== 'mouse') lmTouches.add(e.pointerId);
+    if (LM.tool !== 'path') return;
+    if ((e.pointerType === 'mouse' && e.button !== 0) || lmTouches.size > 1) { lmCancelStroke(); return; }
+    const [mx, my] = canvasXY(e), g = pickGround(mx, my); if (!g) return;
+    LM.paint = true; LM.failed = false; LM.pid = e.pointerId; LM.raw = []; controls.enabled = false; lmStroke(g[0], g[2], false);
+  }, true);
+  addEventListener('pointerup', e => { lmTouches.delete(e.pointerId); if (LM && LM.paint && e.pointerId === LM.pid) { const [mx, my] = canvasXY(e), g = e.target === renderer.domElement ? pickGround(mx, my) : null; lmStroke(g ? g[0] : null, g ? g[2] : null, true); } }, true);
+  addEventListener('pointercancel', e => { lmTouches.delete(e.pointerId); lmCancelStroke(); }, true);
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!LM) return; const [mx, my] = canvasXY(e);
+    if (LM.paint) { if (e.pointerId === LM.pid) { const g = pickGround(mx, my); if (g) lmStroke(g[0], g[2], false); } return; }
+    if (e.pointerType === 'mouse' && !e.buttons && LM.tool !== 'path' && performance.now() - LM.t > 40) { const g = pickGround(mx, my); if (g) lmHover(g[0], g[2]); }
+  });
+  addEventListener('keydown', e => {
+    if (!LM || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '')) return;
+    if (e.code === 'Escape') { endLand(); snd.sfx('close'); }
+    else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') lmUndo();
+    else if (/^Digit[1-4]$/.test(e.code)) lmTool(['path', 'meadow', 'plant', 'remove'][+e.code.slice(5) - 1]);
+    else if (e.code === 'Enter') lmConfirm();
+    else return;
+    e.preventDefault();
+  });
   addEventListener('keydown', e => {
     if (!PM || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '')) return;
     if (e.code === 'KeyQ') pmTurn(-1, e.shiftKey); else if (e.code === 'KeyE' || e.code === 'KeyR') pmTurn(1, e.shiftKey);
@@ -1749,10 +2177,12 @@
   });
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pups) return;
-    if (calm && calm.woke(down[2]) && !PM) { down = null; return; }   // vibe pass 1: a tap that only woke the calm HUD
+    if (calm && calm.woke(down[2]) && !PM && !LM && !TPM) { down = null; return; }   // vibe pass 1: a tap that only woke the calm HUD
     down = null;
     const r = renderer.domElement.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    if (TPM) { tourPickAt(mx, my); return; }   // piece 5: tour mode picks a stop
     if (PM) { const g = pickGround(mx, my); if (g) { pmMove(g[0], g[2]); if (e.pointerType === 'mouse') pmConfirm(); } return; }   // place mode: a click puts it down, a tap moves the ghost there
+    if (LM) { if (LM.tool !== 'path') { const g = pickGround(mx, my); if (g) { lmHover(g[0], g[2]); if (e.pointerType === 'mouse') lmConfirm(); } } return; }   // land mode: the same
     if (DM !== null) closeDecMenu();
     const fr = nfx && nfx.pickFruit(mx, my, camera, W(), H(), PHONE ? 44 : 32); if (fr) { collectFruit(fr); return; }   // glowing fruit first (events)
     const lp = lfx && lfx.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34); if (lp && lan) { if (lp === 'bloom') lan.open('bloom'); else lan.openRead(lp, false); return; }   // a sky lantern / the World Bloom
@@ -1797,7 +2227,10 @@
       onVisitors: names => { if (!VISIT && S && Story.visit(S, names[0] || '')) save(); },   // Round 2 step 2: the tree notices a friend's visit
       onWater: () => { snd.sfx('water'); S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
       onGift: () => { snd.sfx('gift'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
-      onLike: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); } });
+      onLike: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); },
+      // creative build piece 5: the beautiful star, the guided tour (home: mark stops; visit: take it)
+      onStar: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], '&#11088;'); },
+      stopName, tourPick: (tgt, show) => startTourPick(tgt, show), startGuide: () => startGuide() });
     let ld;
     if (VISIT) {
       const vs = await soc.visitLoad(VISIT);
@@ -1810,13 +2243,15 @@
     S = ld.state;
     fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S));
     plots = Plots(scene, m, nav, ground);
-    expFx = ExpFx(scene, m, nav, ground, { phone: PHONE });
+    expFx = ExpFx(scene, m, nav, ground, { phone: PHONE, focus: () => controls.target });   // (phones: nearest 180 decorations to the orbit target)
     const loader = new THREE.GLTFLoader();
     pups = Pups(scene); await pups.load('art/pups.glb', loader);
     nfx = NeedsFx(scene, m, nav, ground, pups, { phone: PHONE, target: () => controls.target });
     seaFx = SeasonFx(scene, m, nav, ground, { phone: PHONE });
     // vibe pass 2: a living world (flowers, benches, cottage life, puddles, butterflies + sleeping curiosities the colour wakes)
     wfx = WorldFx(scene, m, nav, ground, plots, { phone: PHONE, onWake: c => curioWoke(c) });
+    // creative build part 2: shaping the land (painted paths, removed + planted trees, meadows; home + visits)
+    if (window.LandFx) landFx = LandFx(scene, m, nav, ground, { phone: PHONE, flowerKit: () => wfx && wfx.flowerKit ? wfx.flowerKit() : null });
     // vibe pass 2 lane B: pup life (visual only): moments while pups rest, reactions to critters + lanterns, chatter bubbles
     if (window.PupLife) life = PupLife(scene, nav, ground, { phone: PHONE, map: m, wfx, plots, pups, crFx: () => crFx, lfx: () => lfx, scale: () => fx.scale,
       quiet: () => !booted || overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || !!tween });
@@ -1891,7 +2326,7 @@
     // vibe pass 1: the calm view (src/calm.js): the panel folds to a pill when idle, the HUD fades after ~9 s without input.
     // Never while something is in use: a card / menu / the tree's words / a selected or followed pup / a text field / the tour.
     if (!VISIT && window.ElderCalm) {
-      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu', 'wardCard'];
+      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu', 'wardCard', 'craftCard', 'landBar', 'tourBar'];
       const vis = id => { const el = $(id); return !!el && !el.hidden && el.offsetParent !== null; };
       calm = ElderCalm.make({ side: $('side'), phone: () => document.body.classList.contains('phone'),
         busy: () => overlayOpen() || sayOpen || !!tour || CQ.length > 0 || pups.selected >= 0 || follow >= 0 || curPlot !== null || CARDS.some(vis) ||
@@ -1937,6 +2372,14 @@
       Exped, expFx, openExp, closeExp, sendTrip, openHaul, closeHaul, placeDecor, dockCam, renderExp,
       // free decor (tests): Decor, decor = { start(id, k), end, confirm, turn(d), move(x, z) (the ghost), get PM, check(id, x, z, r, k, full),
       // pick(mx, my), menu(k), act('move' | 'turn' | 'pack'), closeMenu, ground(mx, my) }
+      // creative build part 2, shaping the land: land.start(tool) / end / tool(t) / hover(x, z) / confirm / undo / stroke(x, z, end) / LM / undoList / target(x, z), landFx
+      Land, get landFx() { return landFx; }, land: { start: startLand, end: endLand, tool: lmTool, hover: lmHover, confirm: lmConfirm, undo: lmUndo, stroke: lmStroke, target: landTarget, get LM() { return LM; }, undoList: landUndo },
+      // buildings (creative build part 2): Homes, homes = { start(piece, pid) (place mode for a free home / moving one), act(a, el) (plot
+      // card: col / roof / turn / hmove / hdown on curPlot), check(piece, x, z, r, pid, full), WHY }
+      Homes, homes: { start: startHome, act: homeAct, check: homeCheck, WHY: HOME_WHY },
+      // piece 5 "showing off" (tests): Tour, guide = { pick(tgt, show) / end(back) / target({t, r, x, z}) / at(mx, my) / add() (tour mode, home),
+      // start() (the visitor's guided tour), get TPM, get GUIDE, stopName(st) }
+      Tour, guide: { pick: startTourPick, end: endTourPick, target: tourTarget, at: tourPickAt, add: tourAdd, start: startGuide, get TPM() { return TPM; }, get GUIDE() { return GUIDE; }, stopName },
       Decor, decor: { start: startPlace, end: endPlace, confirm: pmConfirm, turn: pmTurn, move: pmMove, snap: pmSnap, copy: pmCopy, pref: DPREF, get PM() { return PM; }, check: decorCheck, pick: pickDecor, menu: openDecMenu, act: decMenuAct, closeMenu: closeDecMenu, ground: pickGround },
       // step 4 (tests): Needs, Events, nfx, openEvents / closeEvents, openNeed(k) / closeNeed, collectFruit({id, j, p}), fruitCam, traderCam,
       // waterRuns() = the water cells rebuilt from the terrain mesh (compare with data/water_cells.json), spotCheck() = mesh
@@ -1955,7 +2398,7 @@
       },
       // Round 2 step 2 (tests): Story, RST (shown colour radius / wave), session, trySpeak(force), showSay(words), closeSay,
       // openDiary(i), closeDiary, setColour(R | null, wave) = jump the shown radius (null = back to the earned one)
-      Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, Wardrobe, openWard, closeWard, wardPick, startWave, get wfx() { return wfx; }, wetness, PORTRAIT, homeView,
+      Catalog, openCraft, closeCraft, craftAct, openPhoto, closePhoto, savePhoto, get PHOTO() { return PHOTO; }, Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, Wardrobe, openWard, closeWard, wardPick, startWave, get wfx() { return wfx; }, wetness, PORTRAIT, homeView,
       // Round 2 step 3 (tests): Critters, crFx, meetCritter(id, fly), critCam(id), openCritCard(c, visit, first), closeCritCard,
       // spawnCritter(c, key, min) = put a visitor here NOW (captures only: use ?nosave=1 / a test slot), renderCritters
       // Round 2 step 4 (tests): Lanterns, lan (LanternUI: sync, open(tab), openRead(id), status, claim), lfx (LanternFx: release, setSky, setBloom, bloomPos)
@@ -2089,6 +2532,9 @@
       if (cloud && !VISIT) cloud.played();   // real play since the last save: the save counter moves on (src/cloud.js)
       while (acc >= STEP && n < 4000) { Sim.step(S, STEP, nav, ev); acc -= STEP; n++; }
       if (acc >= STEP) acc = 0;
+      // a frame with no sim step: another island built on this nav between frames (the mock's sample islands = Sim.create, a
+      // visit's own-save read = Sim.sanitize) left nav.plotBy without this island's free homes -> bedsOf threw in refreshTree
+      if (!n && window.Homes) Homes.sync(S, nav);
     }
     if (pups.list.length !== S.pups.length) syncPups();
     if (VISIT) {   // a visit is a light visual tick: pups work + animate, the tree never levels, only delivery floaters show
@@ -2112,9 +2558,9 @@
     }
     // step 5: season (weights fade over the first night hours of a new week) -> map tints, sky, weather, tree petals / leaves;
     // the sky reads the season-warped hour (summer long days, winter short)
-    const sw = Seasons.weights(S.ep0 !== null ? S.ep0 + S.time : Seasons.localNow());
+    const sw = PHOTO && PHOTO.sea !== null ? [0, 1, 2, 3].map(i => i === PHOTO.sea ? 1 : 0) : Seasons.weights(S.ep0 !== null ? S.ep0 + S.time : Seasons.localNow());   // (photo mode: a view-only season preview)
     dn.season = sw; fx.season = sw; fx.level = S.level; sndSW = sw;
-    dn.update(Sim.dayH(S), t, dt, sick, fx.scale);
+    dn.update(PHOTO && PHOTO.h !== null ? PHOTO.h : Sim.dayH(S), t, dt, sick, fx.scale);   // (photo mode: a view-only time preview)
     if (lightFx) lightFx.update(dn, fx, t, dt, sw, { rain: S.events.active.some(e => e.type === 'shower') });   // vibe 2 lane C
     { const fe = S.events.active.find(e => e.type === 'fest'); seaFx.fest = fe ? 1 : 0; seaFx.festSea = fe ? fe.sea : -1; }
     seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
@@ -2125,7 +2571,9 @@
     // free decor place mode: the full rules (the pups' ways to their jobs) once the ghost has rested 0.15 s; the ghost + menu
     if (PM) { if (!PM.done && now - PM.t > 150) pmCheck(true); expFx.ghost(PM.id, PM.x, PM.z, PM.r, PM.ok, t, DPREF.snap ? SNAP.grid : 0); expFx.guides(PM.guides); }
     if (DM !== null) placeDecMenu();
+    if (LM && LM.tool === 'plant' && isFinite(LM.x)) expFx.ghost(Land.KINDS[LM.kind], LM.x, LM.z, landYaw(LM.x, LM.z), LM.ok, t, 0);   // (land mode: the sapling's ghost pulses)
     expFx.update(S, t, dt, Math.min(STEP, acc));   // boats first: pups on a trip ride in them
+    if (landFx) landFx.update(S, t, camera);   // creative build part 2: painted paths, removed + planted trees, meadows
     for (let i = 0; i < S.pups.length; i++) {
       let ps = Sim.pose(S, i, nav, Math.min(STEP, acc));
       const ov = expFx.pupPose(S, i, ps, t); if (ov) ps = ov; poses.push(ps);
@@ -2145,6 +2593,7 @@
     if (wfx) wfx.update(S, t, dt, dn.state.night, camera, sw, { wet: wetness(), rain: S.events.active.some(e => e.type === 'shower'), H: renderer.domElement.height });   // vibe pass 2
     map.update(camera, t, renderer.domElement.height);
     renderer.render(scene, camera);
+    if (TPM || GUIDE) tourFrame();   // piece 5: tour pins (home) / the guide's bubble (visit)
     // labels: projected over each pup's head, then stacked upward where they would overlap (nearest pup keeps its spot)
     const hv = new THREE.Vector3(), placed = [], lbls = [];
     document.querySelectorAll('#labels .lbl').forEach(l => {

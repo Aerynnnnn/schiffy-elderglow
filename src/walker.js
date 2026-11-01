@@ -88,12 +88,38 @@
     // keys (ignored while typing in a field)
     const KEYMAP = { KeyW: 'f', ArrowUp: 'f', KeyS: 'b', ArrowDown: 'b', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r', ShiftLeft: 'run', ShiftRight: 'run' };
     const typing = e => /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '');
-    addEventListener('keydown', e => { const k = KEYMAP[e.code]; if (!k || typing(e)) return; st.keys[k] = true; if (k !== 'run') { st.path = null; ring.visible = false; } if (e.code.startsWith('Arrow')) e.preventDefault(); });
+    addEventListener('keydown', e => { if (G && !typing(e)) endTour(true); const k = KEYMAP[e.code]; if (!k || typing(e)) return; st.keys[k] = true; if (k !== 'run') { st.path = null; ring.visible = false; } if (e.code.startsWith('Arrow')) e.preventDefault(); });
     addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) st.keys[k] = false; });
     addEventListener('blur', () => { st.keys = {}; });
 
+    // ---- piece 5: the host's guided tour. Schiffy walks the stops in order on the road graph (walkTo = nav legs, free spot near
+    // the stop), stands at each for READ s (+ a bit per letter) while the game shows the note; any key (here) or pointer / Skip (the
+    // game calls endTour(true)) ends it where she is. cb = { onLeg(i, stop), onStop(i, stop), onEnd(skipped) }.
+    const READ = 3.6;
+    let G = null;   // { stops, i, phase 'walk' | 'read', t, R, cb }
+    function tour(stops, trunkR, cb) {
+      if (!stops || !stops.length) return false;
+      endTour(true); st.keys = {}; G = { stops, i: -1, phase: 'walk', t: 0, R: trunkR, cb: cb || {} }; nextStop(); return true;
+    }
+    function nextStop() {
+      if (!G) return; G.i++;
+      if (G.i >= G.stops.length) { const cb = G.cb; G = null; ring.visible = false; if (cb.onEnd) cb.onEnd(false); return; }
+      const s = G.stops[G.i], y = gy(s.x, s.z, st.y); walkTo([s.x, y, s.z], G.R); G.phase = 'walk'; G.t = 0;
+      if (G.cb.onLeg) G.cb.onLeg(G.i, s);
+    }
+    function endTour(skipped) { if (!G) return; const cb = G.cb; G = null; st.path = null; ring.visible = false; if (cb.onEnd) cb.onEnd(!!skipped); }
+    function tourTick(dt) {
+      if (!G) return;
+      G.t += dt;
+      if (G.phase === 'walk' && (!st.path || G.t > 90)) { const s = G.stops[G.i]; G.phase = 'read'; G.t = 0; G.dur = READ + Math.min(4, (s.note || '').length * 0.06); st.path = null; ring.visible = false; if (G.cb.onStop) G.cb.onStop(G.i, s); }
+      else if (G.phase === 'read') {
+        const s = G.stops[G.i]; if (Math.hypot(s.x - st.x, s.z - st.z) > 1.5) { let d = Math.atan2(s.x - st.x, s.z - st.z) - st.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); st.yaw += d * Math.min(1, dt * 5); }   // she looks at it
+        if (G.t >= G.dur) nextStop();
+      }
+    }
     const fwd = new V3(), side = new V3();
     function update(dt) {
+      tourTick(dt);
       const K = st.keys; let mx = (K.r ? 1 : 0) - (K.l ? 1 : 0), mz = (K.f ? 1 : 0) - (K.b ? 1 : 0), sp = 0;
       const x0 = st.x, z0 = st.z;
       if (mx || mz) {
@@ -122,7 +148,8 @@
       const tgt = new V3(st.x, st.y + 4, st.z), dv = tgt.sub(controls.target).multiplyScalar(Math.min(1, dt * 6));
       controls.target.add(dv); camera.position.add(dv);
     }
-    return { holder, load, place, walkTo, pickGround, update, st, free, freeNear, get ready() { return ready; }, pos: () => [st.x, st.y, st.z] };
+    return { holder, load, place, walkTo, pickGround, update, st, free, freeNear, get ready() { return ready; }, pos: () => [st.x, st.y, st.z],
+      tour, endTour, get guide() { return G; } };
   }
   window.Walker = Walker;
 })();

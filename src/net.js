@@ -20,6 +20,10 @@
 //   lanternSent() -> [{ id, at, found, warm }] (never who), bloomStatus() -> { cyc, total, prev, today, mine, cap }, bloomAdd(n) -> { added, today, total }
 // Round 2 step 5 (push, server/patch_4.sql; { setup: true } = patch not run yet): pushSubscribe({ endpoint, p256dh, auth, prefs, qf, qt, tz }),
 //   pushUnsubscribe(endpoint), pushPlan(tripKey, dueMs, n) (boat home push while the app is away), pushUnplan(tripKey | null)
+// Creative build piece 5 (showing off, server/patch_5.sql; { setup: true } = patch not run yet -> the game shows no stars / no shelf):
+//   star(id) -> { ok, stars } | { ok: false, why: starred | visit first | rate | your own island | ... } (once per visitor per island, no undo),
+//   starInfo(ids) -> { n: {id: count}, mine: [ids I starred] }, starNews(sinceMs) -> { total, since } (my island),
+//   shelf() -> { cyc, week: card | null, last: card | null, featured: [card] } (card + stars, week, new). Mock: opt.p5 === false = patch missing.
 (function () {
   'use strict';
   const SB_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
@@ -36,14 +40,20 @@
     function db() {
       let o = read();
       if (!o) {
-        o = { v: 1, seq: 0, users: {}, islands: {}, visits: [], gifts: [], likes: [], notes: [], reports: [] };
-        for (const x of (opt.samples ? opt.samples() : [])) o.islands[x.id] = { id: x.id, owner: 'sample', name: x.name, host: x.host, snap: x.snap, lv: x.snap.lv, col: x.snap.col, pub: true, likes: x.likes, created: Date.now() - 86400000 * (3 + x.snap.lv), updated: Date.now() - 3600000 * (2 + x.snap.lv * 5) };
+        o = { v: 1, seq: 0, users: {}, islands: {}, visits: [], gifts: [], likes: [], notes: [], reports: [], stars: [] };
+        for (const x of (opt.samples ? opt.samples() : [])) {
+          o.islands[x.id] = { id: x.id, owner: 'sample', name: x.name, host: x.host, snap: x.snap, lv: x.snap.lv, col: x.snap.col, pub: true, likes: x.likes, created: Date.now() - 86400000 * (3 + x.snap.lv), updated: Date.now() - 3600000 * (2 + x.snap.lv * 5) };
+          // piece 5: a few pretend visitors found the sample islands beautiful (so the no-server Explore shelf is not empty)
+          for (let k = 0; k < (x.stars || 0); k++) o.stars.push({ island: x.id, uid: 'sample-v' + k, at: Date.now() - 60000 * (k + 1) });
+        }
         write(o);
       }
       return o;
     }
     function write(o) { localStorage.setItem(KEY, JSON.stringify(o)); if (bc) bc.postMessage(1); }
     const nid = (o, p) => p + pad(++o.seq, 8);
+    const now = () => (opt.now ? opt.now() : Date.now());   // tests may move the pretend server's clock (stars + the week pick)
+    const OFF5 = { ok: false, setup: true, why: 'stars are not switched on on the server yet (server/patch_5.sql)' };
     let uid = null, landed = null;   // landed = the result of a pretend email link this page was opened with
     const me = o => o.users[uid] || null;
     const mine = o => Object.values(o.islands).find(i => i.owner === uid) || null;
@@ -75,7 +85,7 @@
       async setPublic(pub) { const o = db(), i = mine(o); if (!i) return { ok: false, why: 'not published yet' }; i.pub = !!pub; write(o); return { ok: true }; },
       async deleteIsland() {   // = SQL on delete cascade: its visits, gifts, likes, notes go with it
         const o = db(), i = mine(o); if (!i) return { ok: false, why: 'not published yet' };
-        delete o.islands[i.id]; for (const k of ['visits', 'gifts', 'likes', 'notes']) o[k] = o[k].filter(x => x.island !== i.id); write(o); return { ok: true, n: 1 };
+        delete o.islands[i.id]; for (const k of ['visits', 'gifts', 'likes', 'notes', 'stars']) o[k] = (o[k] || []).filter(x => x.island !== i.id); write(o); return { ok: true, n: 1 };
       },
       async myIsland() { const i = mine(db()); return i ? { id: i.id, likes: i.likes, pub: i.pub, updated: i.updated } : null; },
       async browse({ sort, q, limit }) {
@@ -89,8 +99,8 @@
       async getIsland(id) { const i = pubIsland(db(), id) || (mine(db()) && mine(db()).id === id ? mine(db()) : null); return i ? Object.assign(card(i), { snap: i.snap }) : null; },
       async visit(id) {
         const o = db(), why = canVisitorAct(o, id); if (why) return { ok: false, why };
-        const hr = o.visits.filter(v => v.uid === uid && Date.now() - v.at < 3600000).length; if (hr >= Soc().C.VISITS_PER_HOUR) return { ok: false, why: 'rate' };
-        o.visits.push({ id: nid(o, 'v'), island: id, uid, from: me(o).host, fromIsland: me(o).island, at: Date.now() }); write(o); return { ok: true };
+        const hr = o.visits.filter(v => v.uid === uid && now() - v.at < 3600000).length; if (hr >= Soc().C.VISITS_PER_HOUR) return { ok: false, why: 'rate' };
+        o.visits.push({ id: nid(o, 'v'), island: id, uid, from: me(o).host, fromIsland: me(o).island, at: now() }); write(o); return { ok: true };
       },
       async water(id) {
         const o = db(), why = canVisitorAct(o, id); if (why) return { ok: false, why };
@@ -110,6 +120,46 @@
         o.likes.push({ island: id, uid, from: me(o).host, at: Date.now() }); o.islands[id].likes++; write(o); return { ok: true, likes: o.islands[id].likes };
       },
       async liked(id) { return db().likes.some(l => l.island === id && l.uid === uid); },
+      // ---- piece 5 "showing off" (= server/patch_5.sql: the same rules, limits, picks; opt.p5 === false = the patch is missing)
+      async star(id) {
+        if (opt.p5 === false) return OFF5;
+        const o = db(), St = Soc().C.STAR, t = now(); if (!uid) return { ok: false, why: 'not signed in' }; if (!me(o)) return { ok: false, why: 'pick a name first' };
+        const i = pubIsland(o, id); if (!i) return { ok: false, why: 'island not found' }; if (i.owner === uid) return { ok: false, why: 'your own island' };
+        const L = o.stars || (o.stars = []); if (L.some(s => s.island === id && s.uid === uid)) return { ok: false, why: 'starred' };
+        if (!o.visits.some(v => v.island === id && v.uid === uid && t - v.at < St.VISIT_H * 3600000 && v.at <= t)) return { ok: false, why: 'visit first' };
+        const my = L.filter(s => s.uid === uid);
+        if (my.filter(s => t - s.at < 3600000).length >= St.HOUR || my.filter(s => DAY(s.at) === DAY(t)).length >= St.DAY) return { ok: false, why: 'rate' };
+        L.push({ island: id, uid, at: t }); write(o); return { ok: true, stars: L.filter(s => s.island === id).length };
+      },
+      async starInfo(ids) {
+        if (opt.p5 === false) return OFF5;
+        const o = db(), L = o.stars || [], n = {}, A = (ids || []).slice(0, 60);
+        for (const id of A) { const i = o.islands[id]; if (i && (i.pub || i.owner === uid)) n[id] = L.filter(s => s.island === id).length; }
+        return { ok: true, n, mine: A.filter(id => L.some(s => s.island === id && s.uid === uid)) };
+      },
+      async starNews(since) {
+        if (opt.p5 === false) return OFF5;
+        const o = db(), i = mine(o); if (!i) return { ok: true, total: 0, since: 0 };
+        const L = (o.stars || []).filter(s => s.island === i.id); return { ok: true, total: L.length, since: L.filter(s => s.at > (since || 0)).length };
+      },
+      async shelf() {
+        if (opt.p5 === false) return OFF5;
+        const o = db(), t = now(), So = Soc(), St = So.C.STAR, c = So.weekOf(t), ws = So.weekStart(c), L = o.stars || [];
+        const okI = id => { const i = o.islands[id]; return i && i.pub && !o.reports.some(r => r.kind === 'island' && r.target === id && t - r.at < St.REPORT_DAYS * 86400000) ? i : null; };
+        const rank = (a, b) => b.n - a.n || a.m - b.m || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        const groups = (from, to, not) => { const g = {}; for (const s of L) { if (s.at < from || s.at >= to || s.island === not || !okI(s.island)) continue; const e = g[s.island] || (g[s.island] = { id: s.island, n: 0, m: 0 }); e.n++; e.m = Math.max(e.m, s.at); } return Object.values(g).sort(rank); };
+        const leader = (cc, not) => { const w = groups(So.weekStart(cc), So.weekStart(cc + 1), not)[0]; return w && w.n >= St.WEEK_MIN ? w.id : null; };
+        const wp = o.wpick || (o.wpick = {});
+        if (!(String(c - 1) in wp)) { wp[c - 1] = leader(c - 1, wp[c - 2] === undefined ? null : wp[c - 2]); write(o); }   // freeze last week's pick once
+        const prev = wp[c - 1], w = leader(c, prev);
+        const top = groups(ws, Infinity, w).filter(e => e.n >= St.FEAT_MIN).slice(0, St.FEAT_TOP).map(e => e.id);
+        const all = id => L.filter(s => s.island === id).length;
+        const nw = Object.values(o.islands).filter(i => okI(i.id) && t - (i.created || 0) < St.NEW_DAYS * 86400000 && i.id !== w && !top.includes(i.id) && all(i.id) > 0)
+          .sort((a, b) => all(b.id) - all(a.id) || (b.created || 0) - (a.created || 0) || (a.id < b.id ? -1 : 1)).slice(0, St.FEAT_NEW).map(i => i.id);
+        const cardW = id => { const i = id && okI(id); if (!i) return null; return Object.assign(card(i), { created: i.created || 0, stars: all(id), week: L.filter(s => s.island === id && s.at >= ws).length, new: t - (i.created || 0) < St.NEW_DAYS * 86400000 }); };
+        return { ok: true, cyc: c, week: cardW(w), last: prev !== w ? cardW(prev) : null, featured: top.concat(nw).map(cardW).filter(Boolean) };
+      },
+      mockStar(island, u, at) { const o = db(); (o.stars || (o.stars = [])).push({ island, uid: u, at: at || now() }); write(o); },   // tests only (= an SQL superuser insert)
       async note(id, text) {
         const o = db(), why = canVisitorAct(o, id); if (why) return { ok: false, why };
         const c = Soc().noteCheck(text); if (!c.ok) return { ok: false, why: c.why };
@@ -120,7 +170,7 @@
       async report(kind, id, reason) {
         const o = db(); if (!uid) return { ok: false, why: 'not signed in' };
         if (o.reports.some(r => r.uid === uid && r.kind === kind && r.target === id)) return { ok: true };
-        o.reports.push({ id: nid(o, 'r'), uid, kind, target: id, reason: String(reason || '').slice(0, 200), at: Date.now() });
+        o.reports.push({ id: nid(o, 'r'), uid, kind, target: id, reason: String(reason || '').slice(0, 200), at: now() });
         if (kind === 'note') {   // = the SQL trigger: hidden at once when the island's owner reports it, or after 3 reporters
           const n = o.notes.find(x => x.id === id), own = n && o.islands[n.island] && o.islands[n.island].owner === uid;
           if (n && (own || o.reports.filter(r => r.kind === 'note' && r.target === id).length >= 3)) n.hidden = true;
@@ -337,6 +387,19 @@
       async gift(id, g) { const r = await sb.from('gifts').insert({ island_id: id, kind: g.kind, item: g.item, n: g.kind === 'decor' ? 1 : Math.round(+g.n || 0) }); return r.error ? fail(r.error) : { ok: true }; },
       async like(id) { const r = await sb.from('likes').insert({ island_id: id }); if (r.error) return r.error.code === '23505' ? { ok: false, why: 'liked' } : fail(r.error); return { ok: true }; },
       async liked(id) { const r = await sb.from('likes').select('island_id').eq('island_id', id).eq('uid', uid).maybeSingle(); return !!r.data; },
+      // ---- piece 5 "showing off" (server/patch_5.sql; a missing function = patch_5 not run yet -> { setup: true }: no stars, no shelf)
+      async star(id) { const r = await sb.rpc('star_island', { p_island: id }); if (r.error) return failF(r.error); return r.data && r.data.ok ? { ok: true, stars: +r.data.stars || 0 } : { ok: false, why: (r.data && r.data.why) || 'no' }; },
+      async starInfo(ids) {
+        const A = (ids || []).filter(x => UUID_RE.test(String(x))).slice(0, 60); if (!A.length) return { ok: true, n: {}, mine: [] };
+        const r = await sb.rpc('island_stars', { p_ids: A }); if (r.error) return failF(r.error); const d = r.data || {};
+        const n = {}; for (const k in (d.n || {})) n[k] = +d.n[k] || 0; return { ok: true, n, mine: Array.isArray(d.mine) ? d.mine : [] };
+      },
+      async starNews(since) { const r = await sb.rpc('star_news', { p_since: new Date(since || 0).toISOString() }); if (r.error) return failF(r.error); const d = r.data || {}; return { ok: true, total: +d.total || 0, since: +d.since || 0 }; },
+      async shelf() {
+        const r = await sb.rpc('island_week'); if (r.error) return failF(r.error); const d = r.data || {};
+        const cw = i => i && i.id ? { id: i.id, name: i.name, host: i.host, lv: i.level, likes: i.likes, col: i.color, updated: Date.parse(i.updated_at), created: Date.parse(i.created_at), stars: +i.stars || 0, week: +i.week || 0, new: !!i.new, mine: false, sample: false } : null;
+        return { ok: true, cyc: d.cycle, week: cw(d.week), last: cw(d.last), featured: (Array.isArray(d.featured) ? d.featured : []).map(cw).filter(Boolean) };
+      },
       async note(id, text) { const c = Soc().noteCheck(text); if (!c.ok) return { ok: false, why: c.why }; const r = await sb.from('guestbook').insert({ island_id: id, body: c.v }); return r.error ? fail(r.error) : { ok: true }; },
       async guestbook(id) { const r = await sb.from('guestbook').select('id, author, author_name, body, created_at').eq('island_id', id).eq('hidden', false).order('id', { ascending: false }).limit(30); return (r.data || []).map(n => ({ id: String(n.id), from: n.author_name, text: n.body, at: Date.parse(n.created_at), mine: n.author === uid })); },
       async report(kind, id, reason) { const r = await sb.from('reports').insert({ target_kind: kind, target_id: String(id), reason: String(reason || '').slice(0, 200) }); return r.error && r.error.code !== '23505' ? fail(r.error) : { ok: true }; },
@@ -441,6 +504,8 @@
     // a missing RPC (PGRST202 / 42883) = server/patch_3.sql not run yet: the game keeps lanterns + the bloom quiet
     const failL = e => (e && (e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01' || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'lanterns are not switched on on the server yet (server/patch_3.sql)' } : fail(e);
     const failP = e => (e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'notifications are not switched on on the server yet (server/patch_4.sql)' } : fail(e);
+    const failF = e => (e && (e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01' || e.status === 404 || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'stars are not switched on on the server yet (server/patch_5.sql)' } : fail(e);
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const failS = e => (e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table|relation .*saves.* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'cloud save is not switched on on the server yet (server/patch_2.sql)' } : fail(e);
     function authFail(e) {
       const c = (e && e.code) || '', m = String((e && e.message) || ''), st = e && e.status;
