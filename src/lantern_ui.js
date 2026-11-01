@@ -160,7 +160,7 @@
       L.addSent(s, { id: r.id, b, c, at: Date.now() }); if (s.lan.q && s.lan.q.b === b) s.lan.q = null; draftB = '';
       once('lanSent1'); g.save(); if (g.touch) g.touch();
       close(); const p = g.lfx ? g.lfx.release(L.C.COLS[c]) : null; if (p && g.releaseCam) g.releaseCam(p);
-      sfx('lantern_rise'); toast(`${lanIc(L.C.COLS[c])} Your lantern drifts off over the water to find someone`, 6000);
+      sfx('lantern_rise'); sfx('rustle'); toast(`${lanIc(L.C.COLS[c])} Your lantern drifts off over the water to find someone`, 6000);
       return { ok: true };
     }
     const kindWhy = w => ({ 'three lanterns a day': 'Three lanterns a day: the sky needs a rest', 'no one new to find yet: try again later': 'No one new to find right now: try again later' }[w] || w || 'Could not release it');
@@ -175,7 +175,7 @@
       const s = S(), e = s.lan.got.find(x => x.id === id); if (!e) return;
       if (fly && g.lfx && g.lookAt) { const p = g.lfx.posOf(id); if (p) g.lookAt(p); }
       const first = !e.r; L.read(s, id); if (first) { net.lanternAct(id, 'read'); g.save(); }
-      reading = id; repArm = false; drawRead(); $('lanRead').hidden = false; sfx(first ? 'lantern_find' : 'open');
+      reading = id; repArm = false; drawRead(); $('lanRead').hidden = false; sfx(first ? 'lantern_find' : 'open'); sfx('rustle');   // vibe 2 lane C: paper rustle
       setTimeout(skyRefresh, first ? 900 : 0); refreshBtn(); if (!$('lanCard').hidden) render();
     }
     function drawRead() {

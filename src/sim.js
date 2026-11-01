@@ -71,7 +71,17 @@
       greenhold: { name: 'Greenhold', piece: 'EG_Greenhold', cost: () => ({ wood: 120, stone: 80, sap: 100 }), work: () => 4 * H, lv: 5, one: true, need: 'nourish' },
       circus: { name: 'Circus', piece: 'EG_Circus', cost: () => ({ wood: 120, stone: 60, crystal: 8 }), work: () => 4 * H, lv: 5, one: true, need: 'spirit' },
       forge: { name: 'Gale Forge', piece: 'EG_GaleForge', cost: () => ({ wood: 150, stone: 140, crystal: 12 }), work: () => 5 * H, lv: 6, one: true },
+      // vibe pass 2: a small cozy corner (log benches, planters, a little lantern, a pup bed). No sim effect: the pups make
+      // these themselves on a grown island ("let the pups decide", COZY below) so an idle island looks lived in.
+      // APPENDED last: diaries store indices into Object.keys(B)
+      nook: { name: 'Pup corner', cost: () => ({ wood: 18, stone: 6 }), work: () => 1200, lv: 3 },
     },
+    // vibe pass 2: "let the pups decide" also fills a grown island with small things over time (after beds / berries /
+    // sheds): from tree level LV, one order at most every GAP s of island time, only from a surplus (wood >= WOOD, stone >=
+    // STONE), never taking the last KEEP free house plots, at most MAX[level] of them in all, in ORDER (a lantern path only
+    // with spare glow sap). Berry gardens keep coming from the food rule above. Pure state (auto plots of a KIND + their
+    // order time `t`): no new save fields, offline == online.
+    COZY: { LV: 4, GAP: 3 * H, WOOD: 60, STONE: 30, SAP: 40, KEEP: 4, MAX: [0, 0, 0, 0, 2, 4, 6, 8, 10], ORDER: ['nook', 'nook', 'lantern'], KIND: { nook: 1, lantern: 1 } },
   };
   const JOBS = ['water', 'light', 'nourish', 'protect', 'spirit', 'wood', 'stone', 'food', 'build', 'rest'];
   const GATHER_JOBS = ['wood', 'stone', 'food'];
@@ -118,6 +128,7 @@
   function napNow(s, i) {
     const p = s.pups[i], dc = dayCurve(dayH(s)); if (dc.night < 0.05 || p.job === 'rest') return false;
     let pr = C.NIGHT.NAP_P * dc.night; if (p.job === 'light') pr *= 0.5 * (1 - dc.dusk);
+    if (window.Traits) pr *= window.Traits.napK(s, i);   // vibe pass 2 lane B: sleepy pups nap a little more, brave ones a little less
     // sleepy slots: each pup is sleepy in a hashed share (pr) of the night's half hours and naps until the slot ends,
     // so the napping share doesn't depend on how long a trip takes
     return hash(i * 7919 + Math.floor(s.time / C.NIGHT.SLOT) * 17 + 5) % 1000 < pr * 1000;
@@ -164,7 +175,7 @@
   function costOf(type, q) { const b = C.B[type]; return b ? b.cost(type === 'home' ? bedsFor(q) : 0) : null; }
   function workOf(type, q) { const b = C.B[type]; return b ? b.work(type === 'home' ? bedsFor(q) : 0) : 0; }
   function counts(s) {
-    const c = { home: 0, garden: 0, woodshed: 0, quarry: 0, lantern: 0, board: 0, stage: 0, conserv: 0, hush: 0, sprout: 0, market: 0, greenhold: 0, circus: 0, forge: 0, total: 0, queued: 0 };
+    const c = { home: 0, garden: 0, woodshed: 0, quarry: 0, lantern: 0, board: 0, stage: 0, conserv: 0, hush: 0, sprout: 0, market: 0, greenhold: 0, circus: 0, forge: 0, nook: 0, total: 0, queued: 0 };
     for (const k in s.plots) { const e = s.plots[k]; if (e.done) { c[e.type]++; c.total++; } else c.queued++; }
     return c;
   }
@@ -217,7 +228,20 @@
     // sheds / quarries only once the village has a few homes (early on the builders fetch what they need themselves)
     else if (c.home >= 2 && s.res.wood < 25 && c.woodshed < 1 + Math.floor(c.total / 5)) type = 'woodshed';
     else if (c.home >= 2 && s.res.stone < 15 && c.quarry < 1 + Math.floor(c.total / 5)) type = 'quarry';
-    if (!type) return null;
+    if (!type) return fillPlan(s, nav);
+    for (const q of nav.plots) if (canBuild(s, q, type)) return { pid: q.pid, type };
+    return null;
+  }
+  // vibe pass 2: nothing needed -> on a grown island the pups slowly add small things (C.COZY)
+  function fillPlan(s, nav) {
+    const F = C.COZY; if (s.level < F.LV) return null;
+    let n = 0, last = -1e12;
+    for (const k in s.plots) { const e = s.plots[k]; if (!e.auto || !F.KIND[e.type]) continue; n++; if (e.t > last) last = e.t; }
+    if (n >= F.MAX[Math.min(C.MAX_LV, s.level)] || s.time - last < F.GAP || s.res.wood < F.WOOD || s.res.stone < F.STONE) return null;
+    let free = 0; for (const q of nav.plots) if (q.kind === 'house' && q.lv <= s.level && !s.plots[q.pid]) free++;
+    if (free <= F.KEEP) return null;
+    let type = F.ORDER[n % F.ORDER.length];
+    if (type === 'lantern' && s.sap < C.B.lantern.cost().sap + F.SAP) type = 'nook';
     for (const q of nav.plots) if (canBuild(s, q, type)) return { pid: q.pid, type };
     return null;
   }
@@ -337,9 +361,16 @@
   function arrive(s, nav, ev) {
     const seq = s.seq++, h = hash(seq * 7919 + 13);
     const taken = new Set(s.pups.map(p => p.name));
-    let name = NAMES[seq % NAMES.length]; for (let k = 1; taken.has(name) && k < NAMES.length; k++) name = NAMES[(seq + k * 7) % NAMES.length];
+    // vibe pass 1: the name pick is seeded by the island's own event seed (fresh islands: random), so newcomers differ from
+    // island to island (every island used to get Maple, Tofu, Clover...). Pure + deterministic: offline == online; pups
+    // already living there keep their names (only new arrivals pick).
+    const es = s.events && s.events.seed ? s.events.seed >>> 0 : 0, n0 = es ? hash(es * 31 + seq * 7919 + 101) % NAMES.length : seq % NAMES.length;
+    let name = NAMES[n0]; for (let k = 1; taken.has(name) && k < NAMES.length; k++) name = NAMES[(n0 + k * 7) % NAMES.length];
     if (taken.has(name)) name = name + ' ' + (seq + 2);
-    const like = JOBS[h % JOBS.length]; let dislike = JOBS[(h >>> 5) % JOBS.length]; if (dislike === like) dislike = JOBS[(JOBS.indexOf(like) + 3) % JOBS.length];
+    let like = JOBS[h % JOBS.length];
+    // vibe pass 2 lane B: a stray's liked job leans toward its personality (src/traits.js; the trait itself is derived, never saved)
+    if (window.Traits && !s.invite) like = window.Traits.like(window.Traits.pick(s, 'n' + seq, s.pups.length, null), h, like);
+    let dislike = JOBS[(h >>> 5) % JOBS.length]; if (dislike === like) dislike = JOBS[(JOBS.indexOf(like) + 3) % JOBS.length];
     let def = { id: 'n' + seq, name, breed: BREEDS[(seq * 3) % BREEDS.length], collar: COLLARS[(h >>> 9) % COLLARS.length], like, dislike };
     const inv = s.invite; if (inv) { def = Object.assign({}, inv); if (taken.has(def.name)) def.name = def.name + ' ' + (seq + 2); s.invite = null; }
     // step 4: close friends' puppy (instead of a stray; a gift pup still comes first): a parent's breed + liked job
@@ -576,6 +607,6 @@
   }
 
   window.Sim = { C, PUPS, JOBS, BREEDS, NAMES, tod, dayH, dayCurve, napNow, fac, facK, fits, season, create, step, assign, rename, order, cancel, catchUp, pose, sanitize, healthOf, scaleOf, mult, moraleTarget,
-    bedsOf, counts, costOf, workOf, afford, canBuild, foodNet, autoPlan, arrivalOk, avgMorale, bedsFor, WALK, eaters,
+    bedsOf, counts, costOf, workOf, afford, canBuild, foodNet, autoPlan, fillPlan, arrivalOk, avgMorale, bedsFor, WALK, eaters,
     NTASK, _: { stopWalking, startWalk, newPup, begin, goNap } };   // internals for src/expedition.js + src/needs.js
 })();

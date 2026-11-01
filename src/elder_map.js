@@ -28,13 +28,36 @@
         ip = instanceMatrix[3].xyz;
       #endif
       float ph = dot(swayP + ip, vec3(0.131, 0.071, 0.113));
-      float az = sin(uTime * 0.6 + ph) * 0.012, ax = cos(uTime * 0.47 + ph) * 0.01;
+      // vibe 2 lane C: uWind.x = sway strength (1 = the shipped sway), uWind.z = gusts rolling across the land, uSwayK = this
+      // material's own multiplier (the Elder Tree sways more while it speaks)
+      float gW = uWind.z * (0.5 + 0.5 * sin(dot(ip.xz, vec2(0.021, 0.013)) - uTime * 0.7));
+      float kW = uWind.x * uSwayK + gW;
+      float az = sin(uTime * 0.6 + ph) * 0.012 * kW + gW * 0.006, ax = cos(uTime * 0.47 + ph) * 0.01 * kW;
       vec3 q = transformed - swayP;
       q = vec3(q.x * cos(az) - q.y * sin(az), q.x * sin(az) + q.y * cos(az), q.z);
       q = vec3(q.x, q.y * cos(ax) - q.z * sin(ax), q.y * sin(ax) + q.z * cos(ax));
       transformed = swayP + q;
-    }`;
-  const SWAY_DECL = 'attribute vec3 swayP;\nattribute float swayW;\nuniform float uTime;\n';
+    }
+    #ifdef EG_GRASS
+    { // vibe 2 lane C: ground cover bends in the wind (a shear that grows with height: the tuft's foot stays put), one wind
+      // direction for the whole island (taken into the instance's own frame), gusts rolling across, a little flutter per tuft
+      vec3 ipG = vec3(0.0); mat3 mG = mat3(1.0);
+      #ifdef USE_INSTANCING
+        ipG = instanceMatrix[3].xyz; mG = mat3(instanceMatrix);
+      #endif
+      float hG = clamp(transformed.y / uGrassH, 0.0, 1.5);
+      vec3 wG = vec3(0.83, 0.0, 0.55), dG = normalize(vec3(dot(mG[0], wG), dot(mG[1], wG), dot(mG[2], wG)));   // transpose(mG) * wG (GLSL ES 1 safe)
+      float gG = 0.55 + 0.45 * sin(dot(ipG.xz, vec2(0.023, 0.015)) - uTime * 0.9);
+      float fG = sin(uTime * 2.3 + dot(ipG.xz, vec2(0.37, 0.29))) * 0.35 + sin(uTime * 3.7 + ipG.x * 0.11) * 0.15;
+      transformed += dG * (hG * hG) * uGrassH * uWind.y * (gG + fG) * 0.22;
+    }
+    #endif`;
+  const SWAY_DECL = 'attribute vec3 swayP;\nattribute float swayW;\nuniform float uTime;\nuniform vec4 uWind;\nuniform float uSwayK;\n#ifdef EG_GRASS\nuniform float uGrassH;\n#endif\n';
+  // vibe 2 lane C (day light pass, src/light_fx.js drives them; the defaults = the shipped look exactly):
+  //   uWind = (canopy sway x, grass bend, gusts, -), uCloud = (shadow strength, 1 / cloud size, scroll x, scroll z),
+  //   uPlaza = (radius m, warm strength, -, -) around uRestC.xy = a warm soft grade on the plaza by day
+  const uWind = { value: new THREE.Vector4(1, 0, 0, 0) }, uSwayOne = { value: 1 };
+  const uCloud = { value: new THREE.Vector4(0, 0.004, 0, 0) }, uPlaza = { value: new THREE.Vector4(90, 0, 0, 0) };
   const litMat = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad, vertexColors: true });
   // Night (game: uNight 0 day .. 1 night): Glow* parts get brighter and fog less; GlowWindow parts (unlit = 2) turn from
   // their daytime cyan to a warm lamp-lit gold, as if the pups lit their lamps.
@@ -88,7 +111,12 @@
       }
       c = mix(c, mix(vec3(sl), c, 0.6) * vec3(0.94, 0.97, 1.05), uSeason.w * 0.6);
       float snow = uSeason.w * smoothstep(0.4, 0.82, vSeaUp) * clamp(0.55 + 0.6 * nz, 0.0, 1.0);
-      c = mix(c, vec3(0.93, 0.96, 1.0), snow);
+      // vibe pass 1: was 0.93-1.0 (linear) = blown-out white at noon. Vibe pass 2: not darker, but alive: soft wind ripples + drifts
+      // (bright crests, blue-lilac hollows) and a faint per-cell sparkle variation; thin snow lets a little ground show at the ripples
+      float drift = 0.5 + 0.5 * sin(dot(vSeaWP.xz, vec2(0.41, 0.2)) + nz * 3.4);
+      float rip = 0.5 + 0.5 * sin(dot(vSeaWP.xz, vec2(1.1, 0.66)) + drift * 2.5);
+      vec3 snowC = mix(vec3(0.5, 0.58, 0.79), vec3(0.81, 0.85, 0.92), clamp(nz * 0.4 + drift * 0.32 + rip * 0.2 + nz2 * 0.08, 0.0, 1.0));
+      c = mix(c, snowC, snow * (0.74 + 0.26 * drift));
       diffuseColor.rgb = c;
     }`;
   // Round 2 step 2 (colour restoring, src/story.js): albedo outside the restored radius is a soft misty grey. uRest = (radius m,
@@ -111,13 +139,29 @@
       diffuseColor.rgb = mix(cR, greyR, gR * ${unlitK}) + rimR * vec3(1.0, 0.8, 0.42) * 0.4;
     }
     #endif`;
+  // vibe 2 lane C: soft cloud shadows drifting over the land (2 octaves of value noise in world xz, scrolled by the wind) and a
+  // warm grade on the plaza round the tree; by day only (light_fx.js sets 0 at night = the night look is untouched)
+  const DAYLIGHT_FS = `
+    #ifndef EG_NOCLOUD
+    if (vUnlit < 0.5 && (uCloud.x > 0.001 || uPlaza.y > 0.001)) {
+      vec2 qC = (vSeaWP.xz + uCloud.zw) * uCloud.y;
+      float cN = egNoise(qC) * 0.65 + egNoise(qC * 2.3 + 17.3) * 0.35;
+      float shC = smoothstep(0.5, 0.72, cN) * uCloud.x;
+      float dP = length(vSeaWP.xz - uRestC.xy);
+      float wP = uPlaza.y * (1.0 - smoothstep(uPlaza.x * 0.45, uPlaza.x, dP)) * (1.0 - smoothstep(uPlaza.z + 5.0, uPlaza.z + 28.0, vSeaWP.y));   // the ground, not the crown
+      diffuseColor.rgb *= (1.0 - shC) * mix(vec3(1.0), vec3(1.07, 1.0, 0.86), wP);
+    }
+    #endif`;
+  const NOISE_GLSL = 'float egHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\n' +
+    'float egNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(egHash(i), egHash(i + vec2(1.0, 0.0)), f.x), mix(egHash(i + vec2(0.0, 1.0)), egHash(i + vec2(1.0, 1.0)), f.x), f.y); }\n';
   const GRADE_FS = `#include <color_fragment>
     ${SEA_FS}
     ${restoreFS('vSeaWP', '(vUnlit > 0.5 ? 0.75 : 1.0)')}
+    ${DAYLIGHT_FS}
     if (vUnlit < 0.5) { float aL = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb, aL * uGrade.rgb, uGrade.a) * (1.0 - uGradeDark * uNight); }`;
   const GLOW_FOG = 'vec3 preFog = gl_FragColor.rgb;\n#include <fog_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, preFog, gU * uNight * 0.6);';
-  const glowUniforms = s => { s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave; s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; };
-  const GLOW_DECL = REST_DECL + 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
+  const glowUniforms = s => { s.uniforms.uWind = uWind; s.uniforms.uSwayK = uSwayOne; s.uniforms.uCloud = uCloud; s.uniforms.uPlaza = uPlaza; s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave; s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; };
+  const GLOW_DECL = REST_DECL + 'uniform vec4 uCloud;\nuniform vec4 uPlaza;\n' + NOISE_GLSL + 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
   litMat.onBeforeCompile = s => {
     s.uniforms.uTime = uTime; glowUniforms(s);
     s.vertexShader = SWAY_DECL + SEA_DECL_V + 'attribute float unlit;\nvarying float vUnlit;\n' + s.vertexShader
@@ -130,8 +174,8 @@
   // screen pixels at that distance (uPxW = world size of one pixel per metre of distance), capped at INK.max metres.
   const INK = { px: { value: 2.0 }, pxW: { value: 0.001 }, max: { value: 0.35 }, min: { value: 0.012 } };
   const inkMat = new THREE.MeshBasicMaterial({ color: 0x2a1a22, side: THREE.BackSide });
-  inkMat.onBeforeCompile = s => {
-    s.uniforms.uTime = uTime; s.uniforms.uInkPx = INK.px; s.uniforms.uPxW = INK.pxW; s.uniforms.uInkMax = INK.max; s.uniforms.uInkMin = INK.min;
+  const inkCompile = (s, swayK) => {
+    s.uniforms.uTime = uTime; s.uniforms.uWind = uWind; s.uniforms.uSwayK = swayK || uSwayOne; s.uniforms.uInkPx = INK.px; s.uniforms.uPxW = INK.pxW; s.uniforms.uInkMax = INK.max; s.uniforms.uInkMin = INK.min;
     s.vertexShader = SWAY_DECL + 'uniform float uInkPx;\nuniform float uPxW;\nuniform float uInkMax;\nuniform float uInkMin;\n' + s.vertexShader
       .replace('#include <begin_vertex>', `#include <begin_vertex>
       ${SWAY_VS}`)
@@ -146,6 +190,25 @@
       vec4 mvPosition = viewMatrix * wpI;
       gl_Position = projectionMatrix * mvPosition;`);
   };
+  inkMat.onBeforeCompile = s => inkCompile(s);
+  // vibe 2 lane C: an ink hull with its own sway knob (the Elder Tree's hull follows its canopy while it speaks)
+  function makeInkMat(swayK) {
+    const m = new THREE.MeshBasicMaterial({ color: 0x2a1a22, side: THREE.BackSide });
+    m.onBeforeCompile = s => inkCompile(s, swayK); return m;
+  }
+  // vibe 2 lane C: ground cover that bends in the wind (grass / flowers / clover / ferns; not pebbles, mushrooms, stumps):
+  // the map's lit / ink shaders + EG_GRASS, h = the piece's height (piece space) so every tuft bends from its foot
+  const GRASS = { grass: 1, flower: 1, clover: 1, tallgrass: 1, fern: 1 };
+  function grassMats(h) {
+    const uH = { value: Math.max(0.2, h) };
+    const lit = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad, vertexColors: true });
+    lit.onBeforeCompile = s => { litMat.onBeforeCompile(s); s.uniforms.uGrassH = uH; s.vertexShader = '#define EG_GRASS\n' + s.vertexShader; };
+    lit.customProgramCacheKey = () => 'eg-grass-lit';
+    const ink = new THREE.MeshBasicMaterial({ color: 0x2a1a22, side: THREE.BackSide });
+    ink.onBeforeCompile = s => { inkCompile(s); s.uniforms.uGrassH = uH; s.vertexShader = '#define EG_GRASS\n' + s.vertexShader; };
+    ink.customProgramCacheKey = () => 'eg-grass-ink';
+    return { lit, ink };
+  }
   const seeCache = {};
   function seeMat(m) {   // Water* / Glass*: as in viewer.html
     if (seeCache[m.name]) return seeCache[m.name];
@@ -275,6 +338,7 @@
       const b = bodyOf(p.piece); if (b === null) continue;
       T.fromArray(p.pos); Q.setFromAxisAngle(Y, p.ry); S.setScalar(p.s); M.compose(T, Q, S);
       addInst(b, M, p.role, p.id, p.role === 'cover' ? (COVER_D[p.sub] || 80) : 0);
+      if (p.role === 'cover' && b.sub === undefined) b.sub = p.sub || '';   // vibe 2 lane C: which cover bends in the wind
       const sp = split[p.piece]; if (!sp) continue;
       const hide = new Set((p.hide || []).map(sanitize)), cs = {}; for (const k in (p.childScale || {})) cs[sanitize(k)] = p.childScale[k];
       for (const c of roots[p.piece].children) {
@@ -302,6 +366,7 @@
         b.mesh = new THREE.InstancedMesh(b.geo, litMat, n); b.mesh.castShadow = !(opt.lite && b.radius < 3); b.mesh.receiveShadow = true;
         b.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); b.mesh.frustumCulled = false; b.mesh.name = k; group.add(b.mesh);
         if (b.ink) { b.inkMesh = new THREE.InstancedMesh(b.ink, inkMat, n); b.inkMesh.instanceMatrix = b.mesh.instanceMatrix; b.inkMesh.frustumCulled = false; b.inkMesh.name = k + ':ink'; group.add(b.inkMesh); }
+        if (b.sub && GRASS[b.sub] && !b.inst.some(i => i.role !== 'cover')) { const gm = grassMats(b.box.max.y); b.mesh.material = gm.lit; if (b.inkMesh) b.inkMesh.material = gm.ink; b.grass = true; }
       }
       b.seeMeshes = b.see.map(s => { const im = new THREE.InstancedMesh(s.geo, s.mat, n); im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.frustumCulled = false; im.receiveShadow = true; group.add(im); return im; });
       b.trisOne = (b.geo ? b.geo.index.count / 3 : 0) + b.see.reduce((a, s) => a + s.geo.index.count / 3, 0);
@@ -365,10 +430,16 @@
   //   u.glow 0..1 = Glow* parts grey + dim (0) -> bright, nudged toward gold (1);  u.leaf 0..1 = canopy (swaying
   //   vertices) dry brown + desaturated (0) -> its own colours (1). u.boost = extra glow brightness (level-up burst).
   let tintN = 0;
+  // vibe 2 lane C: uRim = (warm rim colour, strength): a soft fresnel edge light (golden hour / the tree speaking); 0 = shipped look
+  const RIM0 = { value: new THREE.Vector4(1, 0.8, 0.45, 0) };
+  const RIM_FS = `
+    if (uRim.w > 0.001) { float fR = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
+      outgoingLight += uRim.rgb * uRim.w * pow(fR, 2.6) * (vUnlit > 0.5 ? 0.35 : 1.0); }`;
   function makeTintMat(u) {
     const m = new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: grad, vertexColors: true }), id = ++tintN;
     m.onBeforeCompile = s => {
       s.uniforms.uTime = uTime; s.uniforms.uGlow = u.glow; s.uniforms.uLeaf = u.leaf; s.uniforms.uBoost = u.boost; glowUniforms(s);
+      if (u.sway) s.uniforms.uSwayK = u.sway; s.uniforms.uRim = u.rim || RIM0;   // vibe 2 lane C: the tree's own sway + a warm rim light
       s.vertexShader = SWAY_DECL + SEA_DECL_V + 'attribute float unlit;\nvarying float vUnlit;\nvarying float vLeaf;\n' + s.vertexShader
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvUnlit = unlit; vLeaf = swayW;' + SWAY_VS + SEA_VS);
       s.fragmentShader = '#define EG_NORESTORE\nvarying float vUnlit;\nvarying float vLeaf;\nuniform float uGlow;\nuniform float uLeaf;\nuniform float uBoost;\n' + GLOW_DECL + s.fragmentShader
@@ -382,7 +453,8 @@
             vec3 dry = mix(vec3(lum) * 0.9, vec3(0.72, 0.43, 0.2) * (0.4 + lum), 0.85);
             diffuseColor.rgb = mix(dry, diffuseColor.rgb * (1.0 + 0.08 * uBoost), clamp(uLeaf, 0.0, 1.0));
           }`)
-        .replace('#include <color_fragment>', GRADE_FS).replace(OUT_R128, GLOW_FS).replace('#include <fog_fragment>', GLOW_FOG);
+        .replace('#include <color_fragment>', GRADE_FS).replace(OUT_R128, RIM_FS + GLOW_FS).replace('#include <fog_fragment>', GLOW_FOG);
+      s.fragmentShader = 'uniform vec4 uRim;\n' + s.fragmentShader;
     };
     m.customProgramCacheKey = () => 'eg-tint-' + id;
     return m;
@@ -398,5 +470,5 @@
     return kitLit;
   }
   window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache,
-    kitBatch: makeBatch, kitLitMat, inkMat };
+    kitBatch: makeBatch, kitLitMat, inkMat, uWind, uCloud, uPlaza, makeInkMat };   // vibe 2 lane C: wind, cloud shadows, plaza grade, ink with own sway
 })();

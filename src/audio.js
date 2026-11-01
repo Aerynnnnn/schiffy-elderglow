@@ -232,10 +232,71 @@
     warmth: () => { const a = arr(3.0), r = rng(41); mix(a, Pi(48, r), 0, 0.5); mix(a, Pi(55, r), 0.04, 0.42); mix(a, Pi(64, r), 0.08, 0.38); mix(a, Pi(67, r), 0.12, 0.3); mix(a, Ce(88, r), 0.5, 0.35); return norm(fadeOut(a, 1.0), 0.42); },
     sting_petals: () => { const a = arr(3.6), r = rng(42); [72, 76, 79, 83, 86, 88, 91].forEach((m, k) => mix(a, K(m, r), k * 0.11, 0.7 - k * 0.04)); [93, 96, 100].forEach((m, k) => mix(a, Ce(m, r), 0.9 + k * 0.22, 0.32));
       mix(a, sweepNoise(2.4, () => 6500, 0.8, u => Math.sin(Math.PI * u) * 0.08, 43, 3500), 0.4, 1); return norm(fadeOut(a, 1.0), 0.5); },
+    // ---- vibe 2 lane C: the Elderglow theme as stings. theme_wave (a colour wave): the airy swell + felt-piano chords under the
+    // theme on celesta, a kalimba echo of its answer; theme_dawn: phrase A alone on celesta over a soft low fifth, then home
+    theme_wave: () => { const a = arr(11), r = rng(51), e8 = 0.27;
+      mix(a, sweepNoise(6.5, u => 450 + 2400 * u, 0.7, u => Math.pow(Math.sin(Math.PI * u), 2) * 0.08, 52, 200), 0.1, 1);
+      [[41, 0], [36, 1], [45, 2], [43, 3], [36, 4]].forEach(([m, bar]) => { const at = bar * 8 * e8; [0, 7, 16].forEach((iv, k) => mix(a, Pi(m + iv, r), at + k * 0.03, k ? 0.32 : 0.42)); });
+      let t = 0.05; for (const [m, d] of THEME_A.concat(THEME_B)) { mix(a, Ce(m, r), t, 0.62); t += d * e8; }
+      t = 0.05 + 16 * e8; for (const [m, d] of THEME_B) { mix(a, K(m + 12, r), t + 0.14, 0.18); t += d * e8; }
+      return norm(fadeOut(a, 1.6), 0.5); },
+    theme_dawn: () => { const a = arr(7.2), r = rng(53), e8 = 0.3;
+      mix(a, Pi(41, r), 0, 0.3); mix(a, Pi(48, r), 0.05, 0.26);
+      let t = 0.15; for (const [m, d] of THEME_A) { mix(a, Ce(m, r), t, 0.55); t += d * e8; }
+      mix(a, Pi(36, r), t - 0.2, 0.28); mix(a, Ce(84, r), t, 0.3); return norm(fadeOut(a, 1.4), 0.36); },
+    // the tree speaks: a low warm swell you feel more than hear (root, fifth, octave, a soft third), slow in, slow out
+    swell: () => { const a = arr(6.5), lp = Biquad('lp', 520, 0.6);
+      const P = [[36, 1], [43, 0.6], [48, 0.5], [52, 0.22], [55, 0.18]].map(([m, g]) => [TAU * mtof(m) / SR, g]);
+      for (let i = 0; i < a.length; i++) { const t = i / SR, env = Math.min(1, t / 1.6) * (t > 4 ? Math.max(0, 1 - (t - 4) / 2.4) : 1); let s = 0; for (const [w, g] of P) s += Math.sin(w * i + 0.3 * Math.sin(TAU * 0.21 * t)) * g; a[i] = lp(s) * env * (0.85 + 0.15 * Math.sin(TAU * 0.33 * t)); }
+      return norm(a, 0.36); },
+    // foley: soft pitter-patter (3-4 tiny padded steps), a plaza wind chime, water lapping at the dock, the tree creaking at night,
+    // a pup's yawn and a little snore, the sky whale's call, wood + stone gathering, lantern paper rustling
+    step: () => { const a = arr(0.5), r = rng(54); let t = 0.01; for (let k = 0; k < 4; k++) { const bp = Biquad('bp', 260 + r() * 160, 1.1), o = Math.round(t * SR), L = Math.round(0.05 * SR);
+        for (let i = 0; i < L && o + i < a.length; i++) { const u = i / SR; a[o + i] += bp(r() * 2 - 1) * Math.exp(-u / 0.012) * (k % 2 ? 0.8 : 1); } t += 0.09 + r() * 0.05; }
+      return norm(fadeOut(a, 0.05), 0.3); },
+    chime: () => { const a = arr(4.2), r = rng(55), notes = [84, 88, 91, 93, 96, 98]; let t = 0.02;
+      for (let k = 0; k < 6; k++) { const f = mtof(notes[Math.floor(r() * notes.length)]); mix(a, additive(f, [{ r: 1, a: 1, tau: 1.6 }, { r: 2.76, a: 0.35, tau: 0.7 }, { r: 5.4, a: 0.16, tau: 0.3 }, { r: 8.93, a: 0.07, tau: 0.12 }], 2.6, 0.002, r), t, 0.6 - k * 0.05); t += 0.12 + r() * 0.3; }
+      return norm(fadeOut(a, 0.6), 0.28); },
+    lap: () => { const a = arr(2.4), r = rng(56), pk = pinkGen(r), lp = Biquad('lp', 700, 0.7), bp = Biquad('bp', 950, 2);
+      for (let i = 0; i < a.length; i++) { const u = i / a.length, sw = Math.pow(Math.sin(Math.PI * Math.min(1, u * 2.1)), 2) * 0.9 + Math.pow(Math.max(0, Math.sin(Math.PI * (u * 2.1 - 1.05))), 2) * 0.6; const n = pk(); a[i] = (lp(n) * 0.8 + bp(n) * 0.5) * sw; }
+      for (let k = 0; k < 5; k++) mix(a, plop(300 + r() * 300, 500 + r() * 400, 0.04 + r() * 0.03), 0.3 + r() * 1.7, 0.18 + r() * 0.12);
+      return norm(fadeOut(a, 0.3), 0.3); },
+    creak: () => { const a = arr(2.0), r = rng(57), bp = Biquad('bp', 520, 4), body = Biquad('bp', 170, 2); let ph = 0;
+      for (let i = 0; i < a.length; i++) { const t = i / SR, u = t / 1.8, f = 34 + 22 * Math.sin(Math.PI * Math.min(1, u)) + (r() - 0.5) * 6; ph += f / SR; const pulse = ph % 1 < 0.08 ? 1 : 0;
+        const env = Math.pow(Math.sin(Math.PI * Math.min(1, u)), 0.7); a[i] = (bp(pulse) * 1.0 + body(pulse) * 0.6) * env; }
+      return norm(fadeOut(a, 0.1), 0.28); },
+    yawn: () => { const a = arr(1.0), f1 = Biquad('bp', 1500, 3), f2 = Biquad('bp', 2800, 4); let ph = 0;
+      for (let i = 0; i < a.length; i++) { const t = i / SR, u = t / 0.9, f0 = u < 0.35 ? 560 + 420 * (u / 0.35) : 980 - 480 * Math.min(1, (u - 0.35) / 0.65);
+        ph += TAU * f0 * (1 + 0.015 * Math.sin(TAU * 6 * t)) / SR; let s = 0; for (let h = 1; h <= 7; h++) s += Math.sin(ph * h) / (h * h * 0.6 + 0.4);
+        if (i % 48 === 0) { f1.tune(1700 - 900 * Math.min(1, u), 3); f2.tune(2900 - 1100 * Math.min(1, u), 4); }
+        const env = u < 1 ? Math.pow(Math.sin(Math.PI * Math.min(1, u * 1.02)), 0.6) : 0; a[i] = (f1(s) + f2(s) * 0.35 + s * 0.05) * env; }
+      return norm(fadeOut(a, 0.05), 0.24); },
+    snore: () => { const a = arr(2.0), r = rng(58), bpI = Biquad('bp', 480, 2.5), bpO = Biquad('bp', 330, 2); let wph = 0;
+      for (let i = 0; i < a.length; i++) { const t = i / SR, n = r() * 2 - 1;
+        const inh = t < 0.9 ? Math.sin(Math.PI * t / 0.9) * (0.7 + 0.3 * Math.sin(TAU * 28 * t)) : 0, exh = t > 1.0 && t < 1.9 ? Math.sin(Math.PI * (t - 1.0) / 0.9) : 0;
+        wph += TAU * (1250 - 200 * (t - 1)) / SR; a[i] = bpI(n) * inh * 0.9 + bpO(n) * exh * 0.5 + Math.sin(wph) * exh * 0.025; }
+      return norm(a, 0.2); },
+    whale: () => { const a = arr(5.2); let ph = 0;
+      for (let i = 0; i < Math.round(3.4 * SR); i++) { const t = i / SR, u = t / 3.4, f = 150 + 80 * Math.sin(Math.PI * Math.min(1, u * 1.15)) - 30 * u + 4 * Math.sin(TAU * 5 * t) * Math.min(1, t);
+        ph += TAU * f / SR; const env = Math.pow(Math.sin(Math.PI * u), 0.8); a[i] = (Math.sin(ph) + Math.sin(2 * ph) * 0.45 + Math.sin(3 * ph) * 0.18 + Math.sin(4 * ph + 0.3) * 0.08) * env; }
+      const dry = a.slice(), lp = Biquad('lp', 900, 0.6), e = dry.map(x => lp(x)); mix(a, e, 0.45, 0.38); mix(a, e, 0.95, 0.18);
+      return norm(fadeOut(a, 0.6), 0.4); },
+    chop: () => { const a = plop(230, 140, 0.08), r = rng(59), bp = Biquad('bp', 1800, 1.4), body = Biquad('bp', 420, 2), o = arr(0.4); mix(o, a, 0, 0.7);
+      for (let i = 0; i < Math.round(0.06 * SR); i++) { const n = r() * 2 - 1, u = i / SR; o[i] += (bp(n) * 0.8 + body(n) * 0.5) * Math.exp(-u / 0.01); }
+      return norm(fadeOut(o, 0.05), 0.3); },
+    clack: () => { const o = arr(0.45), r = rng(60);
+      for (const [at, f, g] of [[0, 2600, 1], [0.13, 2050, 0.7]]) { const bp = Biquad('bp', 3200, 5), s0 = Math.round(at * SR); let ph = 0;
+        for (let i = 0; i < Math.round(0.12 * SR); i++) { const u = i / SR; ph += TAU * f / SR; o[s0 + i] += (bp(r() * 2 - 1) * Math.exp(-u / 0.004) * 1.2 + Math.sin(ph) * Math.exp(-u / 0.03) * 0.35) * g; } }
+      return norm(fadeOut(o, 0.05), 0.28); },
+    rustle: () => { const a = arr(0.8), r = rng(61), hp = Biquad('hp', 2600, 0.7), bp = Biquad('bp', 5200, 1.5); let g = 0;
+      for (let i = 0; i < a.length; i++) { const u = i / a.length; if (r() < 0.004) g = 0.6 + r() * 0.4; g *= 0.9975; const n = r() * 2 - 1; a[i] = (hp(n) * 0.5 + bp(n) * 0.7) * (0.15 + g) * Math.pow(Math.sin(Math.PI * u), 0.5); }
+      return norm(fadeOut(a, 0.08), 0.24); },
   };
-  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1, sting_bloom: 1, voice: 1, lantern_rise: 1, lantern_find: 1, warmth: 1, sting_petals: 1 };
-  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2, sting_bloom: 6, voice: 2.6, lantern_rise: 4.6, sting_petals: 3.6 };
-  const GAP = { tap: 0.04, pour: 0.35, lantern: 0.35, tok: 0.08, pop: 0.03, yip: 20, shimmer: 0.3, notify: 0.5, open: 0.08, close: 0.08 };
+  const MUSICAL = { open: 1, close: 1, assign: 1, built: 1, gift: 1, water: 1, like: 1, note: 1, notify: 1, sting_level: 1, sting_haul: 1, sting_gift: 1, sting_arrive: 1, lantern: 1, sting_bloom: 1, voice: 1, lantern_rise: 1, lantern_find: 1, warmth: 1, sting_petals: 1, theme_wave: 1, theme_dawn: 1, swell: 1, chime: 1 };
+  const STING = { sting_level: 4, sting_haul: 2.4, sting_gift: 2.6, sting_arrive: 2, sting_bloom: 6, voice: 2.6, lantern_rise: 4.6, sting_petals: 3.6, theme_wave: 9, theme_dawn: 5.5 };
+  // vibe 2 lane C: foley is rate-limited per name (the game also spaces them out); gaps in seconds of audio time
+  const GAP = { tap: 0.04, pour: 0.35, lantern: 0.35, tok: 0.08, pop: 0.03, yip: 20, shimmer: 0.3, notify: 0.5, open: 0.08, close: 0.08,
+    step: 0.28, chime: 9, lap: 3, creak: 25, yawn: 12, snore: 5, whale: 14, chop: 0.5, clack: 0.5, rustle: 0.6, swell: 4, theme_wave: 8, theme_dawn: 60 };
 
   // ======================================================================= the bank (built once per page, shared by contexts)
   const RANGES = { rh: [45, 87], pi: [36, 96], ce: [60, 102], ka: [55, 91], ba: [28, 52] };
@@ -283,15 +344,31 @@
     { name: 'autumn', key: -3, bpm: 72, lp: 3300, lead: 'rh', glock: 0, pad: 0.3, shk16: 0, drums: 1 },
     { name: 'winter', key: -2, bpm: 68, lp: 3900, lead: 'ce', glock: 0, pad: 0.5, shk16: 0, drums: 0 },
   ];
+  // ---- vibe 2 lane C: the "Elderglow theme", hand-written (C major, transposed with the season's key): [midi, 8ths]. Phrase A asks,
+  // phrase B answers (2 bars each). It sounds at every colour wave (theme_wave) and at dawn (theme_dawn), and now and then a
+  // section of the generated music is built round it on its own chords (THEME_PROG), in one of 3 variations.
+  const THEME_A = [[76, 1], [79, 1], [81, 2], [79, 1], [76, 1], [74, 2], [72, 1], [74, 1], [76, 1], [79, 1], [76, 4]];
+  const THEME_B = [[81, 1], [84, 1], [86, 2], [84, 1], [81, 1], [79, 2], [76, 1], [79, 1], [74, 2], [72, 4]];
+  const THEME_PROG = ['Fmaj9', 'Cmaj9', 'Am9', 'G6', 'Fmaj9', 'Em7', 'Dm9', 'Cmaj9'];
+  // variations: 0 = as written, 1 = up an octave + a pick-up and a held answer, 2 = neighbour-tone turns on the long notes
+  function themeVar(k) {
+    const A = THEME_A.map(x => x.slice()), B = THEME_B.map(x => x.slice());
+    if (k === 1) { A.forEach(x => x[0] += 12); B.forEach(x => x[0] += 12); A[0][1] = 0.5; A.unshift([72 + 12, 0.5]); B[B.length - 1][1] = 4; }
+    if (k === 2) { const turn = L => L.flatMap(([m, d]) => d >= 2 ? [[m, d / 2], [m + (m % 12 === 4 || m % 12 === 11 ? 1 : 2), d / 4], [m, d / 4]] : [[m, d]]); return { A: turn(A), B: turn(B) }; }
+    return { A, B };
+  }
   const COMP = [[[0, 10, 1], [10, 6, 0.7]], [[0, 6, 1], [6, 4, 0.6], [11, 5, 0.75]], [[0, 16, 0.9]], [[2, 6, 0.8], [8, 4, 0.7], [14, 2, 0.55]], [[0, 8, 0.95], [12, 4, 0.6]]];
-  function compose(r, night, sea, n) {
+  function compose(r, night, sea, n, forceTheme) {
     const S = SEA[sea], nightish = night > 0.5;
     const pool = nightish ? NIGHT : DAY, src = pool[Math.floor(r() * pool.length)];
-    const bars = src.length === 8 ? src.slice() : nightish ? src.flatMap(c => [c, c]) : src.concat(src);
     // kind: the first section is light, a rest (vinyl + nature only) every 11-15 sections, a light one every ~4
     let kind = n === 0 ? 'light' : n % 13 === 12 ? 'rest' : (n % 4 === 3 || r() < 0.18) ? 'light' : 'main';
+    // vibe 2 lane C: the Elderglow theme woven in now and then (~1 section in 9, never the first / a rest), quietly
+    const theme = forceTheme !== undefined && forceTheme !== null ? forceTheme : (kind !== 'rest' && n > 2 && n % 9 === 5 ? Math.floor(r() * 3) : -1);
+    if (theme >= 0 && kind === 'rest') kind = 'light';
+    const bars = theme >= 0 ? THEME_PROG.slice() : src.length === 8 ? src.slice() : nightish ? src.flatMap(c => [c, c]) : src.concat(src);
     const ev = Array.from({ length: 128 }, () => []), E = (st, e) => { if (st >= 0 && st < 128) ev[st].push(e); };
-    const sec = { bars, kind, ev, sea, key: S.key, bpm: S.bpm, n };
+    const sec = { bars, kind, ev, sea, key: S.key, bpm: S.bpm, n, theme };
     if (kind === 'rest') return sec;
     // motif: 2-bar rhythm on the 8th grid + a contour in chord-scale steps
     const on = []; { let s = [0, 2, 4][Math.floor(r() * 3)]; while (s < 28 && on.length < 6) { on.push(s); s += [2, 2, 4, 4, 4, 6, 6, 8][Math.floor(r() * 8)]; } }
@@ -318,6 +395,18 @@
       // ---- STAGE (performers): kalimba strum in 3+3+2, a little higher
       const sp = [c.v[0], c.v[2], c.v[1], c.v[3], c.v[2], c.v[1], c.v[3], c.v[2]];
       for (let k = 0; k < 8; k++) E(b0 + k * 2, { L: 's', i: 'ka', m: sp[k] + 12, v: (k === 0 || k === 3 || k === 6 ? 0.34 : 0.2) * (0.9 + r() * 0.2), d: 4 });
+    }
+    // ---- vibe 2 lane C: a theme section: the Elderglow theme on the lead (day, soft) + celesta / kalimba (night, softer);
+    // bars 1-4 = phrase A + B, bars 5-8 = A again then B (the second time ends home on C)
+    if (theme >= 0) {
+      const V = themeVar(theme), line = V.A.concat(V.B, V.A, V.B); let st8 = 0;
+      for (const [m, d] of line) {
+        const st = Math.round(st8 * 2); st8 += d; if (st >= 128) break; const dur = Math.max(1, Math.round(d * 2));
+        E(st, { L: 'd', i: 'lead', m, v: 0.3, d: dur });
+        E(st, { L: 'n', i: theme === 2 ? 'ka' : 'ce', m: m + (m < 84 ? 12 : 0), v: 0.12, d: dur + 2 });
+        if (theme === 1 && st % 8 === 0) E(st, { L: 'd', i: 'ce', m: m + 12, v: 0.06, d: dur });
+      }
+      return sec;
     }
     // ---- melody (day lead; the night layer gets a sparse echo an octave up)
     if (leadOn) for (let p = 0; p < 4; p++) {
@@ -351,8 +440,8 @@
     const savePrefs = () => { if (o.prefs) return; try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch (e) {} };
     let ctx = o.ctx || null, G = null, started = false, ready = false, timer = 0, hidden = false;
     const R = rng(o.seed !== undefined ? o.seed : (Date.now() & 0xffffff));
-    const st = { night: 0, dawn: 0, dusk: 0, sw: [0, 0, 1, 0], rain: 0, river: 0, tree: 0, health: 80, wind: 0.5, stage: null, build: null, cam: [0, 0, 0], right: [1, 0, 0], camD: 200, fest: 0 };
-    let sec = null, step = 0, nextT = 0, secN = 0, seaNow = 2, last = {}, nextBird = 0, nextTink = 0, nextTok = 0, duckUntil = 0;
+    const st = { night: 0, dawn: 0, dusk: 0, sw: [0, 0, 1, 0], rain: 0, river: 0, tree: 0, health: 80, wind: 0.5, stage: null, build: null, cam: [0, 0, 0], right: [1, 0, 0], camD: 200, fest: 0, say: 0 };
+    let forceTheme = null, sec = null, step = 0, nextT = 0, secN = 0, seaNow = 2, last = {}, nextBird = 0, nextTink = 0, nextTok = 0, duckUntil = 0;
     const E = { prefs, get ctx() { return ctx; }, get ready() { return ready; }, get on() { return prefs.on; }, get live() { return started && prefs.on && !hidden; }, st, SR };
 
     function makeCtx() {
@@ -406,7 +495,7 @@
     }
     const spb = () => 60 / sec.bpm / 4;   // seconds per 16th
     function schedStep(t) {
-      if (!sec || step % 128 === 0) { sec = compose(R, st.night, seaNow, secN++); step = 0; retune(t); }
+      if (!sec || step % 128 === 0) { sec = compose(R, st.night, seaNow, secN++, forceTheme); forceTheme = null; step = 0; retune(t); }
       const dG = 1 - st.night, nG = st.night, sG = st.stage ? st.stage.g : 0, key = sec.key, sd = spb();
       const tt = t + (step % 2 ? sd * 0.2 : 0);   // swing (odd 16ths late)
       for (const e of sec.ev[step]) {
@@ -470,7 +559,7 @@
       set(P(G.lp.frequency), lpF, tc || 2);
       set(P(G.day.gain), clamp(1 - n, 0, 1), tc || 3); set(P(G.night.gain), clamp(n, 0, 1) * 0.72, tc || 3);   // night = softer than day
       const stG = st.stage ? st.stage.g : 0; set(P(G.stageG.gain), stG * 0.9, tc || 0.8); if (G.pan) set(P(G.pan.pan), st.stage ? st.stage.pan : 0, tc || 0.5);
-      set(P(G.duck.gain), (1 - 0.45 * stG) * (ctx.currentTime < duckUntil ? 0.45 : 1), tc || 0.4);
+      set(P(G.duck.gain), (1 - 0.45 * stG) * (ctx.currentTime < duckUntil ? 0.45 : 1) * (st.say ? 0.72 : 1), tc || 0.4);   // vibe 2 lane C: the tree's bubble open = the music steps back a little
       set(P(G.vinyl.gain), 0.1 * (1 + sw[2] * 0.6) * (sec && sec.kind === 'rest' ? 0.6 : 1), tc || 2);
       const high = clamp(st.camD / 600, 0, 1);
       set(P(G.windG.gain), (0.07 + 0.08 * high + 0.06 * sw[2] - 0.03 * sw[3]) * (1 + rainK * 0.5), tc || 2);
@@ -531,6 +620,7 @@
       else if (prefs.on && started) { ctx.resume().then(() => { nextT = ctx.currentTime + 0.1; }).catch(() => {}); }
     };
     E.pump = pump;
+    E.theme = k => { forceTheme = k === undefined ? 0 : k; };   // vibe 2 lane C: the next section is a theme section (variation k; tests + renders)
     E.level = function () {   // analyser: current output peak / rms (dBFS), works in silent mode
       if (!G) return null; const a = new Float32Array(G.an.fftSize); G.an.getFloatTimeDomainData(a);
       let pk = 0, s = 0; for (const v of a) { pk = Math.max(pk, Math.abs(v)); s += v * v; } const rms = Math.sqrt(s / a.length);
@@ -545,7 +635,7 @@
   async function render(o) {
     const sr = o.sr || 44100, sec = o.sec || 20, ctx = new OfflineAudioContext(2, Math.round(sec * sr), sr);
     const E = make({ ctx, prefs: Object.assign({ on: true, master: 0.8, music: 0.6, amb: 0.7, sfx: 0.8 }, o.prefs || {}), seed: o.seed || 7 });
-    await E.start(); E.update(Object.assign({ night: 0, sw: [0, 0, 1, 0] }, o.state || {}), true);
+    await E.start(); E.update(Object.assign({ night: 0, sw: [0, 0, 1, 0] }, o.state || {}), true); if (o.theme !== undefined) E.theme(o.theme);
     const t0 = performance.now();
     E.pump(sec);   // music + ambience for the whole length (prefs.music / amb = 0 leave a part out)
     // SFX: [[name, atSec, opt]] (the offline ctx's clock is 0 before rendering: delay = when)
@@ -613,5 +703,5 @@
     return { refresh, btn, card, watch, get ask() { return ask; } };
   }
 
-  window.ElderSound = { make, render, stats, wav, build, compose, ui, SFX_NAMES: Object.keys(SFX), SEA, CH, SR, get BANK() { return BANK; } };
+  window.ElderSound = { make, render, stats, wav, build, compose, ui, SFX_NAMES: Object.keys(SFX), SEA, CH, THEME_A, THEME_B, THEME_PROG, SR, get BANK() { return BANK; } };
 })();

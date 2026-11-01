@@ -324,20 +324,22 @@
   function diaryLine(s, i, e) {
     const P = s.pups, nm = k => P[k] ? P[k].name : 'a friend', X = window.Exped, dest = k => (X && X.DEST[k] ? X.DEST[k].name : 'a sky isle');
     const [dn, kind, a, b] = e, h = hash(dn * 977 + i * 31 + kind.length);
+    // vibe pass 2 lane B: the pup's personality (src/traits.js) writes most lines in its own voice; the shared lines stay in the mix
+    const T = window.Traits, t = T ? T.of(s, i) : null, mine = (k, o, job) => t ? T.diary(t, k, job, h >>> 4, o) : null, own = (h >>> 2) % 3 !== 0;
     switch (kind) {
-      case 'arr': return a === 0 ? 'Woke up under a big grey tree. It yawned at me. I think we will be friends.'
+      case 'arr': return a === 0 ? (mine('arr0') || 'Woke up under a big grey tree. It yawned at me. I think we will be friends.')
         : a === 3 ? 'Came to the island as a gift. Everybody says I glow. I just feel happy.'
-        : pick(['Crossed a long bridge and found an island that needed paws. Found a bed too!', 'Arrived today. The tree waved its branches at me. Probably the wind. Probably.'], h);
+        : (own && mine('arr')) || pick(['Crossed a long bridge and found an island that needed paws. Found a bed too!', 'Arrived today. The tree waved its branches at me. Probably the wind. Probably.'], h);
       case 'born': return `Was born today! Everything is very big. ${nm(a)} and ${nm(b)} keep licking my ears.`;
-      case 'pup': return `${nm(a)} was born today! Tiny. Loud. Perfect.`;
+      case 'pup': return (own && mine('pup', { f: nm(a) })) || `${nm(a)} was born today! Tiny. Loud. Perfect.`;
       case 'isle': return `Came home on the leaf boat from ${dest(a)}. The ground here does not float. Strange, but nice.`;
-      case 'go': return pick([`Flew to ${dest(a)} on a leaf boat. Did not look down. Okay, I looked down once.`, `Off to ${dest(a)}! Packed berries, packed courage.`], h);
-      case 'back': return `Back from ${dest(a)}! ` + (b & 2 ? 'We brought a new friend home!' : b & 1 ? 'My pockets are full of crystals.' : b & 4 ? 'Seeds everywhere. Even in my ears.' : b & 8 ? 'Found something pretty for the island.' : 'Sky air makes me sleepy.');
-      case 'fr': return b >= 3 ? `${nm(a)} is my closest friend. We nap back to back.` : b === 2 ? `${nm(a)} and I are good friends now. We have a secret paw-shake.` : `Made a friend: ${nm(a)}. We share the work and the snacks.`;
+      case 'go': return (own && mine('go', { d: dest(a) })) || pick([`Flew to ${dest(a)} on a leaf boat. Did not look down. Okay, I looked down once.`, `Off to ${dest(a)}! Packed berries, packed courage.`], h);
+      case 'back': return (!(b & 15) && mine('back', { d: dest(a) })) || `Back from ${dest(a)}! ` + (b & 2 ? 'We brought a new friend home!' : b & 1 ? 'My pockets are full of crystals.' : b & 4 ? 'Seeds everywhere. Even in my ears.' : b & 8 ? 'Found something pretty for the island.' : 'Sky air makes me sleepy.');
+      case 'fr': return b >= 3 ? ((own && mine('fr3', { f: nm(a) })) || `${nm(a)} is my closest friend. We nap back to back.`) : (own && mine('fr', { f: nm(a) })) || (b === 2 ? `${nm(a)} and I are good friends now. We have a secret paw-shake.` : `Made a friend: ${nm(a)}. We share the work and the snacks.`);
       case 'wish': return `My wish came true! I got to try ${JOBS[a] === 'spirit' ? 'music' : JOBS[a] === 'nourish' ? 'gardening' : JOBS[a] === 'protect' ? 'guarding' : JOBS[a] || 'something new'}.`;
-      case 'wave': return `${AREA[a] || 'The island'} turned colourful today! I rolled in ${a >= 5 ? 'the sunshine' : 'it'}.`;
-      case 'blt': { const k = BKEYS()[a], B = k && Sim_().C.B[k]; return `Helped build ${B ? (k === 'home' ? 'a cottage' : 'the ' + B.name) : 'something'}. Hammered my paw only twice.`; }
-      case 'job': { const L = JOB_LINE[JOBS[a]] || JOB_LINE.rest; return pick(L, h).replace('{n}', b); }
+      case 'wave': return mine('wave', { a: AREA[a] || 'The island', l: (AREA[a] || 'The island').replace(/^./, c => c.toLowerCase()) }) || `${AREA[a] || 'The island'} turned colourful today! I rolled in ${a >= 5 ? 'the sunshine' : 'it'}.`;
+      case 'blt': { const k = BKEYS()[a], B = k && Sim_().C.B[k], nmB = B ? (k === 'home' ? 'a cottage' : 'the ' + B.name) : 'something'; return (own && mine('blt', { b: nmB })) || `Helped build ${nmB}. Hammered my paw only twice.`; }
+      case 'job': { const L = JOB_LINE[JOBS[a]] || JOB_LINE.rest; return ((own && mine('job', { n: b }, JOBS[a])) || pick(L, h)).replace('{n}', b); }
       default: return '';
     }
   }

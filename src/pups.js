@@ -167,8 +167,8 @@
     // pose: Sim.pose() result; groundY(x, z, fallbackY, onBridge) -> y; t = seconds (render clock)
     api.update = (i, pose, t, dt, groundY) => { const P = list[i]; if (P) upd(P, i, pose, t, dt, groundY); };
     function upd(P, i, pose, t, dt, groundY) {
-      const h = P.holder, j = P.j, x = pose.p[0], z = pose.p[2];
-      const gy = groundY(x, z, pose.p[1], pose.bridge);
+      const h = P.holder, j = P.j, x = pose.p[0], z = pose.p[2], V = pose.vg;   // vg = vibe pass 2 lane B overrides (src/pup_life.js)
+      const gy = groundY(x, z, pose.p[1], pose.bridge) + (V && V.perch ? V.lift || 0 : 0);
       P.y = P.y === null || Math.abs(P.y - gy) > 6 ? gy : P.y + (gy - P.y) * Math.min(1, dt * 10);
       const moved = P.last ? Math.hypot(x - P.last[0], z - P.last[1]) : 0; P.last = [x, z];
       const yawT = Math.atan2(pose.dir[0], pose.dir[1]);
@@ -205,18 +205,40 @@
           else { armX = -1.0; armZ = Math.sin(t * 14 + P.t0) * 0.22; armX2 = -1.25; }
         }
       }
+      // vibe pass 2 lane B: moments + reactions (all optional): perch on a bench / bridge edge with paws dangling, sit,
+      // lean, head, wag, hop, cheer (arms up), throw (right arm), roll (puppies tumbling), look at a world point
+      let perch = 0, roll = 0;
+      if (V) {
+        if (V.sit !== undefined) sit = V.sit;
+        if (V.perch) { sit = 1; perch = 1; lean = -0.12; armX = -0.35; }
+        if (V.lean !== undefined) lean = V.lean;
+        if (V.headX !== undefined) headX = V.headX;
+        if (V.headY !== undefined) headY = V.headY;
+        if (V.sway) bodyY = Math.sin(t * 0.9 + P.t0) * V.sway;
+        if (V.wag) tail = Math.sin(t * (10 + 12 * V.wag) + P.t0) * (0.3 + 0.4 * V.wag);
+        if (V.hop) bob += Math.abs(Math.sin(t * 7 + P.t0)) * 0.3 * V.hop;
+        if (V.cheer) { const up = -2.7 + Math.sin(t * 9 + P.t0) * 0.3; armX += (up - armX) * V.cheer; armX2 = (armX2 === null ? armX : armX2) + (-2.7 - Math.sin(t * 9 + P.t0) * 0.3 - (armX2 === null ? armX : armX2)) * V.cheer; }
+        if (V.throwT >= 0) { const f = V.throwT; armX2 = f < 0.5 ? -2.9 * f / 0.5 : -2.9 + (f - 0.5) / 0.5 * 2.4; }
+        if (V.roll) roll = V.roll;
+        if (V.look) {
+          const L = V.look, dx = L[0] - x, dz = L[2] - z, hz = Math.hypot(dx, dz) || 1;
+          let rel = Math.atan2(dx, dz) - P.yaw; while (rel > Math.PI) rel -= 2 * Math.PI; while (rel < -Math.PI) rel += 2 * Math.PI;
+          headY = Math.max(-1.15, Math.min(1.15, rel)); headX = -Math.max(-0.3, Math.min(0.95, Math.atan2(L[1] - (P.y + S * 1.3), hz))) * 0.9;
+        }
+      }
       const c = pose.carry, isTool = TOOLS.includes(c), isLoad = CARRY.includes(c);
       const carrying = c && !['pour', 'light', 'tend', 'fill', 'work', 'build', 'drop'].includes(pose.phase) && pose.walking;
       if (carrying && (c === 'bucket' || c === 'water' || isLoad)) armX = -1.0 + armX * 0.2;
       const toolSwing = (pose.phase === 'work' || pose.phase === 'build' || pose.phase === 'plant') && isTool;
-      R('legN', legX - sit * 1.45); R('legP', -legX - sit * 1.45);
+      if (perch) { const sw = Math.sin(t * 2.2 + P.t0) * 0.32; R('legN', -0.3 + sw); R('legP', -0.3 - sw); }   // paws dangling over the edge
+      else { R('legN', legX - sit * 1.45); R('legP', -legX - sit * 1.45); }
       const armP = armX2 !== null ? armX2 : (c && c.startsWith('lantern') && pose.walking) || (isTool && pose.walking) ? -0.7 : toolSwing ? armX : (carrying ? armX : -armX * (pose.walking ? 1 : -1));
       R('armN', armX, 0, -armZ - sit * 0.2); R('armP', armP, 0, armZ + sit * 0.2);
       R('head', headX, headY); R('tail', 0, tail, 0);
       R('body', lean, bodyY);
-      P.model.position.y = bob - sit * 0.34;
+      P.model.position.y = bob - sit * 0.34 + (roll ? 0.45 : 0); P.model.rotation.z = roll;
       { const k = pose.small ? 0.62 : 1; if (P.k !== k) { P.k = k; h.scale.setScalar(S * k); } }   // puppies
-      P.zz.visible = sit > 0 && (pose.phase === 'rest' || pose.phase === 'nap'); if (P.zz.visible) { const k = (t * 0.45 + P.t0) % 1; P.zz.position.set(0.35 + k * 0.3, 1.9 + k * 0.6, 0); P.zz.material.opacity = Math.sin(k * Math.PI); }
+      P.zz.visible = V && V.zz !== undefined ? !!V.zz : sit > 0 && (pose.phase === 'rest' || pose.phase === 'nap'); if (P.zz.visible) { const k = (t * 0.45 + P.t0) % 1; P.zz.position.set(0.35 + k * 0.3, 1.9 + k * 0.6, 0); P.zz.material.opacity = Math.sin(k * Math.PI); }
       P.disc.material.opacity = api.selected === i ? 0.85 : 0.5; P.disc.visible = !pose.air;
       h.position.set(x, P.y, z);
       // props

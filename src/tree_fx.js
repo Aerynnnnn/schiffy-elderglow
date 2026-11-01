@@ -27,7 +27,8 @@
       uniforms: { map: { value: tex }, scale: { value: 600 } }, transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       vertexShader: 'attribute vec4 color; attribute float size; varying vec4 vC; uniform float scale;\n' +
-        'void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * scale / max(1.0, -mv.z); gl_Position = projectionMatrix * mv; }',
+        // vibe pass 1: a point close to the camera fades out (5 -> 16 m) and never grows past ~1/9 of the screen (no giant blobs in follow / close views)
+        'void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); vC.a *= smoothstep(8.0, 30.0, -mv.z); gl_PointSize = min(size * scale / max(1.0, -mv.z), scale * 0.05); gl_Position = projectionMatrix * mv; }',
       fragmentShader: 'uniform sampler2D map; varying vec4 vC; void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vC.rgb, vC.a * t.a * t.r); if (gl_FragColor.a < 0.01) discard; }',
     });
     const pts = new THREE.Points(geo, mat); pts.frustumCulled = false;
@@ -52,11 +53,13 @@
 
   function TreeFx(scene, map, nav) {
     const L = map.layout, TP = nav.TP;
-    const treeU = { glow: { value: 1 }, leaf: { value: 1 }, boost: { value: 0 } };
+    // vibe 2 lane C: + sway (the canopy's own sway multiplier) + rim (a warm fresnel edge: golden hour, the tree speaking)
+    const treeU = { glow: { value: 1 }, leaf: { value: 1 }, boost: { value: 0 }, sway: { value: 1 }, rim: { value: new THREE.Vector4(1, 0.8, 0.46, 0) } };
     const orbU = { glow: { value: 1 }, leaf: { value: 1 }, boost: { value: 0 } };
     const treeB = map.batches.find(b => b.key === 'EG_ElderTree');
     const orbB = map.batches.find(b => b.key === 'EG_LightOrb');
     if (treeB && treeB.mesh) treeB.mesh.material = ElderMap.makeTintMat(treeU);
+    if (treeB && treeB.inkMesh && ElderMap.makeInkMat) treeB.inkMesh.material = ElderMap.makeInkMat(treeU.sway);   // its ink hull sways with it
     if (orbB && orbB.mesh) orbB.mesh.material = ElderMap.makeTintMat(orbU);
     const treeInst = treeB ? treeB.inst.filter(i => i.role === 'tree') : [];
     const base = treeInst.map(i => ({ i, m: i.m.clone(), c: treeB.center.clone(), r: treeB.radius }));
@@ -88,7 +91,7 @@
 
     const leaves = Cloud(420, LT, false), sparks = Cloud(380, ST, true), splash = Cloud(120, ST, true);
     scene.add(leaves.pts, sparks.pts, splash.pts);
-    let leafAcc = 0, sparkAcc = 0, burstT = 0, moteAcc = 0, seaAcc = 0;
+    let leafAcc = 0, sparkAcc = 0, burstT = 0, moteAcc = 0, seaAcc = 0, spk = 0, spkT = 0, spiralAcc = 0;
     const canopy = () => ({ y0: TP[1] + 62 * scale, y1: TP[1] + 128 * scale, r: 52 * scale });
 
     // ---- step 5 growth stages: glowing fruit hung on the canopy's outer leaves (count per level), glow veins + crown
@@ -128,6 +131,7 @@
     const api = {
       treeU, orbU, setScale, get scale() { return scale; }, night: 0,   // night 0..1 (DayNight): halos, shrine + crown glow stronger
       level: 1, season: [0, 0, 0, 0],   // step 5: tree level (stage look) + season weights (spring petals, autumn leaves fall)
+      speak: false, golden: 0, health: 80, get speakK() { return spk; },   // vibe 2 lane C: speaking (game.js), golden rim (light_fx.js)
       fruitAt: k => { const f = fruitP[k]; return f ? [TP[0] + f.w[0] * scale, TP[1] + f.w[1] * scale, TP[2] + f.w[2] * scale] : null; },
       // h = smoothed health 0..100, light = smoothed light need 0..100
       update(t, dt, h, light, renderer) {
@@ -136,7 +140,15 @@
         orbU.glow.value = Math.max(0, Math.min(1, light / 85));
         burstT = Math.max(0, burstT - dt);
         const bk = burstT > 0 ? Math.sin(Math.min(1, burstT / 3) * Math.PI) : 0;
-        treeU.boost.value = bk * 1.2 + STAGE_GLOW[lv - 1] * hk * (1 + api.night * 0.5);
+        // vibe 2 lane C: the tree speaking (api.speak 0/1 from game.js) = canopy glows + sways, a warm rim, leaves spiral down
+        // (strong for the first ~12 s of the words, then a gentle glow while the bubble stays open)
+        api.health = h; spkT = api.speak ? spkT + dt : 0; const spkTo = api.speak ? (spkT < 12 ? 1 : 0.35) : 0;
+        spk += (spkTo - spk) * Math.min(1, dt * (spkTo > spk ? 1.1 : 0.45));
+        const breathe = 0.5 + 0.5 * Math.sin(t * 1.6);
+        treeU.boost.value = bk * 1.2 + STAGE_GLOW[lv - 1] * hk * (1 + api.night * 0.5) + spk * (0.28 + 0.14 * breathe);
+        treeU.sway.value = 1 + spk * 2.6;
+        treeU.rim.value.w = (api.golden || 0) + spk * (0.32 + 0.1 * breathe);
+        spiralAcc += dt * spk * spk * 16;
         // glowing fruit (a healthy tree shows them all, a struggling one only some), pulsing softly
         const nF = Math.min(fruitP.length, Math.round(FRUIT_N[lv - 1] * Math.max(0, Math.min(1, (h - 35) / 40))));
         for (let k = 0; k < 64; k++) {
@@ -159,15 +171,22 @@
         shrine.material.opacity = Math.min(1, 0.15 + hk * 0.6 + api.night * 0.3 * hk); shrine.scale.setScalar((10 + hk * 10) * scale + 4);
         const cp = canopy();
         crown.position.set(TP[0], (cp.y0 + cp.y1) / 2, TP[2]); crown.scale.setScalar(cp.r * 3.2);
-        crown.material.opacity = Math.max(0, (h - 70) / 30) * (0.3 + api.night * 0.25) * (0.8 + STAGE_GLOW[lv - 1]) + bk * 0.6;
+        crown.material.opacity = Math.max(0, (h - 70) / 30) * (0.3 + api.night * 0.25) * (0.8 + STAGE_GLOW[lv - 1]) + bk * 0.6 + spk * (0.22 + 0.1 * breathe);
+        // spiralling leaves while it speaks: they circle the trunk on the way down (season colours, else green + gold)
+        while (spiralAcc > 1) {
+          spiralAcc--; const a = Math.random() * 6.28, rr = cp.r * (0.55 + Math.random() * 0.5), sw0 = api.season, pk = sw0[0] > 0.5 ? 0 : sw0[2] > 0.5 ? 2 : -1;
+          const c = pk >= 0 ? SEA_LEAF[pk][Math.floor(Math.random() * 3)] : (Math.random() < 0.35 ? [1, 0.84, 0.4] : [0.5 + Math.random() * 0.15, 0.82, 0.36]);
+          leaves.spawn({ x: TP[0] + Math.cos(a) * rr, y: cp.y0 + Math.random() * (cp.y1 - cp.y0) * 0.5, z: TP[2] + Math.sin(a) * rr, vy: -2.6 - Math.random() * 1.4,
+            max: 16, s: 1.4 + Math.random() * 0.9, r: c[0], g: c[1], b: c[2], a: 1, kind: 3, ang: a, rr, spin: (0.32 + Math.random() * 0.25) * (Math.random() < 0.5 ? 1 : -1) });
+        }
         burstRing.position.copy(crown.position); burstRing.material.opacity = bk * 0.8; burstRing.scale.setScalar(cp.r * (2 + (3 - Math.min(3, burstT)) * 2.2));
         // falling leaves when health < 55 (more the worse it is), sparkles when >= 72
         leafAcc += dt * Math.min(1, Math.max(0, (58 - h) / 35)) * 45;
         while (leafAcc > 1) {
           leafAcc--; const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * cp.r;
-          const brown = Math.random();
+          const brown = Math.random(), wi = api.season[3] || 0;   // vibe pass 2: a winter tree drops dull brown-grey leaves, not autumn orange
           leaves.spawn({ x: TP[0] + Math.cos(a) * rr, y: cp.y0 + Math.random() * (cp.y1 - cp.y0) * 0.7, z: TP[2] + Math.sin(a) * rr, vy: -2.2 - Math.random() * 1.5,
-            max: 14, s: 2.2 + Math.random() * 1.6, r: 0.75 + brown * 0.2, g: 0.45 + brown * 0.25, b: 0.18, a: 1, kind: 1 });
+            max: 14, s: 1.5 + Math.random() * 1.1, r: (0.75 + brown * 0.2) * (1 - wi * 0.3), g: (0.45 + brown * 0.25) * (1 - wi * 0.05), b: 0.18 + wi * 0.16, a: 1, kind: 1 });
         }
         sparkAcc += dt * Math.max(0, (h - 72) / 28) * 40;
         while (sparkAcc > 1) {
@@ -188,10 +207,17 @@
         while (seaAcc > 1) {
           seaAcc--; const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * cp.r * 1.05, c = SEA_LEAF[pk][Math.floor(Math.random() * 3)];
           leaves.spawn({ x: TP[0] + Math.cos(a) * rr, y: cp.y0 + Math.random() * (cp.y1 - cp.y0) * 0.7, z: TP[2] + Math.sin(a) * rr, vy: pk ? -2.4 - Math.random() * 1.4 : -1.4 - Math.random(),
-            max: 18, s: pk ? 2 + Math.random() * 1.4 : 1.4 + Math.random(), r: c[0], g: c[1], b: c[2], a: 1, kind: 1 });
+            max: 18, s: pk ? 1.3 + Math.random() * 0.9 : 1.0 + Math.random() * 0.7, r: c[0], g: c[1], b: c[2], a: 1, kind: 2, sk: pk });
         }
+        // vibe pass 2: a season's own leaves / petals stop the moment its weight is gone (a forced setSeason, or the end of the real
+        // 6 h blend): the ones in the air fade out within a second instead of drifting down for up to 18 s
+        for (const p of leaves.P) if (p.kind === 2 && p.life > 1 && (sw[p.sk] || 0) < 0.04) p.life = 1;
         const gy = TP[1] + 0.3;
-        leaves.tick(dt, (p, d) => { p.vx = Math.sin(t * 1.3 + p.ph) * 2.2; p.vz = Math.cos(t * 1.1 + p.ph) * 1.6; if (p.y < gy) { p.y = gy; p.vy = 0; p.vx = p.vz = 0; p.life = Math.min(p.life, 1.2); } });
+        leaves.tick(dt, (p, d) => {
+          if (p.kind === 3 && p.y > gy) {   // a spiralling leaf: round the trunk, drifting in a little
+            p.ang += p.spin * d; p.rr = Math.max(cp.r * 0.3, p.rr - d * 0.6); const nx = TP[0] + Math.cos(p.ang) * p.rr, nz = TP[2] + Math.sin(p.ang) * p.rr;
+            p.vx = (nx - p.x) / Math.max(d, 1e-3); p.vz = (nz - p.z) / Math.max(d, 1e-3); return; }
+          p.vx = Math.sin(t * 1.3 + p.ph) * 2.2; p.vz = Math.cos(t * 1.1 + p.ph) * 1.6; if (p.y < gy) { p.y = gy; p.vy = 0; p.vx = p.vz = 0; p.life = Math.min(p.life, 1.2); } });
         sparks.tick(dt, (p, d) => { p.vx = Math.sin(t * 2 + p.ph) * 0.6; p.s *= 1 - d * 0.1; });
         splash.tick(dt, (p, d) => { p.vy -= 18 * d; if (p.y < p.gy) { p.y = p.gy; p.vy = 0; p.vx *= 0.5; p.vz *= 0.5; } });
         const sc = renderer.domElement.height / (2 * Math.tan(Math.PI / 180 * 20));

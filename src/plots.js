@@ -1,6 +1,9 @@
 // Plots: what the player sees of building. Reads the sim state (S.plots / S.queue) every frame; owns no game state.
 //  - empty plot marker = soft outlined patch on the ground (house footprint) + a small sign (+ open, lock = locked,
-//    hammer = blueprint), all instanced (5 draw calls for every plot on the island)
+//    hammer = blueprint), all instanced (5 draw calls for every plot on the island). Vibe pass 1: that strong look shows
+//    only while building (api.build = the plot menu is open; the selected plot always). Otherwise a calm look: a worn
+//    patch (grey outside the restored colour, warm earth inside) + foundation stones (kit pebbles, map material) round
+//    it with a gap at the door side; blueprint signs stay. Tap targets unchanged (pick = patch centre + size).
 //  - homes = the layout's own house instance (map batch, role 'built'); garden / woodshed / stone pile / lantern path =
 //    small groups of kit pieces drawn with their own InstancedMeshes (same geometry + material as the map)
 //  - building in stages: scaffold (f < SCAF) -> frame (the model rises out of the ground inside the scaffold) -> done
@@ -17,6 +20,16 @@
     const r = g.createRadialGradient(w / 2, w / 2, 20, w / 2, w / 2, w * 0.62); r.addColorStop(0, 'rgba(255,255,255,.34)'); r.addColorStop(1, 'rgba(255,255,255,.12)');
     rr(g, 14, 14, w - 28, w - 28, 46); g.fillStyle = r; g.fill();
     g.setLineDash([26, 16]); g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,.95)'; rr(g, 14, 14, w - 28, w - 28, 46); g.stroke();
+  });
+  // vibe pass 1: the CALM look of an empty plot (when the player is not building): a soft worn patch of earth with a few
+  // darker scuffs, no outline. Drawn in neutral greys; the instance colour tints it (grey outside the restored colour,
+  // a warm earth tone inside). The foundation stones around it are kit pebbles (map material: lit, inked, greyed / coloured
+  // by the colour restoring like the rest of the world).
+  const CALM = canvasTex(256, 256, (g, w) => {
+    const r = g.createRadialGradient(w / 2, w / 2, 10, w / 2, w / 2, w * 0.5); r.addColorStop(0, 'rgba(70,60,50,.15)'); r.addColorStop(0.6, 'rgba(70,60,50,.11)'); r.addColorStop(1, 'rgba(70,60,50,0)');
+    g.fillStyle = r; g.fillRect(0, 0, w, w);
+    let sd = 7; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+    for (let k = 0; k < 18; k++) { const x = w * (0.22 + rnd() * 0.56), y = w * (0.22 + rnd() * 0.56), rr0 = 10 + rnd() * 22; const q = g.createRadialGradient(x, y, 0, x, y, rr0); q.addColorStop(0, `rgba(50,42,36,${0.03 + rnd() * 0.04})`); q.addColorStop(1, 'rgba(50,42,36,0)'); g.fillStyle = q; g.beginPath(); g.arc(x, y, rr0, 0, Math.PI * 2); g.fill(); }
   });
   const SIGN = {};
   for (const k of ['open', 'lock', 'blue']) SIGN[k] = canvasTex(128, 96, (g, w, h) => {
@@ -45,6 +58,10 @@
     stage: [['EG_MarketStall_A', 0, -3, 0, 2.4], ['EG_FairyRing', 0, 3.2, 0, 2.3], ['EG_Brazier', -6.4, -3.4, 0, 1.7], ['EG_Brazier', 6.4, -3.4, 0, 1.7],
       ['EG_FallenLog_A', -7.2, 4.4, 1.57, 0.6], ['EG_FallenLog_B', 7.2, 4.2, 1.57, 0.6], ['EG_GlowShrooms_A', -3.5, -6.5, 0, 1.3], ['EG_GlowShrooms_B', 3.5, -6.5, 1, 1.2]],
     conserv: [['EG_Greenhold', 0, -1, 0, 0.3], ['EG_GardenBox', -6.4, 4.2, 0, 1.8], ['EG_GardenBox', 6.4, 4.2, 0, 1.8], ['EG_WispTree_A', -7, -4, 0, 0.9], ['EG_GlowShrooms_B', 6.6, -4.4, 0, 1.4]],
+    // vibe pass 2: a pup corner (the pups' own idea on a grown island): log benches round a little fire bowl, planters,
+    // a stump seat, flowers + glow shrooms
+    nook: [['EG_FallenLog_B', -3.4, 0.8, 1.35, 0.8], ['EG_FallenLog_A', 3.3, 1.2, 1.85, 0.72], ['EG_Brazier', 0, -0.2, 0, 1.45], ['EG_GardenBox', -5.0, -4.2, 0.1, 2.0],
+      ['EG_GardenBox', 4.6, -4.4, -0.1, 2.0], ['EG_Stump', 0.3, 4.2, 0.6, 2.0], ['EG_GlowShrooms_B', -6.0, 3.6, 0.8, 1.5], ['EG_Bush_B', 6.6, 3.4, 2.1, 1.3], ['EG_Bush_A', -6.4, -0.6, 0.4, 1.1]],
     lantern: [['EG_Brazier', -5.5, -4, 0, 1.6], ['EG_Brazier', 5.5, -4, 0, 1.6], ['EG_Brazier', -5.5, 4, 0, 1.6], ['EG_Brazier', 5.5, 4, 0, 1.6], ['EG_FairyRing', 0, 0, 0, 1.7], ['EG_GlowShrooms_A', 0, -4.8, 0, 1.5], ['EG_GlowShrooms_B', 0, 4.8, 2, 1.4]],
   };
 
@@ -75,6 +92,81 @@
     const boardGeo = new THREE.PlaneGeometry(2.6, 1.95);
     const boards = {}; for (const k in SIGN) { const m = new THREE.InstancedMesh(boardGeo, new THREE.MeshBasicMaterial({ map: SIGN[k], side: THREE.DoubleSide, transparent: true, alphaTest: 0.3 }), N); m.frustumCulled = false; scene.add(m); boards[k] = m; }
     const COL = { open: 0xfff2c0, lock: 0xb8b0c8, blue: 0xffcc33, build: 0xffb347, sel: 0x7dfcff };
+    // vibe pass 1: calm markers (worn patch + foundation stones) unless the player is building (api.build = the plot menu is open)
+    const calmPatch = new THREE.InstancedMesh(patch.geometry, new THREE.MeshBasicMaterial({ map: CALM, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }), N);
+    calmPatch.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3); calmPatch.renderOrder = 1; calmPatch.frustumCulled = false; scene.add(calmPatch);
+    // vibe pass 2: the 7 scattered pebbles read as gravel. Now an empty plot is a PROMISE: a low mossy stone foundation round
+    // the footprint (a gap at the door, corner stones; map material = greyed / coloured / snowed like the world; one merged
+    // mesh for every empty plot, rebuilt when that set changes) + a faint GHOST of a cottage standing on it (one instanced
+    // draw, fresnel rim, warm by day / soft cyan at night, fainter on locked land). The dashed outline stays build-mode only.
+    const hsh = n => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); return ((n ^ (n >>> 15)) >>> 0) / 4294967296; };
+    let stoneSig = '';
+    const GREY = new THREE.Color(0x9a978f), EARTH = new THREE.Color(0xb29a74), CK = new THREE.Color();
+    const litMat = batchOf.EG_Pebbles && batchOf.EG_Pebbles.mesh ? batchOf.EG_Pebbles.mesh.material : null;
+    const FMAT = {}; const fm = (hex) => FMAT[hex] || (FMAT[hex] = (() => { const m = new THREE.MeshBasicMaterial({ color: hex }); m.name = 'Found'; m.color.convertSRGBToLinear(); return m; })());
+    const FBOX = new THREE.BoxGeometry(1, 1, 1);
+    const found = { m: null, ink: null };
+    function foundationInto(root, x) {   // plot frame: x right, z out of the door side; local pieces placed with the plot's yaw
+      const hw = x.w / 2 + 0.4, hd = x.d / 2 + 0.4, big = Math.max(x.w, x.d) > 24, pid = x.q.pid + 1, T = big ? 1.5 : 0.9, Hh = big ? 0.6 : 0.42;
+      const cs = Math.cos(x.q.ry), sn = Math.sin(x.q.ry);
+      const put = (lx, lz, w, h, d, hex, yaw, dy) => {
+        const wx = x.c[0] + lx * cs + lz * sn, wz = x.c[1] - lx * sn + lz * cs, m = new THREE.Mesh(FBOX, fm(hex));
+        m.position.set(wx, ground(wx, wz, x.gy) + h / 2 - 0.12 + (dy || 0), wz); m.rotation.y = x.q.ry + (yaw || 0); m.scale.set(w, h, d); root.add(m);
+      };
+      const STONE = 0x9d998f, STONE2 = 0x8b877e, MOSS = 0x7fae5c;
+      // sill runs (back + two sides whole; the door side in two parts with a gap), slightly broken into blocks
+      const run = (ax, az, bx, bz) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / (big ? 6 : 3.4))), yaw = Math.atan2(-(bz - az), bx - ax);
+        for (let k = 0; k < n; k++) { const f0 = k / n, f1 = (k + 1) / n, gap = 0.18, r = hsh(pid * 97 + Math.round(ax * 3) + k * 13);
+          const cx = ax + (bx - ax) * (f0 + f1) / 2, cz = az + (bz - az) * (f0 + f1) / 2, len = L / n - gap;
+          if (r < 0.12) continue;   // a block missing here and there: old, not new
+          put(cx, cz, len, Hh * (0.8 + r * 0.4), T, r < 0.5 ? STONE : STONE2, yaw);
+          if (r > 0.55) put(cx + (r - 0.75) * len * 0.5, cz, len * 0.45, 0.14, T * 1.05, MOSS, yaw, Hh * (0.8 + r * 0.4) / 2 + 0.02);   // moss on top
+        } };
+      const door = big ? 6 : 3.2;
+      run(-hw, -hd, hw, -hd); run(-hw, -hd, -hw, hd); run(hw, -hd, hw, hd); run(-hw, hd, -door, hd); run(door, hd, hw, hd);
+      for (const [lx, lz] of [[-hw, -hd], [hw, -hd], [-hw, hd], [hw, hd]]) { const r = hsh(pid * 31 + Math.round(lx + lz)); put(lx, lz, T * 1.45, Hh * 1.7, T * 1.45, STONE2, r); put(lx, lz, T * 1.05, 0.18, T * 1.05, MOSS, r, Hh * 0.85 + 0.09); }
+    }
+    function rebuildFoundations(pids) {
+      for (const k of ['m', 'ink']) if (found[k]) { scene.remove(found[k]); found[k].geometry.dispose(); found[k] = null; }
+      if (!pids.length || !litMat || !ElderMap.kitBatch) return;
+      const root = new THREE.Group(); for (const pid of pids) if (byPid[pid].q.kind !== 'market') foundationInto(root, byPid[pid]);
+      const b = ElderMap.kitBatch('plots:found', root, null, false); if (!b || !b.geo) return;
+      // 1-instance InstancedMesh: the map's lit / ink materials are only ever used instanced (src/world_fx.js note)
+      found.m = new THREE.InstancedMesh(b.geo, litMat, 1); found.m.setMatrixAt(0, new THREE.Matrix4()); found.m.receiveShadow = true; found.m.frustumCulled = false; scene.add(found.m);
+      if (b.ink) { found.ink = new THREE.InstancedMesh(b.ink, ElderMap.inkMat, 1); found.ink.instanceMatrix = found.m.instanceMatrix; found.ink.frustumCulled = false; scene.add(found.ink); }
+    }
+    // the ghost cottage: a unit body + gable roof + chimney (base at y 0), scaled to the plot
+    const ghostGeo = (() => {
+      const body = new THREE.BoxGeometry(1, 0.56, 1).translate(0, 0.28, 0);
+      const roof = new THREE.CylinderGeometry(0.62, 0.62, 1.12, 3, 1).rotateZ(Math.PI / 2).rotateX(Math.PI / 2).scale(1, 0.62, 1).translate(0, 0.56 + 0.19, 0);
+      const chim = new THREE.BoxGeometry(0.13, 0.32, 0.13).translate(0.26, 0.86, -0.18);
+      const parts = [body, roof, chim].map(g => g.toNonIndexed()); const pos = [], nrm = [];
+      for (const g of parts) { pos.push(...g.attributes.position.array); nrm.push(...g.attributes.normal.array); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); return g;
+    })();
+    const GU = { uNight: { value: 0 }, uK: { value: 1 } };
+    const ghostMat = new THREE.ShaderMaterial({ uniforms: GU, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: `varying vec3 vN; varying vec3 vV; varying float vI; varying float vY;
+        void main() {
+          mat4 im = mat4(1.0); vI = 1.0;
+          #ifdef USE_INSTANCING
+            im = instanceMatrix;
+          #endif
+          #ifdef USE_INSTANCING_COLOR
+            vI = instanceColor.r;
+          #endif
+          vec4 wp = modelMatrix * im * vec4(position, 1.0); vN = normalize(mat3(modelMatrix * im) * normal); vV = cameraPosition - wp.xyz; vY = position.y;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }`,
+      fragmentShader: `uniform float uNight, uK; varying vec3 vN; varying vec3 vV; varying float vI; varying float vY;
+        void main() {
+          vec3 n = normalize(vN), v = normalize(vV); float rim = 1.0 - abs(dot(n, v));
+          float a = (0.04 + 0.36 * pow(rim, 2.2)) * uK * vI * (0.55 + 0.45 * smoothstep(0.0, 0.5, vY)) * smoothstep(8.0, 30.0, length(vV)) * (1.0 - 0.75 * smoothstep(170.0, 420.0, length(vV)));   // far away: a grid of pale boxes read as zoning again
+          vec3 c = mix(vec3(1.0, 0.95, 0.82), vec3(0.7, 0.86, 0.95), uNight);
+          gl_FragColor = vec4(c, a * (1.0 - uNight * 0.55));   // night: a whisper (bright glass boxes on a dark island read as holograms)
+        }` });
+    const ghost = new THREE.InstancedMesh(ghostGeo, ghostMat, N); ghost.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3).fill(1), 3);
+    ghost.count = 0; ghost.renderOrder = 2; ghost.frustumCulled = false; scene.add(ghost);
 
     // ---- composite pieces (own instanced meshes per kit piece)
     const extra = {};
@@ -118,7 +210,7 @@
       Q.setFromAxisAngle(Y, x.q.ry + yaw); V.set(wx, ground(wx, wz, x.q.pos[1]) + dy, wz); SC.setScalar(s); return M4.compose(V, Q, SC);
     }
     let builtOn = false;
-    const api = { info, byPid, sel: null, SCAF };
+    const api = { info, byPid, sel: null, SCAF, build: false };   // build = the plot menu is open: strong outlines + signs (vibe pass 1)
     // house instance: grows up out of its footprint (y scale sy, base on the ground) or restore / hide
     const SY = new THREE.Matrix4();
     function setHome(x, vis, sy) {
@@ -135,8 +227,9 @@
     // S = sim state; pupsPose(i) -> pose; dt seconds
     api.update = (S, t, dt, level, poses) => {
       // 1. per plot state
-      const sites = [];
-      let mi = 0; const bi = { open: 0, lock: 0, blue: 0 };
+      const sites = [], BUILD = !!api.build, sigA = [];
+      let mi = 0, ci = 0, gi = 0; const bi = { open: 0, lock: 0, blue: 0 };
+      const RU = window.ElderMap && ElderMap.uRest ? ElderMap.uRest.value : null, RC = window.ElderMap && ElderMap.uRestC ? ElderMap.uRestC.value : null;
       for (const x of info) {
         const e = S.plots[x.q.pid];
         const f = e ? (e.done ? 1 : Math.min(1, e.prog / Math.max(1, Sim.workOf(e.type, x.q)))) : 0;
@@ -145,10 +238,20 @@
         // markers: open plots up to one ring further than reached (locked), factions / market always (when on the ground)
         const showMarker = x.show && st !== 'done' && st !== 'build' && (st !== 'lock' || x.q.lv <= level + 1 || x.q.kind !== 'house');
         if (showMarker || st === 'build') {
-          Q.setFromAxisAngle(Y, x.q.ry); V.set(x.c[0], x.gy + 0.08, x.c[1]); SC.set(x.w + 2.5, 1, x.d + 2.5); patch.setMatrixAt(mi, M4.compose(V, Q, SC));
-          patch.setColorAt(mi, CO.setHex(api.sel === x.q.pid ? COL.sel : (COL[st] || COL.open))); mi++;
+          Q.setFromAxisAngle(Y, x.q.ry); V.set(x.c[0], x.gy + 0.08, x.c[1]); SC.set(x.w + 2.5, 1, x.d + 2.5); M4.compose(V, Q, SC);
+          // strong dashed outline only while building (plot menu open) or for the selected plot
+          if (BUILD || api.sel === x.q.pid) { patch.setMatrixAt(mi, M4); patch.setColorAt(mi, CO.setHex(api.sel === x.q.pid ? COL.sel : (COL[st] || COL.open))); mi++; }
+          // calm worn patch: grey outside the restored colour, warm earth inside (follows the colour wave)
+          let k = 1; if (RU && RU.w > 0) { const dR = Math.hypot(x.c[0] - RC.x, x.c[1] - RC.y) - RU.x, e = Math.max(0, Math.min(1, (dR + RU.y) / (2 * RU.y))); k = 1 - e * e * (3 - 2 * e) * RU.w; }
+          calmPatch.setMatrixAt(ci, M4); calmPatch.setColorAt(ci, CK.copy(GREY).lerp(EARTH, k).multiplyScalar(st === 'lock' ? 0.8 : 1)); ci++;
+          if (showMarker) sigA.push(x.q.pid);
+          // vibe pass 2: the ghost of a cottage on an empty plot (not the market square; not under a blueprint's scaffold)
+          if (showMarker && st !== 'blue' && x.q.kind !== 'market') {
+            Q.setFromAxisAngle(Y, x.q.ry); V.set(x.c[0], x.gy - 0.1, x.c[1]); SC.set(x.w * 0.72, Math.min(x.h, Math.max(x.w, x.d) * 0.75) * 0.95, x.d * 0.72);
+            ghost.setMatrixAt(gi, M4.compose(V, Q, SC)); ghost.setColorAt(gi, CO.setRGB(st === 'lock' ? 0.45 : 1, 1, 1)); gi++;
+          }
         }
-        if (showMarker) {
+        if (showMarker && (BUILD || st === 'blue' || api.sel === x.q.pid)) {
           // sign: at the door side corner, facing out
           const o = x.q.out, side = [-o[1], o[0]], hw = x.w / 2 + 1.6;
           const sx = x.q.door[0] + o[0] * 4 + side[0] * Math.min(hw, 6), sz = x.q.door[2] + o[1] * 4 + side[1] * Math.min(hw, 6), sy = ground(sx, sz, x.gy);
@@ -161,9 +264,14 @@
         if (st === 'build' || st === 'blue' || st === 'done') sites.push(x);
         else if (x.state !== st) { if (x.state === 'done' || x.state === 'build' || x.state === 'rise') { if (x.inst.length) setHome(x, false, 0); } x.state = st; }
       }
-      patch.count = mi; patch.instanceMatrix.needsUpdate = true; if (patch.instanceColor) patch.instanceColor.needsUpdate = true;
-      post.count = bi.open + bi.lock + bi.blue; post.instanceMatrix.needsUpdate = true;
-      for (const k in boards) { boards[k].count = bi[k]; boards[k].instanceMatrix.needsUpdate = true; }
+      patch.count = mi; patch.instanceMatrix.needsUpdate = true; if (patch.instanceColor) patch.instanceColor.needsUpdate = true; patch.visible = mi > 0;
+      calmPatch.count = ci; calmPatch.instanceMatrix.needsUpdate = true; calmPatch.instanceColor.needsUpdate = true; calmPatch.visible = ci > 0;
+      post.count = bi.open + bi.lock + bi.blue; post.instanceMatrix.needsUpdate = true; post.visible = post.count > 0;
+      for (const k in boards) { boards[k].count = bi[k]; boards[k].instanceMatrix.needsUpdate = true; boards[k].visible = bi[k] > 0; }
+      ghost.count = gi; ghost.instanceMatrix.needsUpdate = true; ghost.instanceColor.needsUpdate = true; ghost.visible = gi > 0;
+      // mossy foundations round the empty plots (rebuilt only when that set changes; the ground under them never moves)
+      const sg = sigA.join(',');
+      if (sg !== stoneSig) { stoneSig = sg; rebuildFoundations(sigA); }
       // 2. buildings: homes move their own map instance; composites fill the extra meshes; scaffold for sites in progress
       for (const k in extra) if (extra[k]) extra[k].list.length = 0;
       const sc = [];
@@ -231,6 +339,8 @@
     api.setNight = n => {
       const k = Math.round(n * 50) / 50; if (k === nightK) return; nightK = k;
       const c = 1 - 0.42 * k; for (const b in boards) boards[b].material.color.setRGB(c, c, c * 1.05); patch.material.color.setRGB(c, c, c * 1.05);
+      const c2 = 1 - 0.55 * k; calmPatch.material.color.setRGB(c2, c2, c2 * 1.08);
+      GU.uNight.value = k;
     };
     return api;
   }

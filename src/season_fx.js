@@ -22,11 +22,18 @@
     const geo = new THREE.BufferGeometry(), seed = new Float32Array(N * 4);
     for (let i = 0; i < N; i++) { seed[i * 4] = Math.random(); seed[i * 4 + 1] = Math.random(); seed[i * 4 + 2] = Math.random(); seed[i * 4 + 3] = Math.random(); }
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3)); geo.setAttribute('seed', new THREE.BufferAttribute(seed, 4));
-    const WU = { uT: { value: 0 }, uC: { value: new THREE.Vector3() }, uKind: { value: 3 }, uK: { value: 0 }, uDen: { value: 1 }, uScale: { value: 600 }, uNight: { value: 0 }, uLeaf: { value: LEAF }, uSoft: { value: SOFT } };
+    // vibe pass 2: every particle picks its season by the blend weights (uW), so a season change cross-fades (the old kind thins out while
+    // the new one fills in) instead of the dominant one switching over half-way; uDen = density per kind (festival boost included)
+    const WU = { uT: { value: 0 }, uC: { value: new THREE.Vector3() }, uW: { value: new THREE.Vector4(0, 0, 1, 0) }, uDen: { value: new THREE.Vector4(1, 1, 1, 1) }, uScale: { value: 600 }, uNight: { value: 0 }, uLeaf: { value: LEAF }, uSoft: { value: SOFT } };
     const wMat = new THREE.ShaderMaterial({
       uniforms: WU, transparent: true, depthWrite: false, fog: false,
-      vertexShader: `attribute vec4 seed; uniform float uT, uKind, uK, uDen, uScale, uNight; uniform vec3 uC; varying vec4 vC; varying float vRot;
+      vertexShader: `attribute vec4 seed; uniform float uT, uScale, uNight; uniform vec4 uW, uDen; uniform vec3 uC; varying vec4 vC; varying float vRot; varying float vKind;
         void main() {
+          float pick = fract(seed.x * 7.31 + seed.y * 3.77), acc = uW.x, uKind = 0.0, den = uDen.x, wk = uW.x;
+          if (pick >= acc) { acc += uW.y; uKind = 1.0; den = uDen.y; wk = uW.y; }
+          if (pick >= acc) { acc += uW.z; uKind = 2.0; den = uDen.z; wk = uW.z; }
+          if (pick >= acc) { uKind = 3.0; den = uDen.w; wk = uW.w; }
+          vKind = uKind;
           float B = ${BOX.toFixed(1)}, Hh = ${HGT.toFixed(1)};
           float fall = uKind < 0.5 ? 1.6 : uKind < 1.5 ? -0.35 : uKind < 2.5 ? 3.2 : 2.6;
           fall *= 0.7 + 0.6 * seed.z;
@@ -36,9 +43,12 @@
           p.z = uC.z + (fract(seed.y - (uC.z - cos(uT * 0.5 + seed.y * 30.0) * 2.0) / B) - 0.5) * B;
           p.y = uC.y - 30.0 + fract(seed.z * 7.0 - uT * fall / Hh) * Hh;
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          float on = step(seed.w, uDen) * uK;
-          float sz = uKind < 0.5 ? 1.0 : uKind < 1.5 ? 0.55 : uKind < 2.5 ? 1.5 : 0.85;
-          gl_PointSize = on > 0.001 ? sz * (0.7 + 0.6 * seed.x) * uScale / max(1.0, -mv.z) : 0.0;
+          float on = step(seed.w, den) * step(0.001, wk) * min(1.0, dot(uW, vec4(1.0)) * 1.25);
+          float sz = uKind < 0.5 ? 0.8 : uKind < 1.5 ? 0.55 : uKind < 2.5 ? 0.95 : 0.85;
+          // vibe pass 1: never a giant blob by the lens: capped size, and faded out near the camera (vibe pass 2: smaller leaves / petals,
+          // a lower cap (~3.5 % of the view height) and a longer fade, 10 -> 40 m: the follow view no longer shows red ovals)
+          gl_PointSize = on > 0.001 ? min(sz * (0.7 + 0.6 * seed.x) * uScale / max(1.0, -mv.z), uScale * 0.035) : 0.0;
+          on *= smoothstep(10.0, 40.0, -mv.z);
           gl_Position = projectionMatrix * mv;
           float fadeD = 1.0 - smoothstep(B * 0.32, B * 0.5, length(p.xz - uC.xz));
           vec3 col = uKind < 0.5 ? mix(vec3(1.0, 0.72, 0.85), vec3(1.0, 0.92, 0.96), seed.y)
@@ -49,10 +59,10 @@
           vC = vec4(col, on * fadeD * (uKind > 0.5 && uKind < 1.5 ? 0.75 : 0.95));
           vRot = seed.x * 6.28 + uT * (seed.w - 0.5) * 3.0;
         }`,
-      fragmentShader: `uniform sampler2D uLeaf, uSoft; uniform float uKind; varying vec4 vC; varying float vRot;
+      fragmentShader: `uniform sampler2D uLeaf, uSoft; varying vec4 vC; varying float vRot; varying float vKind;
         void main() {
           vec2 q = gl_PointCoord - 0.5; float c = cos(vRot), s = sin(vRot); q = vec2(c * q.x - s * q.y, s * q.x + c * q.y) + 0.5;
-          vec4 t = (uKind < 0.5 || (uKind > 1.5 && uKind < 2.5)) ? texture2D(uLeaf, q) : texture2D(uSoft, gl_PointCoord);
+          vec4 t = (vKind < 0.5 || (vKind > 1.5 && vKind < 2.5)) ? texture2D(uLeaf, q) : texture2D(uSoft, gl_PointCoord);
           float a = vC.a * t.a; if (a < 0.02) discard;
           gl_FragColor = vec4(vC.rgb * (0.75 + 0.25 * t.r), a);
         }`,
@@ -96,10 +106,10 @@
         api.weights = w;
         ElderMap.uSeason.value.set(w[0], w[1], w[2], w[3]);
         ElderMap.uCozy.value = w[3] * Math.max(night, 0.55);
-        // weather: the dominant season's particles (cross-fading seasons: the stronger one)
-        let k = 0; for (let i = 1; i < 4; i++) if (w[i] > w[k]) k = i;
-        WU.uT.value = t; WU.uC.value.copy(camT); WU.uKind.value = k; WU.uK.value = Math.min(1, w[k] * 1.25); WU.uNight.value = night;
-        WU.uDen.value = KIND_DEN[k] * (api.fest && api.festSea === k ? 1.6 : 1) * (PHONE ? 1 : 1);
+        // weather: each particle's season is picked by the blend weights (a season change cross-fades)
+        WU.uT.value = t; WU.uC.value.copy(camT); WU.uW.value.set(w[0], w[1], w[2], w[3]); WU.uNight.value = night;
+        const fb = k => KIND_DEN[k] * (api.fest && api.festSea === k ? 1.6 : 1);
+        WU.uDen.value.set(fb(0), fb(1), fb(2), fb(3));
         WU.uScale.value = renderer.domElement.height / (2 * Math.tan(Math.PI / 180 * 20));
         // autumn lanterns (fade in with autumn; during the lantern festival all lit + brighter)
         const aw = w[2], R = Math.max(44, rootR * 1.65);   // a ring just outside the roots
