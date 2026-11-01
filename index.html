@@ -562,6 +562,19 @@ body.phone .chatb { max-width: 150px; font-size: 12px; padding: 3px 8px 4px; }
 /* album: unknown / glimpsed critters readable (an ink rim instead of a washed-out ghost) */
 .cpic.glim { filter: grayscale(.45) brightness(.9) drop-shadow(1.2px 0 0 #2a2442aa) drop-shadow(-1.2px 0 0 #2a2442aa) drop-shadow(0 1.2px 0 #2a2442aa) drop-shadow(0 -1.2px 0 #2a2442aa); opacity: .9; }
 .cpic.sil { filter: brightness(0) opacity(.42); }
+/* free decor: place mode bar (ghost follows the pointer) + the little menu over a placed decoration */
+#placeBar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 12px; max-width: calc(100% - 32px); box-sizing: border-box; animation: tin .3s ease-out; }
+#placeBar .pbt { display: flex; flex-direction: column; min-width: 150px; } #placeBar .pbt span { font-size: 16px; } #placeBar .pbt span svg.ic { width: 18px; height: 18px; vertical-align: -3px; }
+#placeBar #pbWhy { font-size: 12.5px; color: #2f7a35; font-weight: 600; } #placeBar.bad #pbWhy { color: #c4304a; }
+#placeBar .pbb { display: flex; gap: 6px; align-items: center; } #placeBar .pbb .ghost { height: 34px; padding: 0 10px; } #placeBar .pbb svg { width: 20px; height: 20px; fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; vertical-align: -5px; }
+#placeBar .pbb .ghost.on { background: #ffe7a0; box-shadow: inset 0 0 0 2px #e0a800; } #placeBar .pbb .ghost:disabled { opacity: .4; }
+body.phone #placeBar .pbb { flex-wrap: wrap; justify-content: center; }
+#placeBar .go { font-size: 16px; padding: 6px 14px; } #placeBar .pbk { flex: 1 0 100%; text-align: center; font-size: 11px; color: #7a7396; margin-top: -2px; }
+body.placing #topBtns, body.placing #tlabels { visibility: hidden; }
+body.phone.placing #side { display: none; }
+body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; } body.phone #placeBar .pbk { display: none; } body.phone #placeBar .pbt { flex: 1 0 100%; align-items: center; text-align: center; }
+#decMenu { position: absolute; z-index: 8; padding: 6px 8px 8px; text-align: center; animation: tin .25s ease-out; } #decMenu b { display: block; font-size: 14px; margin-bottom: 5px; }
+#decMenu .dmb { display: flex; gap: 5px; } #decMenu .dmb .ghost { padding: 5px 10px; } body.phone #decMenu .dmb .ghost { padding: 8px 12px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -596,6 +609,8 @@ body.phone .chatb { max-width: 150px; font-size: 12px; padding: 3px 8px 4px; }
   <div id="visHint" class="card" hidden>Walk with <b>WASD</b> / arrows (Shift = run) or click the ground. Drag to look around.</div>
   <div id="toasts"></div>
   <div id="tourChip" class="card" hidden>Tap anywhere to skip</div>
+  <div id="placeBar" class="card" hidden><div class="pbt"><span id="pbName" class="disp"></span><small id="pbWhy"></small></div><div class="pbb"><button class="ghost" id="pbRotL" title="Turn left (Q)"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2.2-5.1" /><path d="M4 4v4.5h4.5" /></svg></button><button class="ghost" id="pbRotR" title="Turn right (E)"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.2-5.1" /><path d="M20 4v4.5h-4.5" /></svg></button><button class="ghost" id="pbSnap" title="Snap to the grid + 15 degree turns (G)"><svg viewBox="0 0 24 24"><path d="M4 9h16M4 15h16M9 4v16M15 4v16" /></svg></button><button class="ghost" id="pbCopy" title="Same turn as the last one (C)"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M5 15V6a1 1 0 0 1 1-1h9" /></svg></button><button class="ghost" id="pbCancel" title="Cancel (Esc)">Cancel</button><button class="go" id="pbOk">Place here</button></div><small class="pbk">Q / E turn (Shift: 45&deg;) &middot; G grid &middot; C same turn &middot; Esc cancel</small></div>
+  <div id="decMenu" class="card" hidden><b id="dmName" class="disp"></b><div class="dmb"><button class="ghost" data-a="move">Move</button><button class="ghost" data-a="turn">Turn</button><button class="ghost" data-a="pack">Pack away</button></div></div>
   <div id="hint" class="card" hidden>Tap a pup, then give it a job. Tap <b>Build</b> to plan a home.</div>
   <div id="away" hidden><div class="card"><h2 id="awayTitle">While you were away</h2><ul id="awayList"></ul><button class="big" id="awayOk">Lovely!</button></div></div>
   <div id="gift" hidden><div class="card gcard"><div class="gh"><h2>Daily gift</h2><span id="gStreak" class="gs"></span><button id="gClose" title="Close">&#10005;</button></div><p id="gMsg" class="gm"></p><div id="gTiles" class="gtiles"></div><div id="gGot" class="ggot" hidden></div><div id="gMonth" class="gmon"></div><div class="gf"><button class="big" id="gClaim">Claim!</button><small>Missed a day? No problem: the calendar just waits for you.</small></div></div></div>
@@ -624,7 +639,7 @@ body.phone .chatb { max-width: 150px; font-size: 12px; padding: 3px 8px 4px; }
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

@@ -209,16 +209,11 @@
     return out;
   }
 
-  // ---- decorations on spots: S.placed = [{ id, k }] (k = index into nav.decorSpots)
+  // ---- decorations: S.placed = [{ id, k, x, z, r }] anywhere on the island since 2026-11-01 (src/decor.js owns the rules +
+  // the save); place(s, nav, id, k) = the old way, on the k-th (or first free) nav.decorSpots spot
   const ownedFree = (s, id) => s.inv.decor.filter(x => x === id).length - s.placed.filter(x => x.id === id).length;
-  function place(s, nav, id, k) {
-    if (!DECOR[id] || ownedFree(s, id) < 1) return -1;
-    const spots = nav.decorSpots || [], used = new Set(s.placed.map(x => x.k));
-    if (k === undefined || k === null) { k = -1; for (let j = 0; j < spots.length; j++) if (!used.has(j)) { k = j; break; } }
-    if (k < 0 || k >= spots.length || used.has(k)) return -1;
-    s.placed.push({ id, k }); return k;
-  }
-  function unplace(s, k) { const j = s.placed.findIndex(x => x.k === k); if (j < 0) return false; s.placed.splice(j, 1); return true; }
+  function place(s, nav, id, k) { return window.Decor.placeSpot(s, nav, id, k); }
+  function unplace(s, k, nav) { return window.Decor.remove(s, nav, k); }
 
   // ---- save: repair or drop what doesn't fit (called by Sim.sanitize with the pups already rebuilt)
   const fin = (v, d, lo, hi) => (typeof v === 'number' && isFinite(v)) ? Math.max(lo, Math.min(hi, v)) : d;
@@ -257,13 +252,7 @@
         decor: Array.isArray(h.decor) ? h.decor.filter(x => DECOR[x]).slice(0, 8) : [], outfit: OUTFITS.includes(h.outfit) ? h.outfit : null, pup: pup ? Object.assign({}, pup) : null,
         cache: Math.round(fin(h.cache, 0, 0, 1e3)), waits: h.waits === true });
     }
-    s.placed = [];
-    const spots = (nav.decorSpots || []).length, used = new Set();
-    if (Array.isArray(o && o.placed)) for (const x of o.placed) {
-      if (!x || typeof x !== 'string' && typeof x !== 'object') continue;
-      if (!DECOR[x.id] || !Number.isInteger(x.k) || x.k < 0 || x.k >= spots || used.has(x.k) || ownedFree(s, x.id) < 1) continue;
-      used.add(x.k); s.placed.push({ id: x.id, k: x.k });
-    }
+    // (placed decor: src/decor.js, run by Sim.sanitize before the pups)
     for (const p of s.pups) p.xpE = Math.round(fin(p.xpE, 0, 0, 1e7));
   }
   function create(s) { s.exp = { n: 0, trips: [], hauls: [] }; s.placed = []; }

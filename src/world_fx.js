@@ -428,6 +428,7 @@
     const PROP_R = { bench: 3.2, line: 3.5, cloth: 2, pile: 2.2, seat: 3 };
     api.blocked = (x, z, pad) => {
       pad = pad || 0; if (blocked(x, z, pad)) return true;
+      if (nav.decorAt && nav.decorAt(x, z)) return true;   // free decor (2026-11-01): wherever the player put it
       for (const c of curios) if (dxz(x, z, c.x, c.z) < 4.5 * (SCALE[c.kind] || 1) + pad) return true;
       for (const k in PROP_R) { const L = K[k]; if (!L) continue; for (const it of L.items) if (Math.abs(it.x - x) < 12 && Math.abs(it.z - z) < 12 && dxz(x, z, it.x, it.z) < PROP_R[k] * (it.s || 1) + pad) return true; }
       return false;
@@ -440,6 +441,13 @@
       for (const c of curios) if (Math.abs(c.x - x) < R + 6 && Math.abs(c.z - z) < R + 6) out.push([c.x, c.z, 2.6 * (SCALE[c.kind] || 1)]);
       for (const k in SOLID_R) { const L = K[k]; if (!L) continue; for (const it of L.items) if (it.shown > 0 && Math.abs(it.x - x) < R + 3 && Math.abs(it.z - z) < R + 3) out.push([it.x, it.z, SOLID_R[k] * (it.s || 1)]); }
       return out;
+    };
+    // free decor place mode: does a decoration of radius R at (x, z) sit on one of this module's props or curiosities? (shown
+    // or not yet: a bench that pops in later must not land inside it)
+    api.propHit = (x, z, R) => {
+      for (const c of curios) if (dxz(x, z, c.x, c.z) < 2.6 * (SCALE[c.kind] || 1) + R) return true;
+      for (const k in SOLID_R) { const L = K[k]; if (!L) continue; for (const it of L.items) if (Math.abs(it.x - x) < R + 4 && Math.abs(it.z - z) < R + 4 && dxz(x, z, it.x, it.z) < SOLID_R[k] * (it.s || 1) + R) return true; }
+      return false;
     };
     return api;
   }

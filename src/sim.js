@@ -141,8 +141,9 @@
   }
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
+    if (nav.setDecor) nav.setDecor([], '');   // a fresh island has no decor: its nap spots must not dodge another island's
     const s = {
-      v: 10, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 11, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -395,6 +396,7 @@
 
   function step(s, dt, nav, ev) {
     if (!ev) ev = [];   // Round 2 step 2: the story reads this step's events (pushes only: nothing else depends on ev)
+    if (window.Decor) window.Decor.sync(s, nav);   // free decor: the nav's blockers = this island's placed decor (one nav may serve two islands in the checks)
     const e0 = ev.length;
     const dc = dayCurve(dayH(s)), duskK = 1 + C.NIGHT.LIGHT_DUSK * dc.dusk;
     const N = window.Needs, madd = N.moraleAdd(s), frK = N.friendK(s);   // music / glum island; friends on the same job work a bit faster
@@ -513,7 +515,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -544,11 +546,14 @@
       if (Array.isArray(o.queue)) for (const x of o.queue) { const e = s.plots[x]; if (e && !e.done && !seen.has(x)) { seen.add(x); s.queue.push(+x); } }
       for (const k in s.plots) if (!s.plots[k].done && !seen.has(+k)) s.queue.push(+k);   // a blueprint the queue lost
     }
+    // v4 placed decor (v11: anywhere; v4-v10: a decor spot index, migrated onto that spot): BEFORE the pups, so the nav's
+    // blockers are this island's and every saved leg below is measured round them (src/decor.js)
+    if (window.Decor) window.Decor.sanitize(s, o.v >= 4 ? o : {}, nav);
     // pups: v1 = the six start pups by index; v2 = its own list (defs inside), first six default to the start pups
     const src = o.pups.slice(0, C.MAX_PUPS), taken = new Set();
     s.pups = [];
     src.forEach((q, i) => {
-      if (!q || typeof q !== 'object') { if (i < PUPS.length) s.pups.push(create(nav).pups[i]); return; }
+      if (!q || typeof q !== 'object') { if (i < PUPS.length) { s.pups.push(create(nav).pups[i]); if (window.Decor) window.Decor.sync(s, nav); } return; }
       const base = i < PUPS.length ? Object.assign({ breed: PUPS[i].id }, PUPS[i]) : null;
       const str = (v, re, d) => typeof v === 'string' && re.test(v) ? v : d;
       const def = v1 ? base : {

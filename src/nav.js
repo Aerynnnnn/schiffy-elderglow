@@ -70,14 +70,17 @@
     }
     const wet = (x, z) => cellWet(x, z) && !onDeck(x, z);
     const blk = [], BH = new Map(), BC = 12;
+    // a footprint box f = [centre x, centre z, half x, half z] (piece space) at scale s, yaw ry, grown by PUP_R
+    function boxOf(x0, z0, ry, f, s, id, k) {
+      const c = Math.cos(ry || 0), sn = Math.sin(ry || 0);
+      const b = { x: x0 + (f[0] * c + f[1] * sn) * s, z: z0 + (-f[0] * sn + f[1] * c) * s, c, sn, hx: f[2] * s + PUP_R, hz: f[3] * s + PUP_R, id, k };
+      b.r = Math.hypot(b.hx, b.hz); return b;
+    }
+    const cellsOf = (b, fn) => { for (let i = Math.floor((b.x - b.r) / BC); i <= Math.floor((b.x + b.r) / BC); i++) for (let j = Math.floor((b.z - b.r) / BC); j <= Math.floor((b.z + b.r) / BC); j++) fn(i * 100003 + j); };
+    const hashIn = b => cellsOf(b, k => { let a = BH.get(k); if (!a) BH.set(k, a = []); a.push(b); });
     for (const p of L.placements) {
       const f = FOOT[p.piece]; if (!f) continue;
-      const s = p.s || 1, c = Math.cos(p.ry || 0), sn = Math.sin(p.ry || 0);
-      const b = { x: p.pos[0] + (f[0] * c + f[1] * sn) * s, z: p.pos[2] + (-f[0] * sn + f[1] * c) * s, c, sn, hx: f[2] * s + PUP_R, hz: f[3] * s + PUP_R, id: p.id, k: blk.length };
-      b.r = Math.hypot(b.hx, b.hz); blk.push(b);
-      for (let i = Math.floor((b.x - b.r) / BC); i <= Math.floor((b.x + b.r) / BC); i++) for (let j = Math.floor((b.z - b.r) / BC); j <= Math.floor((b.z + b.r) / BC); j++) {
-        const k = i * 100003 + j; let a = BH.get(k); if (!a) BH.set(k, a = []); a.push(b);
-      }
+      const b = boxOf(p.pos[0], p.pos[2], p.ry, f, p.s || 1, p.id, blk.length); b.role = p.role; blk.push(b); hashIn(b);
     }
     // the blocker under (x, z), skipping the ones in `ex` (a Set of blocker indices), or null
     const inBox = (b, x, z) => { const dx = x - b.x, dz = z - b.z, lx = dx * b.c - dz * b.sn, lz = dx * b.sn + dz * b.c; return Math.abs(lx) <= b.hx && Math.abs(lz) <= b.hz; };
@@ -99,15 +102,18 @@
       // footprint (a door path drawn through its own hall to a road behind it) is not: -1
       return t <= Math.min(b.hx - Math.abs(lx), b.hz - Math.abs(lz)) + 2 ? t : -1;
     }
-    function blocksAt(x, z) { const a = BH.get(Math.floor(x / BC) * 100003 + Math.floor(z / BC)), out = []; if (a) for (const b of a) if (inBox(b, x, z)) out.push(b); return out; }
+    // (useBlk 'dec' = only the player's decorations block: the fallback for a walk the layout's own footprints leave no
+    // clean way for, e.g. a berry bush on the river bank; free decor, 2026-11-01)
+    function blocksAt(x, z, mode) { const a = BH.get(Math.floor(x / BC) * 100003 + Math.floor(z / BC)), out = []; if (a) for (const b of a) if ((mode !== 'dec' || b.id === 'decor') && inBox(b, x, z)) out.push(b); return out; }
+    const blockAtM = (x, z, ex, mode) => { if (mode !== 'dec') return blockAt(x, z, ex); for (const b of blocksAt(x, z, 'dec')) if (!ex || !ex.has(b.k)) return b; return null; };
     function segOk(p, q, ex, useBlk) {
       const l = dxz(p, q), n = Math.max(1, Math.ceil(l / 0.4)), wa = wet(p[0], p[2]), wb = wet(q[0], q[2]), ma = wetM(p[0], p[2]), mb = wetM(q[0], q[2]);
       let ea = null, eb = null;
-      if (useBlk) { ea = new Map(); eb = new Map(); for (const b of blocksAt(p[0], p[2])) ea.set(b.k, exitAt(b, p, q)); for (const b of blocksAt(q[0], q[2])) eb.set(b.k, exitAt(b, q, p)); }
+      if (useBlk) { ea = new Map(); eb = new Map(); for (const b of blocksAt(p[0], p[2], useBlk)) ea.set(b.k, exitAt(b, p, q)); for (const b of blocksAt(q[0], q[2], useBlk)) eb.set(b.k, exitAt(b, q, p)); }
       for (let k = 1; k < n; k++) {
         const f = k / n, x = p[0] + (q[0] - p[0]) * f, z = p[2] + (q[2] - p[2]) * f, near = (ma && l * f < 1) || (mb && l * (1 - f) < 1);
         if ((near ? wet(x, z) : wetM(x, z)) && !((wa && l * f < SLACK) || (wb && l * (1 - f) < SLACK))) return false;
-        if (useBlk) for (const b of blocksAt(x, z)) { const a = ea.get(b.k), c = eb.get(b.k); if (!((a !== undefined && l * f <= a + 0.05) || (c !== undefined && l * (1 - f) <= c + 0.05))) return false; }
+        if (useBlk) for (const b of blocksAt(x, z, useBlk)) { const a = ea.get(b.k), c = eb.get(b.k); if (!((a !== undefined && l * f <= a + 0.05) || (c !== undefined && l * (1 - f) <= c + 0.05))) return false; }
       }
       return true;
     }
@@ -125,8 +131,8 @@
         if (i < 0 || j < 0 || i >= nx || j >= nz) return 0; const k = j * nx + i; if (pass[k] >= 0) return pass[k];
         const x = cx(i), z = cz(j); let v = 1;
         if ((i === si && j === sj) || (i === ti && j === tj)) v = 1;
-        else if (wet(x, z) || (useBlk && blockAt(x, z, ex))) v = 0;
-        else if (useBlk && blockAt(x, z, null)) v = 3;   // inside the footprint an end point stands in: open, but leave it quickly
+        else if (wet(x, z) || (useBlk && blockAtM(x, z, ex, useBlk))) v = 0;
+        else if (useBlk && blockAtM(x, z, null, useBlk)) v = 3;   // inside the footprint an end point stands in: open, but leave it quickly
         else if (cellWet(x + WC, z) || cellWet(x - WC, z) || cellWet(x, z + WC) || cellWet(x, z - WC)) v = onDeck(x, z) ? 1 : 2;
         return (pass[k] = v);
       };
@@ -297,7 +303,13 @@
       const key = p[0].toFixed(2) + ',' + p[2].toFixed(2) + '>' + q[0].toFixed(2) + ',' + q[2].toFixed(2);
       let m = offCache.get(key); if (m) return m;
       const ex = unite(holding(p), holding(q));
-      m = segOk(p, q, ex, true) ? [] : (detour(p, q, ex, true) || detour(p, q, ex, false) || detour(p, q, ex, false, true));
+      m = segOk(p, q, ex, true) ? [] : detour(p, q, ex, true);
+      if (!m) {
+        // no clean way round the footprints: the water-only line, as the pathing pass shipped it, unless it runs through one
+        // of the player's decorations (free decor): then a way that keeps out of those (Decor's rules keep one open)
+        m = detour(p, q, ex, false) || detour(p, q, ex, false, true);
+        if (m && decB.length && !polyOk([p].concat(m, [q]), ex, 'dec')) m = detour(p, q, ex, 'dec') || detour(p, q, ex, 'dec', true) || m;
+      }
       if (!m) { m = []; if (!segOk(p, q, null, false)) m.wet = true; }   // no dry way round: leg() goes by the road instead
       if (offCache.size > 3000) offCache.clear();
       offCache.set(key, m); return m;
@@ -444,6 +456,43 @@
     const blightInner = blightSpots.length; blightSpots.push(...ringSpots([92, 102, 112], 12, 10, 20, 0.37));
     wardSpots.push(...ringSpots([100, 94, 106], 2 * Math.PI * 100 / 8, 34, 6, Math.PI / 8));
 
+    // ---- free decor (2026-11-01): the decorations a player placed are blockers too. Decor.sync (src/decor.js) hands the
+    // list over from S.placed ({k, f: [cx, cz, hx, hz] in m, x, z, r}); their boxes join the footprint hash like the
+    // layout's, and every cache that saw the blockers (off-graph paths, legs, dry nodes, nap spots) is cleared when the
+    // set changes. Road edges never change: decor may not stand on a road (roadDist), so no edge detour needs a redo.
+    let decB = [], decSig = '';
+    function setDecor(list, sig) {
+      if (sig === decSig) return false;
+      for (const b of decB) cellsOf(b, k => { const a = BH.get(k); if (!a) return; const j = a.indexOf(b); if (j >= 0) a.splice(j, 1); if (!a.length) BH.delete(k); });
+      decB = (list || []).map((d, i) => { const b = boxOf(d.x, d.z, d.r, d.f, 1, 'decor', 1e6 + i); b.dk = d.k; return b; });
+      for (const b of decB) hashIn(b);
+      offCache.clear(); legCache.clear(); dryC.clear(); for (const k in restCache) delete restCache[k];
+      decSig = sig; return true;
+    }
+    const decorAt = (x, z) => { for (const b of decB) if (inBox(b, x, z)) return b; return null; };
+    // the road graph's walked lines (edges + their detours) in a 12 m hash: how far (x, z) is from the nearest road
+    const RS = new Map();
+    {
+      const add = (a, b) => { const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), z0 = Math.min(a[2], b[2]), z1 = Math.max(a[2], b[2]);
+        for (let i = Math.floor(x0 / BC); i <= Math.floor(x1 / BC); i++) for (let j = Math.floor(z0 / BC); j <= Math.floor(z1 / BC); j++) { const k = i * 100003 + j; let s = RS.get(k); if (!s) RS.set(k, s = []); s.push([a, b]); } };
+      adj.forEach((e, a) => { for (const [b] of e) { if (b < a) continue; const m = edgePts.get(a + '>' + b) || [], P = [N[a].p].concat(m, [N[b].p]); for (let i = 1; i < P.length; i++) add(P[i - 1], P[i]); } });
+    }
+    // the nearest road line within max m of (x, z): { d, a, b } (the segment's ends), or { d: max } when none
+    function roadNear(x, z, max) {
+      const r = { d: max, a: null, b: null }, c = Math.ceil(max / BC);
+      for (let i = Math.floor(x / BC) - c; i <= Math.floor(x / BC) + c; i++) for (let j = Math.floor(z / BC) - c; j <= Math.floor(z / BC) + c; j++) {
+        const s = RS.get(i * 100003 + j); if (!s) continue;
+        for (const [a, b] of s) { const dx = b[0] - a[0], dz = b[2] - a[2], l2 = dx * dx + dz * dz, t = l2 > 1e-9 ? Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[2]) * dz) / l2)) : 0, d = Math.hypot(x - a[0] - dx * t, z - a[2] - dz * t);
+          if (d < r.d) { r.d = d; r.a = a; r.b = b; } }
+      }
+      return r;
+    }
+    const roadDist = (x, z, max) => roadNear(x, z, max).d;   // m to the nearest road line, capped at max (looks only that far)
+    // can a pup still walk from p to q without going through a decoration? (round every footprint, or - where the layout's own
+    // footprints leave no clean way, as offPath falls back - round the decorations at least)
+    function reachOk(p, q) { const ex = unite(holding(p), holding(q)); return segOk(p, q, ex, true) || !!detour(p, q, ex, true) || segOk(p, q, ex, 'dec') || !!detour(p, q, ex, 'dec'); }
+    function polyOk(P, ex, mode) { for (let i = 1; i < P.length; i++) if (!segOk(P[i - 1], P[i], ex, mode)) return false; return true; }
+
     const restCache = {};
     const api = {
       nodes: N, adj, path, leg, at, nodeNear, tree, TP, doorNode, water, orbs, other, gather, plots, plotBy, spawns, dist, decorSpots, blightSpots, blightInner, wardSpots, dry,
@@ -451,6 +500,8 @@
       // ex) -> blocker | null, holding(p) = blockers under p, segOk(p, q, ex, useBlockers), offPath(p, q), edgeFix (what the
       // road graph needed: detoured / dropped / kept edges), blk (the blocker boxes, grown by PUP_R)
       wet, cellWet, onDeck, deckY, decks, blockAt, holding, segOk, offPath, detour, edgeFix, blk, edgePts,
+      // free decor: setDecor(list, sig) (src/decor.js), decorAt(x, z) -> decor box | null, decorSig(), roadDist(x, z, max), reachOk(p, q), boxOf
+      wcell: WC, setDecor, decorAt, decorSig: () => decSig, decorBoxes: () => decB, roadDist, roadNear, reachOk, boxOf, inBox, blocksAt, placements: PL,
       // fingerprint of every data-driven spot list (saves store indices into them): equal in the game and sim_check
       spotSig() { const f = a => a.map(s => (s.pid !== undefined ? s.pid : '') + '@' + s.p.map(v => Math.round(v * 10)).join(',')).join(';'); return 'decor ' + decorSpots.length + ':' + hashStr(f(decorSpots)) + ' blight ' + blightSpots.length + ':' + hashStr(f(blightSpots)) + ' ward ' + wardSpots.length + ':' + hashStr(f(wardSpots)); },
       // where the k-th builder stands at a plot (3 m out of its door, side by side)
@@ -481,6 +532,7 @@
           for (const c of cand) {
             if (list.length >= 32) break;
             if (api.clear && !api.clear(c.p[0], c.p[2], scale)) continue;
+            if (decB.length && decorAt(c.p[0], c.p[2])) continue;   // free decor: a nap spot under a decoration moves on
             if (list.some(q => Math.hypot(q[0] - c.p[0], q[2] - c.p[2]) < 4.5)) continue;
             list.push(r3(c.p));
           }

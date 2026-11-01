@@ -127,32 +127,70 @@
     function seatOf(boat, k, out) { return out.set(0, 0.15, SEATS[k] || 0).applyMatrix4(boat.matrixWorld); }
 
     // ---- placed decorations: instanced kit pieces (same geometry + material as the map), scale-in pop when placed
-    const extra = {};
+    // (free decor, 2026-11-01: each stands at its own x / z / yaw; up to 64 of one piece; `hideK` = the one being moved)
+    const extra = {}, CAP = 64;
     function extraMesh(key) {
       if (extra[key] !== undefined) return extra[key];
       const b = batchOf[key]; if (!b || !b.geo) return (extra[key] = null);
-      const m = new THREE.InstancedMesh(b.geo, b.mesh.material, 24); m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
-      let ink = null; if (b.inkMesh && b.ink) { ink = new THREE.InstancedMesh(b.ink, b.inkMesh.material, 24); ink.instanceMatrix = m.instanceMatrix; ink.count = 0; ink.frustumCulled = false; scene.add(ink); }
-      const see = b.see.map(s => { const im = new THREE.InstancedMesh(s.geo, s.mat, 24); im.instanceMatrix = m.instanceMatrix; im.count = 0; im.frustumCulled = false; scene.add(im); return im; });
+      const m = new THREE.InstancedMesh(b.geo, b.mesh.material, CAP); m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
+      let ink = null; if (b.inkMesh && b.ink) { ink = new THREE.InstancedMesh(b.ink, b.inkMesh.material, CAP); ink.instanceMatrix = m.instanceMatrix; ink.count = 0; ink.frustumCulled = false; scene.add(ink); }
+      const see = b.see.map(s => { const im = new THREE.InstancedMesh(s.geo, s.mat, CAP); im.instanceMatrix = m.instanceMatrix; im.count = 0; im.frustumCulled = false; scene.add(im); return im; });
       return (extra[key] = { m, ink, see, list: [] });
     }
     const born = {}; let decSig = '';
-    api.decorPos = k => { const sp = nav.decorSpots[k]; if (!sp) return null; return [sp.p[0], ground(sp.p[0], sp.p[2], sp.p[1]), sp.p[2]]; };
+    api.hideK = null;
+    api.decorPos = k => { const x = api.S && api.S.placed.find(y => y.k === k); if (!x) return null; return [x.x, ground(x.x, x.z, nav.TP[1]), x.z]; };
     function updateDecor(S, t) {
-      const sig = S.placed.map(x => x.id + x.k).join('|');
+      api.S = S;
+      const key = x => x.id + ':' + x.k + '@' + x.x + ',' + x.z + ',' + x.r, sig = S.placed.map(key).join('|') + '#' + api.hideK;
       let anim = false; for (const k in born) if (t - born[k] < 0.8) anim = true;
       if (sig === decSig && !anim) return;
-      if (sig !== decSig) { const had = new Set(decSig.split('|')); for (const x of S.placed) if (!had.has(x.id + x.k) && decSig !== '-') born[x.k] = t; decSig = sig; }
+      if (sig !== decSig) { const had = new Set(decSig.split('#')[0].split('|')); for (const x of S.placed) if (!had.has(key(x)) && decSig !== '-') born[x.k] = t; decSig = sig; }   // placed or moved: pops in
       for (const k in extra) if (extra[k]) extra[k].list.length = 0;
       for (const x of S.placed) {
-        const D = Exped.DECOR[x.id], em = D && extraMesh(D.piece), p = api.decorPos(x.k); if (!em || !p) continue;
+        if (x.k === api.hideK) continue;
+        const D = Exped.DECOR[x.id], em = D && extraMesh(D.piece), p = api.decorPos(x.k); if (!em || !p || em.list.length >= CAP) continue;
         const a = born[x.k] !== undefined ? Math.min(1, (t - born[x.k]) / 0.7) : 1, pop = a < 1 ? Math.sin(a * Math.PI * 0.5) * (1 + 0.25 * Math.sin(a * Math.PI)) : 1;
-        q.setFromAxisAngle(Y, (x.k * 2.399) % (Math.PI * 2)); v.set(p[0], p[1], p[2]); SC.setScalar(D.s * Math.max(0.02, pop));
+        q.setFromAxisAngle(Y, x.r); v.set(p[0], p[1], p[2]); SC.setScalar(D.s * Math.max(0.02, pop));
         em.list.push(M4.compose(v, q, SC).clone());
       }
       for (const k in extra) { const em = extra[k]; if (!em) continue; em.list.forEach((m, j) => em.m.setMatrixAt(j, m)); em.m.count = em.list.length; em.m.instanceMatrix.needsUpdate = true; if (em.ink) em.ink.count = em.list.length; em.see.forEach(s => { s.count = em.list.length; }); }
     }
     decSig = '-';
+    // ---- place mode ghost: the piece see-through (green = fits, red = not here) + its footprint on the ground
+    const ghost = { g: new THREE.Group(), id: null, mat: new THREE.MeshBasicMaterial({ color: 0x7dffa8, transparent: true, opacity: 0.55, depthWrite: false }),
+      fmat: new THREE.MeshBasicMaterial({ color: 0x7dffa8, transparent: true, opacity: 0.32, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
+      emat: new THREE.LineBasicMaterial({ color: 0x2a2442, transparent: true, opacity: 0.8, depthTest: false }) };
+    ghost.g.visible = false; ghost.g.renderOrder = 5; scene.add(ghost.g);
+    // grid snap on: a 12 m patch of the 1 m grid round the ghost (lines on world metres, so the ghost's centre sits on a crossing)
+    const gridM = (() => { const P = []; for (let i = -6; i <= 6; i++) P.push(i, 0, -6, i, 0, 6, -6, 0, i, 6, 0, i); const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+      const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthTest: false })); m.renderOrder = 6; m.visible = false; m.frustumCulled = false; scene.add(m); return m; })();
+    // alignment guides: light lines (in line with a placed piece / along a path), 2 points each, draped 0.3 m over the ground
+    const guideM = (() => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(8 * 2 * 3 * 8), 3)); g.setDrawRange(0, 0);
+      const m = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.85, depthTest: false })); m.renderOrder = 7; m.frustumCulled = false; scene.add(m); return m; })();
+    api.guides = L => {
+      const a = guideM.geometry.attributes.position, A = a.array; let n = 0;
+      for (const [x0, z0, x1, z1] of (L || []).slice(0, 8)) {   // each line in 8 pieces so it follows the ground
+        for (let k = 0; k < 8; k++) for (const f of [k / 8, (k + 1) / 8]) { const x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f; A[n++] = x; A[n++] = ground(x, z, nav.TP[1]) + 0.3; A[n++] = z; }
+      }
+      a.needsUpdate = true; guideM.geometry.setDrawRange(0, n / 3);
+    };
+    api.ghost = (id, x, z, r, ok, t, grid) => {
+      gridM.visible = !!id && !!grid;
+      if (gridM.visible) { const gx = Math.round(x / grid) * grid, gz = Math.round(z / grid) * grid; gridM.position.set(gx, ground(gx, gz, nav.TP[1]) + 0.2, gz); gridM.scale.setScalar(grid); }
+      if (!id) { ghost.g.visible = false; return; }
+      const D = Exped.DECOR[id], b = D && batchOf[D.piece]; if (!b || !b.geo) { ghost.g.visible = false; return; }
+      if (ghost.id !== id) {
+        while (ghost.g.children.length) ghost.g.remove(ghost.g.children[0]);
+        const body = new THREE.Group(); body.scale.setScalar(D.s); body.add(new THREE.Mesh(b.geo, ghost.mat)); b.see.forEach(s => body.add(new THREE.Mesh(s.geo, ghost.mat))); ghost.g.add(body);
+        const f = Decor.footOf(id), pl = new THREE.Mesh(new THREE.PlaneGeometry(2 * f[2] + 0.6, 2 * f[3] + 0.6), ghost.fmat); pl.rotation.x = -Math.PI / 2; pl.position.set(f[0], 0.25, f[1]); pl.renderOrder = 6; ghost.g.add(pl);
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(pl.geometry), ghost.emat); e.rotation.copy(pl.rotation); e.position.copy(pl.position); e.renderOrder = 7; ghost.g.add(e);
+        ghost.id = id;
+      }
+      const c = ok ? 0x7dffa8 : 0xff5a6e; ghost.mat.color.setHex(c); ghost.fmat.color.setHex(c);
+      ghost.mat.opacity = 0.45 + 0.12 * Math.sin((t || 0) * 5);
+      ghost.g.position.set(x, ground(x, z, nav.TP[1]), z); ghost.g.rotation.y = r; ghost.g.visible = true;
+    };
     api.glowPieces = fn => { for (const k in extra) { const em = extra[k]; if (!em || !batchOf[k].glow || !Object.keys(batchOf[k].glow).length) continue; em.list.forEach((m, j) => fn(k, m, 'decor:' + k + ':' + j)); } };
 
     // ---- per frame. extra = sim seconds since the last tick (smooth motion). Returns nothing; fills api.view for game.js

@@ -81,7 +81,7 @@
     const G = (x, z, y) => ground(x, z, y);
     function anchor(S, v) {
       const ch = v.k[0], n = +v.k.slice(1), TP = nav.TP, out = { p: null, top: 0, r: 0, face: null };
-      if (ch === 'd') { const x = S.placed.find(y => y.k === n), D = x && Exped.DECOR[x.id], sp = nav.decorSpots[n]; if (sp) { out.p = [sp.p[0], G(sp.p[0], sp.p[2], sp.p[1]), sp.p[2]]; if (D) { out.top = topOf(D.piece, D.s); out.r = radOf(D.piece, D.s); } } }
+      if (ch === 'd') { const x = S.placed.find(y => y.k === n), D = x && Exped.DECOR[x.id], sp = x ? { p: [x.x, nav.TP[1], x.z] } : nav.decorSpots[n]; if (sp) { out.p = [sp.p[0], G(sp.p[0], sp.p[2], sp.p[1]), sp.p[2]]; if (D) { out.top = topOf(D.piece, D.s); out.r = radOf(D.piece, D.s); } } }   // free decor: where it stands now
       else if (ch === 'p') { const q = nav.plotBy[n]; if (q) { const d = q.kind === 'market' ? 4 : 8; const x = q.door[0] + q.out[0] * d, z = q.door[2] + q.out[1] * d; out.p = [x, G(x, z, q.door[1]), z]; out.face = q.out; out.top = 10; } }
       else if (ch === 'w') { const w = nav.wardSpots[n]; if (w) { out.p = [w.p[0], G(w.p[0], w.p[2], w.p[1]), w.p[2]]; out.r = 3; out.top = 6; } }
       else if (ch === 'r') { const w = nav.water[n]; if (w) { const ax = w.p[0] - w.water[0], az = w.p[2] - w.water[2], l = Math.hypot(ax, az) || 1, p = [w.p[0] + ax / l * 4, w.p[1], w.p[2] + az / l * 4]; out.p = [p[0], G(p[0], p[2], p[1]), p[2]]; out.away = Math.atan2(az / l, ax / l); } }   // the bank: wander away from the water side

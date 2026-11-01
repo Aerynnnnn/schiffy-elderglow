@@ -90,7 +90,7 @@
     return {
       v: C.SNAP_V, name: so.island, host: so.host, lv: s.level, xp: Math.round(s.xp), hp: Math.round(h),
       nd: ['water', 'light', 'nourish', 'protect', 'spirit'].map(k => Math.round(s.needs[k])), sea: typeof sea === 'number' ? sea : -1,
-      wk: s.wake && s.wake.t !== null ? 1 : 0, plots, placed: s.placed.map(x => [x.id, x.k]), wards: s.wards.slice(0, 12), pups,
+      wk: s.wake && s.wake.t !== null ? 1 : 0, plots, placed: window.Decor.snap(s), wards: s.wards.slice(0, 12), pups,
       st: { buckets: s.stats.buckets, orbs: s.stats.orbs, built: s.stats.built, arrived: s.stats.arrived, exped: s.stats.exped, days: Math.floor(s.time / 86400), pups: s.pups.length },
       col: colOf(h, sea),
     };
@@ -118,7 +118,7 @@
       const w = Sim.workOf(a[1], q); plots[a[0]] = { type: a[1], done: a[2] === 1, paid: true, prog: a[2] === 1 ? w : w * fin(a[3], 0, 0, 99) / 100 };
     }
     const pups = o.pups.slice(0, Sim.C.MAX_PUPS).map((a, i) => Array.isArray(a) ? { id: 'v' + i, name: nameCheck(a[0], 'pup').ok ? a[0] : Sim.NAMES[i % Sim.NAMES.length], breed: a[1], collar: a[2], job: a[3], like: a[4], dislike: a[5] } : null);
-    const placed = Array.isArray(o.placed) ? o.placed.filter(Array.isArray).map(a => ({ id: a[0], k: a[1] })) : [];
+    const placed = window.Decor.unsnap(o.placed);   // free decor [id, k, x, z, r]; an older game's [id, spot] still reads
     const st = Sim.sanitize({ v: 7, level: lv, xp: Sim.C.LV_XP[lv - 1], needs, plots, queue: [], pups, placed, inv: { decor: placed.map(x => x.id).filter(x => typeof x === 'string') },
       wards: Array.isArray(o.wards) ? o.wards : [], wake: { t: o.wk ? -7200 : null }, res: { wood: 50, stone: 50, food: 200, crystal: 0 } }, nav);
     if (!st) return null;
@@ -228,7 +228,7 @@
       if (d.lv >= 3) s.wake.t = -7200;
       const nd = 55 + (si * 13) % 40; for (const k in s.needs) s.needs[k] = Math.min(100, nd + (k.length * 3) % 15);
       s.health = Sim.healthOf(s);
-      for (let k = 0; k < Math.min(nav.decorSpots.length, 2 + si * 2); k++) s.placed.push({ id: Object.keys(window.Exped.DECOR)[(k + si) % 7], k: k * 3 + si });
+      for (let k = 0; k < Math.min(nav.decorSpots.length, 2 + si * 2); k++) { const it = window.Decor.spotItem(nav, Object.keys(window.Exped.DECOR)[(k + si) % 7], k * 3 + si); if (it) s.placed.push(it); }
       s.social.island = d.name; s.social.host = d.host;
       const snap = snapshot(s, d.sea, nav); snap.st.days = 2 + si * 5;
       return { id: 'sample-' + (si + 1), name: d.name, host: d.host, snap, likes: d.likes, sample: true };

@@ -617,7 +617,7 @@
   let sayOpen = false, sayT = 0, sayTimer = null;
   const overlayOpen = () => ['away', 'gift', 'mem', 'haul', 'book', 'diary'].some(id => $(id) && !$(id).hidden) || !!document.querySelector('#pickCard:not([hidden]), #safeCard:not([hidden])');
   function trySpeak(force) {
-    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || boatCam || tour || CQ.length || RST.wave))) return null;
+    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || boatCam || tour || CQ.length || RST.wave || PM))) return null;   // (not while placing a decoration)
     const r = session.speak(S); if (!r) return null;
     showSay(r.w, r.e); save(); return r;
   }
@@ -1087,8 +1087,9 @@
     // decorations: what you own (not placed) + what's out on the island
     const own = {}; for (const id of S.inv.decor) own[id] = (own[id] || 0) + 1;
     const ids = Object.keys(own);
-    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length}/${(nav.decorSpots || []).length} spots</small></h4>`;
-    if (!ids.length) h += `<div class="qe">Expeditions bring back wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to place around the tree.</div>`;
+    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length} on the island</small></h4>`;
+    if (!ids.length) h += `<div class="qe">Expeditions bring back wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to place anywhere on your island.</div>`;
+    else h += `<p class="sub small">Place one anywhere on open ground. Tap one on the island to move, turn or pack it away.</p>`;
     for (const id of ids) {
       const free = Exped.ownedFree(S, id), placed = S.placed.filter(x => x.id === id);
       h += `<div class="dec">${IC.decor}<b>${decorName(id)}</b><small>${placed.length} placed${free ? ` &middot; ${free} in the shed` : ''}</small>${free > 0 ? `<button class="go sm" data-x="place" data-id="${id}">Place</button>` : ''}${placed.length ? `<button class="ghost sm" data-x="unplace" data-k="${placed[placed.length - 1].k}">Put away</button>` : ''}</div>`;
@@ -1158,15 +1159,149 @@
     const b = $('expBtn'); b.classList.toggle('ready', S.exp.hauls.length > 0); b.dataset.n = S.exp.trips.length ? S.exp.trips.length : '';
     b.classList.toggle('out', S.exp.trips.length > 0);
   }
-  function placeDecor(id) {
-    const k = Exped.place(S, nav, id); if (k < 0) { toast('No free decoration spot left', 2200); return; }
-    save(); snd.sfx('built'); const p = expFx.decorPos(k);
-    toast(`${IC.decor} ${decorName(id)} placed!`, 2200);
-    if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 3, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; pups.select(-1); flyTo(tgt.clone().add(out.multiplyScalar(38)).add(new THREE.Vector3(0, 20, 0)), tgt, 1.2); }
+  // ---- free decor (2026-11-01): place mode. Pick a decoration from the shed (Trips card) or tap one on the island (Move).
+  // A see-through ghost follows the pointer over the ground: green = it fits, red = not here (the bar says why). Q / E (or the
+  // bar's turn buttons) rotate it 15 degrees; a mouse click or "Place here" puts it down. Phone: a tap moves the ghost there,
+  // dragging the ghost slides it, dragging elsewhere moves the camera. The rules are the sim's own (Decor.check: water,
+  // bridges, paths, doors, buildings, trees + rocks, other decor, the trunk, job spots, the pups' ways), plus lane A's props.
+  const WHY = { far: 'Too far out: more land opens as the tree grows', land: 'Not on open ground', tree: 'Too close to the Elder Tree', door: 'Keep the path to the tree door free',
+    water: 'Not in the water', bridge: 'Not on a bridge', path: 'Not on a path', building: 'Too close to a building', nature: 'A tree or rock is in the way',
+    decor: 'Something else is in the way', job: 'The pups work right here', blocked: 'That would block the pups\' way to a job', full: `The island has ${Decor.C.MAX} decorations already`, none: 'None left in the shed' };
+  let PM = null;   // place mode: { id, k (moving: its handle, else null), x, z, r, ok, why, done (full check ran), t (last change), drag }
+  const pmRay = new THREE.Raycaster();
+  function pickGround(mx, my) {   // the ground point under a screen point (the same march as walker.js), or null off the map
+    pmRay.setFromCamera({ x: mx / W() * 2 - 1, y: -(my / H()) * 2 + 1 }, camera);
+    const o = pmRay.ray.origin, d = pmRay.ray.direction, at = t => [o.x + d.x * t, o.y + d.y * t, o.z + d.z * t];
+    const above = t => { const p = at(t), g = ground.raw(p[0], p[2]); return g === null ? null : p[1] - g; };
+    let prev = 0, t = 0, step = 2;
+    for (let i = 0; i < 900 && t < 2500; i++) {
+      t += step; step = Math.min(8, step * 1.02); const h = above(t);
+      if (h !== null && h <= 0) { let lo = prev, hi = t; for (let k = 0; k < 20; k++) { const m = (lo + hi) / 2, hm = above(m); if (hm !== null && hm <= 0) hi = m; else lo = m; } const p = at(hi); p[1] = ground.raw(p[0], p[2]); return p; }
+      prev = t;
+    }
+    return null;
   }
+  function decorCheck(id, x, z, r, k, full) {   // the sim's rules + the view's own props (benches, curiosities, ...)
+    if (ground.raw(x, z) === null) return { ok: false, why: 'land' };
+    const c = Decor.check(S, nav, id, x, z, r, k, { reach: !!full }); if (!c.ok) return c;
+    return wfx && wfx.propHit && wfx.propHit(x, z, Decor.radOf(id) * 0.85) ? { ok: false, why: 'decor' } : c;
+  }
+  function pmShow() {
+    $('pbWhy').textContent = PM.ok ? (PM.done ? (PHONE ? 'Looks lovely here!' : 'Click to put it here') : 'Looking...') : WHY[PM.why] || 'Not here';
+    $('placeBar').classList.toggle('bad', !PM.ok); $('pbOk').disabled = !PM.ok;
+  }
+  function pmCheck(full) { if (!PM) return; const c = decorCheck(PM.id, PM.x, PM.z, PM.r, PM.k, full); PM.ok = c.ok; PM.why = c.why; PM.done = !!full || !c.ok; pmShow(); }
+  // place-mode prefs (a UI pref, NOT the save; its own key so the calm view's pref writes never drop it): grid snap on / off,
+  // the last turn used ("Same turn" copies it, so rows line up). Snap on = a 1 m grid + 15 degree turns (Shift: 45);
+  // snap off = free: any spot, 3 degree turns (hold Q / E or a turn button to keep turning)
+  const DPREF_K = 'schiffy-elderglow.ui.decor', TAU = Math.PI * 2;
+  const DPREF = (() => { try { const o = JSON.parse(localStorage.getItem(DPREF_K) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } })();
+  const saveDPref = () => { try { localStorage.setItem(DPREF_K, JSON.stringify(DPREF)); } catch (e) {} };
+  const SNAP = { grid: 1, step: Math.PI / 12, big: Math.PI / 4, free: Math.PI / 60, magnet: 0.5, guideR: 30 };
+  const wrapR = r => ((r % TAU) + TAU) % TAU;
+  // alignment guides: a placed piece in line (same x or same z, within SNAP.magnet m: the ghost clicks onto the line) and a
+  // path the ghost sits along (a line parallel to it through the ghost); returns the guide lines [x0, z0, x1, z1, kind]
+  function pmGuides() {
+    const L = [], x = PM.x, z = PM.z;
+    let bx = null, bz = null;
+    for (const o of S.placed) {
+      if (o.k === PM.k || Math.hypot(o.x - x, o.z - z) > SNAP.guideR) continue;
+      if (Math.abs(o.x - x) <= SNAP.magnet && (!bx || Math.abs(o.z - z) < Math.abs(bx.z - z))) bx = o;
+      if (Math.abs(o.z - z) <= SNAP.magnet && (!bz || Math.abs(o.x - x) < Math.abs(bz.x - x))) bz = o;
+    }
+    if (bx) { PM.x = bx.x; L.push([bx.x, bx.z, bx.x, z, 'decor']); }
+    if (bz) { PM.z = bz.z; L.push([bz.x, bz.z, x, bz.z, 'decor']); }
+    const rn = nav.roadNear(PM.x, PM.z, Decor.C.ROAD + Decor.radOf(PM.id) + 3);
+    if (rn.a) { const dx = rn.b[0] - rn.a[0], dz = rn.b[2] - rn.a[2], l = Math.hypot(dx, dz) || 1, ux = dx / l, uz = dz / l; L.push([PM.x - ux * 12, PM.z - uz * 12, PM.x + ux * 12, PM.z + uz * 12, 'path']); }
+    return L;
+  }
+  function pmMove(x, z) {
+    if (!PM) return;
+    if (DPREF.snap) { x = Math.round(x / SNAP.grid) * SNAP.grid; z = Math.round(z / SNAP.grid) * SNAP.grid; }
+    const nx = Math.round(x * 10) / 10, nz = Math.round(z * 10) / 10; if (nx === PM.rx && nz === PM.rz) return;
+    PM.rx = nx; PM.rz = nz; PM.x = nx; PM.z = nz; PM.guides = pmGuides(); PM.t = performance.now(); pmCheck(false);
+  }
+  function pmSetR(r) { PM.r = Math.round(wrapR(r) * 1000) / 1000; PM.t = performance.now(); pmCheck(false); }
+  function pmTurn(d, big) {
+    if (!PM) return; const st = DPREF.snap ? (big ? SNAP.big : SNAP.step) : SNAP.free;
+    pmSetR(DPREF.snap ? Math.round(PM.r / st) * st + d * st : PM.r + d * st); snd.sfx('tap');
+  }
+  function pmSnap(v) { DPREF.snap = v === undefined ? !DPREF.snap : !!v; saveDPref(); $('pbSnap').classList.toggle('on', !!DPREF.snap); if (PM) { const x = PM.rx, z = PM.rz; PM.rx = NaN; pmMove(x, z); } snd.sfx('tap'); }
+  function pmCopy() { if (!PM || typeof DPREF.lastR !== 'number') return; pmSetR(DPREF.lastR); snd.sfx('tap'); }  function startPlace(id, k) {
+    if (VISIT || !booted) return false;
+    const o = k !== undefined && k !== null ? S.placed.find(y => y.k === k) : null;
+    if ((k !== undefined && k !== null && !o) || (!o && Exped.ownedFree(S, id) < 1)) return false;
+    closeExp(); closePlot(); closeEvents(); closeNeed(); closeDecMenu(); if (soc) soc.close();
+    follow = -1; pups.select(-1); refreshRoster(true);
+    PM = { id: o ? o.id : id, k: o ? o.k : null, x: NaN, z: NaN, rx: NaN, rz: NaN, r: o ? o.r : 0, ok: false, why: 'land', done: false, t: performance.now(), drag: false, guides: [] };
+    $('pbSnap').classList.toggle('on', !!DPREF.snap); $('pbCopy').disabled = typeof DPREF.lastR !== 'number';
+    expFx.hideK = PM.k;
+    const g = o ? [o.x, 0, o.z] : pickGround(W() / 2, H() * 0.55);
+    $('pbName').innerHTML = `${IC.decor} ${o ? 'Move' : 'Place'} <b>${esc(decorName(PM.id))}</b>`;
+    $('placeBar').hidden = false; document.body.classList.add('placing'); snd.sfx('open');
+    pmMove(g ? g[0] : controls.target.x, g ? g[2] : controls.target.z);
+    if (o) { const p = new THREE.Vector3(o.x, ground(o.x, o.z, nav.TP[1]) + 3, o.z), off = camera.position.clone().sub(controls.target); if (off.length() > 120) off.setLength(120); flyTo(p.clone().add(off), p, 0.8); }
+    return true;
+  }
+  function endPlace() { if (!PM) return; PM = null; expFx.hideK = null; expFx.ghost(null); expFx.guides(null); $('placeBar').hidden = true; document.body.classList.remove('placing'); controls.enabled = true; }
+  function pmConfirm() {
+    if (!PM) return false;
+    if (!PM.done || !PM.ok) pmCheck(true);
+    if (!PM.ok) { snd.sfx('close'); return false; }
+    const res = {}, id = PM.id, moving = PM.k !== null;
+    const done = moving ? Decor.move(S, nav, PM.k, PM.x, PM.z, PM.r, res) : Decor.place(S, nav, id, PM.x, PM.z, PM.r, res) >= 0;
+    if (!done) { PM.ok = false; PM.why = res.why; PM.done = true; pmShow(); snd.sfx('close'); return false; }
+    DPREF.lastR = PM.r; saveDPref();   // "Same turn" next time
+    save(); snd.sfx('built'); syncPups();
+    toast(`${IC.decor} ${esc(decorName(id))} ${moving ? 'moved' : 'placed'}!${!moving && Exped.ownedFree(S, id) > 0 ? ` ${Exped.ownedFree(S, id)} more in the shed.` : ''}`, 2400);
+    endPlace(); return true;
+  }
+  // tap a placed decoration (not in place mode): a little menu over it: Move / Turn / Pack away
+  let DM = null;
+  function pickDecor(mx, my) {
+    let best = null, bd = PHONE ? 44 : 34;
+    for (const x of S.placed) {
+      const D = Exped.DECOR[x.id]; if (!D) continue; const y0 = ground(x.x, x.z, nav.TP[1]);
+      for (const h of [1, 3, 6]) { const v = new THREE.Vector3(x.x, y0 + h * Math.min(2, D.s), x.z).project(camera); if (v.z > 1) continue; const d = Math.hypot((v.x + 1) / 2 * W() - mx, (1 - v.y) / 2 * H() - my); if (d < bd) { bd = d; best = x.k; } }
+    }
+    if (best !== null) return best;
+    const g = pickGround(mx, my), b = g && nav.decorAt(g[0], g[2]); return b ? b.dk : null;
+  }
+  function openDecMenu(k) {
+    const o = S.placed.find(y => y.k === k); if (!o) return;
+    DM = k; $('dmName').textContent = decorName(o.id); $('decMenu').hidden = false; snd.sfx('tap'); placeDecMenu();
+  }
+  function closeDecMenu() { DM = null; $('decMenu').hidden = true; }
+  function placeDecMenu() {
+    const o = DM !== null && S.placed.find(y => y.k === DM); if (!o) { closeDecMenu(); return; }
+    const v = new THREE.Vector3(o.x, ground(o.x, o.z, nav.TP[1]) + 4 * Math.min(2, Exped.DECOR[o.id].s), o.z).project(camera), el = $('decMenu');
+    el.style.left = Math.max(8, Math.min(W() - el.offsetWidth - 8, (v.x + 1) / 2 * W() - el.offsetWidth / 2)) + 'px';
+    el.style.top = Math.max(8, Math.min(H() - el.offsetHeight - 8, (1 - v.y) / 2 * H() - el.offsetHeight - 14)) + 'px';
+  }
+  function decMenuAct(a) {
+    const k = DM, o = S.placed.find(y => y.k === k); if (!o) { closeDecMenu(); return; }
+    if (a === 'move') { closeDecMenu(); startPlace(o.id, k); }
+    else if (a === 'turn') {
+      // a quarter turn in place (or the next of 8 that fits); never through the rules' back door
+      for (let n = 1; n < 8; n++) { const r = (o.r + n * Math.PI / 4) % (Math.PI * 2); if (decorCheck(o.id, o.x, o.z, r, k, true).ok && Decor.move(S, nav, k, o.x, o.z, r)) { DPREF.lastR = o.r; saveDPref(); save(); snd.sfx('pop'); return; } }
+      toast(`${IC.decor} No room to turn it here`, 1800);
+    } else if (a === 'pack') { closeDecMenu(); if (Decor.remove(S, nav, k)) { save(); syncPups(); snd.sfx('close'); toast(`${IC.decor} ${esc(decorName(o.id))} packed away in the shed`, 2000); } }
+  }
+  function placeDecor(id) { return startPlace(id); }   // (kept for tests + the old callers: place mode for that decoration)
   function buildExpUI() {
     $('expBtn').onclick = () => { if (expView) closeExp(); else openExp(); };
     $('ecClose').onclick = closeExp;
+    // free decor: the place bar + the menu over a placed decoration
+    $('pbOk').onclick = () => pmConfirm(); $('pbCancel').onclick = () => { endPlace(); snd.sfx('close'); };
+    // turn buttons: a tap = one step, holding keeps turning (free rotation with snap off)
+    for (const [id, d] of [['pbRotL', -1], ['pbRotR', 1]]) {
+      const b = $(id); let iv = null, t0 = 0; const stop = () => { clearInterval(iv); iv = null; };
+      b.addEventListener('pointerdown', e => { e.preventDefault(); pmTurn(d); t0 = performance.now(); stop(); iv = setInterval(() => { if (performance.now() - t0 > 350) pmTurn(d); }, 70); });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+    }
+    $('pbSnap').onclick = () => pmSnap(); $('pbCopy').onclick = () => pmCopy();
+    $('pbSnap').classList.toggle('on', !!DPREF.snap);
+    $('decMenu').addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) decMenuAct(b.dataset.a); });
     $('hOk').onclick = closeHaul;
     $('hDecor').onclick = () => { closeHaul(); openExp(); setTimeout(() => { const e = document.querySelector('#ecBody .dec'); if (e) e.scrollIntoView({ block: 'center' }); }, 50); };
     $('hPup').onclick = () => { const h = S.exp.hauls[haulK], i = h ? h.pupIdx : -1; closeHaul(); if (i >= 0) { focusPup(i); showAway(null); } };
@@ -1182,7 +1317,7 @@
       else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('Trip called off: supplies back in the pantry', 2400); save(); } }
       else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
       else if (x === 'place') { placeDecor(b.dataset.id); }
-      else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k)) { save(); toast('Put away in the shed', 1600); } }
+      else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k, nav)) { save(); syncPups(); toast('Put away in the shed', 1600); } }
       else if (x === 'findplot') { closeExp(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
       renderExp(true);
     });
@@ -1540,11 +1675,36 @@
   // click a pup (screen-space nearest, so small pups are easy to hit) or a plot (patch / sign)
   let down = null;
   renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY, performance.now()]; });
+  // free decor place mode: a touch that starts on the ghost slides it (the camera stays put); runs before OrbitControls sees it
+  const canvasXY = e => { const r = renderer.domElement.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const pmTouches = new Set();
+  addEventListener('pointerdown', e => {
+    if (!PM || e.target !== renderer.domElement) return;
+    if (e.pointerType !== 'mouse') pmTouches.add(e.pointerId);
+    if (e.pointerType === 'mouse' || pmTouches.size > 1) { if (PM.drag) { PM.drag = false; controls.enabled = true; } return; }
+    const [mx, my] = canvasXY(e), v = new THREE.Vector3(PM.x, ground(PM.x, PM.z, nav.TP[1]) + 1.5, PM.z).project(camera);
+    if (Math.hypot((v.x + 1) / 2 * W() - mx, (1 - v.y) / 2 * H() - my) < 70) { PM.drag = true; controls.enabled = false; }
+  }, true);
+  addEventListener('pointerup', e => { pmTouches.delete(e.pointerId); if (PM && PM.drag) { PM.drag = false; controls.enabled = true; } }, true);
+  addEventListener('pointercancel', e => { pmTouches.delete(e.pointerId); if (PM && PM.drag) { PM.drag = false; controls.enabled = true; } }, true);
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!PM || (e.pointerType === 'mouse' ? e.buttons : !PM.drag)) return;   // a mouse drag orbits the camera; a touch drag on the ghost slides it
+    const [mx, my] = canvasXY(e), g = pickGround(mx, my); if (g) pmMove(g[0], g[2]);
+  });
+  addEventListener('keydown', e => {
+    if (!PM || /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '')) return;
+    if (e.code === 'KeyQ') pmTurn(-1, e.shiftKey); else if (e.code === 'KeyE' || e.code === 'KeyR') pmTurn(1, e.shiftKey);
+    else if (e.code === 'KeyG') pmSnap(); else if (e.code === 'KeyC') pmCopy();
+    else if (e.code === 'Escape') { endPlace(); snd.sfx('close'); } else if (e.code === 'Enter') pmConfirm(); else return;
+    e.preventDefault();
+  });
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pups) return;
-    if (calm && calm.woke(down[2])) { down = null; return; }   // vibe pass 1: a tap that only woke the calm HUD
+    if (calm && calm.woke(down[2]) && !PM) { down = null; return; }   // vibe pass 1: a tap that only woke the calm HUD
     down = null;
     const r = renderer.domElement.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    if (PM) { const g = pickGround(mx, my); if (g) { pmMove(g[0], g[2]); if (e.pointerType === 'mouse') pmConfirm(); } return; }   // place mode: a click puts it down, a tap moves the ghost there
+    if (DM !== null) closeDecMenu();
     const fr = nfx && nfx.pickFruit(mx, my, camera, W(), H(), PHONE ? 44 : 32); if (fr) { collectFruit(fr); return; }   // glowing fruit first (events)
     const lp = lfx && lfx.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34); if (lp && lan) { if (lp === 'bloom') lan.open('bloom'); else lan.openRead(lp, false); return; }   // a sky lantern / the World Bloom
     const cr = crFx && crFx.pick(mx, my, camera, W(), H(), PHONE ? 48 : 38); if (cr !== null && cr !== undefined) { meetCritter(cr, false); return; }   // then a sky critter
@@ -1556,6 +1716,7 @@
       }
     });
     if (best >= 0) { focusPup(best); return; }
+    if (!VISIT && S.placed.length) { const dk = pickDecor(mx, my); if (dk !== null) { openDecMenu(dk); return; } }   // free decor: a placed decoration
     if (VISIT) { if (walker) { const gp = walker.pickGround(mx, my, W(), H()); if (gp) walker.walkTo(gp, nav.trunkR(fx.scale)); } return; }   // tap / click = walk there
     const x = plots.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34);
     if (x) openPlot(x.q.pid, false);
@@ -1681,7 +1842,7 @@
     // vibe pass 1: the calm view (src/calm.js): the panel folds to a pill when idle, the HUD fades after ~9 s without input.
     // Never while something is in use: a card / menu / the tree's words / a selected or followed pup / a text field / the tour.
     if (!VISIT && window.ElderCalm) {
-      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead'];
+      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu'];
       const vis = id => { const el = $(id); return !!el && !el.hidden && el.offsetParent !== null; };
       calm = ElderCalm.make({ side: $('side'), phone: () => document.body.classList.contains('phone'),
         busy: () => overlayOpen() || sayOpen || !!tour || CQ.length > 0 || pups.selected >= 0 || follow >= 0 || curPlot !== null || CARDS.some(vis) ||
@@ -1725,6 +1886,9 @@
       Daily, openGift, closeGift, claimGift, giftCheck, renderGift,
       // expeditions (tests): Exped, expFx, openExp(view), closeExp, sendTrip(dest, tier, [pups]), openHaul(k), closeHaul, placeDecor(id), dockCam(dest)
       Exped, expFx, openExp, closeExp, sendTrip, openHaul, closeHaul, placeDecor, dockCam, renderExp,
+      // free decor (tests): Decor, decor = { start(id, k), end, confirm, turn(d), move(x, z) (the ghost), get PM, check(id, x, z, r, k, full),
+      // pick(mx, my), menu(k), act('move' | 'turn' | 'pack'), closeMenu, ground(mx, my) }
+      Decor, decor: { start: startPlace, end: endPlace, confirm: pmConfirm, turn: pmTurn, move: pmMove, snap: pmSnap, copy: pmCopy, pref: DPREF, get PM() { return PM; }, check: decorCheck, pick: pickDecor, menu: openDecMenu, act: decMenuAct, closeMenu: closeDecMenu, ground: pickGround },
       // step 4 (tests): Needs, Events, nfx, openEvents / closeEvents, openNeed(k) / closeNeed, collectFruit({id, j, p}), fruitCam, traderCam,
       // waterRuns() = the water cells rebuilt from the terrain mesh (compare with data/water_cells.json), spotCheck() = mesh
       // water test vs the data-driven decor list (true = same list), spotSig() = fingerprint of every spot list (== sim_check's)
@@ -1909,6 +2073,9 @@
     if (crFx) { crFx.bind(S); crFx.update(S, t, dt, Math.min(STEP, acc), dn.state.night, camera, now / 1000); }   // sky critters
     if (lfx) lfx.update(dt, dn.state.night, scene.fog.color);   // Round 2 step 4: lanterns + the World Bloom
     poses.length = 0;
+    // free decor place mode: the full rules (the pups' ways to their jobs) once the ghost has rested 0.15 s; the ghost + menu
+    if (PM) { if (!PM.done && now - PM.t > 150) pmCheck(true); expFx.ghost(PM.id, PM.x, PM.z, PM.r, PM.ok, t, DPREF.snap ? SNAP.grid : 0); expFx.guides(PM.guides); }
+    if (DM !== null) placeDecMenu();
     expFx.update(S, t, dt, Math.min(STEP, acc));   // boats first: pups on a trip ride in them
     for (let i = 0; i < S.pups.length; i++) {
       let ps = Sim.pose(S, i, nav, Math.min(STEP, acc));

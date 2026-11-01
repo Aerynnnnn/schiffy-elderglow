@@ -102,7 +102,8 @@
   const decorAt = (s, ids) => (s.placed || []).filter(x => ids.includes(x.id)).map(x => 'd' + x.k);
   const plotsOf = (s, types) => Object.keys(s.plots || {}).filter(k => s.plots[k].done && types.includes(s.plots[k].type)).sort((a, b) => a - b).map(k => 'p' + k);
   const range = (ch, n) => [...Array(Math.max(0, n))].map((_, i) => ch + i);
-  function freeSpots(s, nav, n) { const used = new Set((s.placed || []).map(x => x.k)), out = []; for (let k = 0; k < nav.decorSpots.length && out.length < n; k++) if (!used.has(k)) out.push('e' + k); return out; }
+  // (free decor: a decor spot is taken when a placed thing has its index as handle (migrated) or stands within 6 m of it)
+  function freeSpots(s, nav, n) { const P = s.placed || [], out = []; for (let k = 0; k < nav.decorSpots.length && out.length < n; k++) { const p = nav.decorSpots[k].p; if (!P.some(x => x.k === k || Math.hypot(x.x - p[0], x.z - p[2]) < 6)) out.push('e' + k); } return out; }
   const rainAt = (s, t) => { const E = s.events, D = window.Events ? window.Events.C.DUR.shower : 1200; if (!E) return false; return E.active.some(e => e.type === 'shower' && e.t0 <= t && t < e.end) || E.log.some(e => e.type === 'shower' && e.t <= t && t < e.t + D); };
   function attract(s, nav, sp, t) {
     const L = [], add = (keys, w) => { for (const k of keys) L.push({ k, w }); };
