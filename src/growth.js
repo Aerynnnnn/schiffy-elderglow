@@ -7,11 +7,12 @@
 (function () {
   'use strict';
   const STAGES = [
-    { name: 'Sapling', from: 1, blurb: 'a slim young tree, a few glowing veins' },
-    { name: 'Young', from: 3, blurb: 'a broad trunk, the first glowing fruit' },
-    { name: 'Grown', from: 5, blurb: 'a full canopy, fruit in every branch' },
-    { name: 'Great', from: 7, blurb: 'heavy with golden fruit, glow motes rising' },
-    { name: 'Elder', from: 8, blurb: 'the Elder Tree of the old stories, in full glow' },
+    // the look of each stage is drawn by tree_fx.js (tree growth: ST table); the blurbs describe it
+    { name: 'Sapling', from: 1, blurb: 'a slim sapling with a few leaves and glowing veins' },
+    { name: 'Young', from: 3, blurb: 'a thin young trunk, its first branches and glowing fruit' },
+    { name: 'Grown', from: 5, blurb: 'a full canopy, layer on layer, fruit in every branch' },
+    { name: 'Great', from: 7, blurb: 'spreading roots, the first hanging lanterns, glow motes rising' },
+    { name: 'Elder', from: 8, blurb: 'the towering Elder Tree of the old stories, lantern-hung and in full glow' },
   ];
   const stageOf = lv => { let k = 0; for (let i = 0; i < STAGES.length; i++) if (lv >= STAGES[i].from) k = i; return k; };
   // what each level opens (UI text; icon keys are game.js IC names)
@@ -22,8 +23,8 @@
     4: [['protect', 'Hush Hall (guardian hall)'], ['sprout', 'Sprout House (school)'], ['cart', 'Market square'], ['isle', 'Far Spires'], ['wood', 'The outer woods grow back']],
     5: [['nourish', 'Greenhold (the great conservatory)'], ['spirit', 'Circus'], ['isle', 'Starfall Isles'], ['home', 'The outer ring of land (past 260 m)']],
     6: [['build', 'Gale Forge (tools + crafting)'], ['isle', 'Ember Reach'], ['board', 'A third sky boat'], ['wood', 'The middle woods grow back']],
-    7: [['fruit', 'Glowing fruit falls twice as often'], ['orb', 'Glow motes rise from the canopy']],
-    8: [['sap', 'Elder glow: +25 % glow sap'], ['star', 'The full-size Elder Tree']],
+    7: [['fruit', 'Glowing fruit falls twice as often'], ['orb', 'Glow motes rise from the canopy'], ['star', 'Spreading roots + the first hanging lanterns']],
+    8: [['sap', 'Elder glow: +25 % glow sap'], ['star', 'The full-size Elder Tree, taller than ever, hung with lanterns']],
   };
   // tree memories: one per level, short + cozy (the tree remembers)
   const MEMORIES = {

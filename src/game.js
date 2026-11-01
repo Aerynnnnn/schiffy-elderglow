@@ -1654,13 +1654,16 @@
   const v3 = new THREE.Vector3();
   const PORTRAIT = { aim: 60, up0: 14, up: 22, far: 2.1 };   // vibe pass 2: portrait home view (tests: __game.PORTRAIT, then flyHome())
   function homeView() {
-    const s = fx ? fx.scale : Sim.scaleOf(S), TP = nav.TP, k = 0.78 + s * 0.8 + Math.max(0, s - 0.68) * 1.9;
+    // tree growth: s = the scale the old (uniformly scaled) tree of the GROWN tree's height would have, so the frame follows the
+    // real shape (a slim sapling is shorter, the Elder ~1.3x taller); ^0.5 = half way, so the bigger Elder also FILLS more of the view
+    const s0 = fx ? fx.scale : Sim.scaleOf(S), sz = fx && fx.size ? fx.size(TreeFx.growthOf(S), Sim.scaleOf(S)) : null, s = sz ? s0 * Math.pow(sz.h / (156 * s0), 0.5) : s0;
+    const TP = nav.TP, k = 0.78 + s * 0.8 + Math.max(0, s - 0.68) * 1.9;
     // step 5: from the Grown stage on the canopy reaches out over the plaza: the camera steps further back (L1-3 unchanged)
     // vibe pass 2: a portrait phone used to see the trunk + half a crown (crown cut off, little island): further back, lower, aimed
     // higher, so the whole tree stands as a silhouette with land round it
     // (blended in by the aspect: a near-square portrait window keeps the old x1.3 view, a phone (aspect <= .46) gets all of it)
     const asp = W() / Math.max(1, H()), p = asp >= 1 ? -1 : Math.max(0, Math.min(1, (0.75 - asp) / 0.29)), L = (a, b) => a + (b - a) * Math.max(0, p);
-    const t = new THREE.Vector3(TP[0], TP[1] + L(34, PORTRAIT.aim) * s, TP[2]);
+    const t = new THREE.Vector3(TP[0], TP[1] + L(48, PORTRAIT.aim) * s, TP[2]);   // tree growth: aimed higher (34 -> 48) so the taller crown fits
     return { target: t, eye: t.clone().add(new THREE.Vector3(70, L(34 + 30 * s, PORTRAIT.up0 + PORTRAIT.up * s), 140).multiplyScalar(k * (p < 0 ? 1 : L(1.3, PORTRAIT.far)))) };
   }
   function flyTo(eye, target, dur, then) { tween = { e0: camera.position.clone(), t0: controls.target.clone(), e1: eye.clone(), t1: target.clone(), t: 0, dur: dur || 1.2, then }; }
@@ -1710,12 +1713,12 @@
     const newStage = Growth.STAGES.some(st => st.from === lv); snd.sfx('sting_level');
     toast(`${IC.star} The Elder Tree grew! <b>Level ${lv}</b>${newStage ? ` &middot; a new stage: <b>${Growth.stageName(lv)}</b>` : ''}`, 4200);
     const back = { e: camera.position.clone(), t: controls.target.clone() }, wasFollow = follow;
-    const s = Sim.C.SCALE[lv - 1], TP = nav.TP;
-    const tgt = new THREE.Vector3(TP[0], TP[1] + 45 * s, TP[2]);
-    const far = (230 * s + 80) * (W() < H() ? 1.25 : 1);
-    const eye = tgt.clone().add(camera.position.clone().sub(controls.target).setY(0).setLength(far)).setY(TP[1] + 60 * s + 30);
-    follow = -1;
-    flyTo(eye, tgt, 1.3, () => { fx.burst(); setTimeout(() => { if (!tween) { follow = wasFollow; if (wasFollow < 0) flyTo(back.e, back.t, 1.3, () => {}); else focusPup(wasFollow); } queueCard('mem' + lv, () => showMemory(lv)); }, 3200); });
+    const s = Sim.C.SCALE[lv - 1], TP = nav.TP, sz = fx.size(TreeFx.growthOf(S), s);   // framed for the GROWN tree (it grows while we watch)
+    const tgt = new THREE.Vector3(TP[0], TP[1] + Math.max(45 * s, sz.h * 0.42), TP[2]);
+    const far = Math.max(230 * s + 80, sz.h * 1.6 + 40) * (W() < H() ? 1.25 : 1);
+    const eye = tgt.clone().add(camera.position.clone().sub(controls.target).setY(0).setLength(far)).setY(TP[1] + Math.max(60 * s + 30, sz.h * 0.5 + 20));
+    follow = -1; fx.holdT = 1.2;   // the growth moment (tree_fx tick) starts as the camera arrives and plays ~3.6 s
+    flyTo(eye, tgt, 1.3, () => { fx.burst(); setTimeout(() => { if (!tween) { follow = wasFollow; if (wasFollow < 0) flyTo(back.e, back.t, 1.3, () => {}); else focusPup(wasFollow); } queueCard('mem' + lv, () => showMemory(lv)); }, 4200); });
     growLand(lv); refreshBuild(true);
   }
   // click a pup (screen-space nearest, so small pups are easy to hit) or a plot (patch / sign)
@@ -1805,7 +1808,7 @@
       ld = load(); ld.cloud = cb;
     }
     S = ld.state;
-    fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S));
+    fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S));
     plots = Plots(scene, m, nav, ground);
     expFx = ExpFx(scene, m, nav, ground, { phone: PHONE });
     const loader = new THREE.GLTFLoader();
@@ -1829,7 +1832,7 @@
     // anchor the island clock so that it reads "now" once the catch-up has run (the catch-up then lives through the
     // real hours, night included); a fresh island just starts at "now"
     if (!VISIT) RST.R = Story.radius(S).R;   // Round 2 step 2: the colour as it was when the player left (a new ring then waves in)
-    if (ld.away > 5) { anchorClock(Math.min(ld.away, Sim.C.OFFLINE_CAP)); sum = Sim.catchUp(S, ld.away, nav); fx.setScale(Sim.scaleOf(S)); }
+    if (ld.away > 5) { anchorClock(Math.min(ld.away, Sim.C.OFFLINE_CAP)); sum = Sim.catchUp(S, ld.away, nav); fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S)); }
     else anchorClock(0);
     // vibe pass 1: a visited island's pups all start on the nap grid by the door and used to leave in one conga line:
     // let its (read-only, never saved) copy live 1.5-4 min first so everyone is already out at their jobs
@@ -1925,7 +1928,7 @@
       // voice (TreeVoice: show(text), next, count, live), foley (stats) }, driftSubjects(), critCam(id)
       laneC: { get light() { return lightFx; }, get drift() { return drift; }, get voice() { return voice; }, get foley() { return foley; } }, driftSubjects, critCam, closeSay,
       get calm() { return calm; }, toast, TQ, queueCard, CQ, runTour, endTour, get tour() { return tour; }, tourStops, get appUI() { return appUI; }, sndState, renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
-      snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
+      snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
       // day / night (tests): setTime('21:30' | hours | null = back to the real clock), clock() = island HH:MM, dn = DayNight
       dn, setTime(x) { TIME_FIX = parseT(x); anchorClock(0); refreshTree(); return this.clock(); },
       clock() { const h = Sim.tod(S); return String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.floor(h % 1 * 60)).padStart(2, '0'); },
@@ -1943,7 +1946,7 @@
       // openBook(tab) / closeBook, showMemory(lv) / closeMemory, growLand, rootReach() (re-make Needs.C.ROOT from the tree mesh)
       Seasons, Growth, get seaFx() { return seaFx; }, openBook, closeBook, renderBook, showMemory, closeMemory, growLand,
       setSeason(k) { Seasons.fix = typeof k === 'string' ? Seasons.NAMES.indexOf(k) : k; if (Seasons.fix === -1) Seasons.fix = null; refreshTree(); return Seasons.of(S); },
-      setLevel(lv) { S.level = Math.max(1, Math.min(8, lv)); S.xp = Sim.C.LV_XP[S.level - 1]; fx.level = S.level; fx.setScale(Sim.scaleOf(S)); growLand(S.level); for (const p of S.pups) if (p.phase === 'rest') { p.phase = 'idle'; p.t = 0; p.dur = 0; } refreshTree(); refreshBuild(true); return S.level; },
+      setLevel(lv) { S.level = Math.max(1, Math.min(8, lv)); S.xp = Sim.C.LV_XP[S.level - 1]; fx.level = S.level; fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S)); growLand(S.level); for (const p of S.pups) if (p.phase === 'rest') { p.phase = 'idle'; p.t = 0; p.dur = 0; } refreshTree(); refreshBuild(true); return S.level; },
       rootReach() {
         const b = m.batches.find(x => x.key === 'EG_ElderTree'), P = b.geo.attributes.position.array, TP = nav.TP, pl = m.layout.placements.find(p => p.role === 'tree');
         const M = new THREE.Matrix4().compose(new THREE.Vector3(...pl.pos), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), pl.ry), new THREE.Vector3(pl.s, pl.s, pl.s)), v = new THREE.Vector3(), R = new Array(72).fill(0);
@@ -2094,7 +2097,7 @@
     }
     while (ev.length) onEv(ev.shift());
     // view
-    const tScale = Sim.scaleOf(S); if (Math.abs(fx.scale - tScale) > 1e-4) fx.setScale(fx.scale + (tScale - fx.scale) * Math.min(1, dt * 1.2) + Math.sign(tScale - fx.scale) * 1e-4);
+    fx.tick(Sim.scaleOf(S), TreeFx.growthOf(S), dt);   // tree growth: eases inside a level, a growth moment on level-up (tree_fx.js)
     hs += (S.health - hs) * Math.min(1, dt * 1.5); hl += (S.needs.light - hl) * Math.min(1, dt * 1.5);
     fx.night = dn.state.night; fx.update(t, dt, hs, hl, renderer);
     const sick = Math.max(0, Math.min(1, (60 - hs) / 50));
