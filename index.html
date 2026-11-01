@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Schiffy Elderglow</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2b3d52">
+<meta name="description" content="A cozy idle island around a world tree: pups, sky boats, lanterns and friends.">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Elderglow">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<script src="src/app.js"></script>
 <style>
   @font-face { font-family: 'Lilita One'; src: url(art/fonts/lilita-one-latin.woff2) format('woff2'); font-display: swap; }
   @font-face { font-family: 'Fredoka'; src: url(art/fonts/fredoka-latin.woff2) format('woff2'); font-weight: 300 700; font-display: swap; }
@@ -472,7 +482,29 @@ body.phone #lanBtn span { display: none; } body.phone #lanBtn svg.ic { display: 
 .lrf .big { font-size: 15px; padding: 4px 14px; } .lrf .rp { margin-right: auto; display: flex; align-items: center; gap: 3px; font-size: 12px; } .lrf .rp svg.ic { width: 16px; height: 16px; }
 .lrw { display: flex; align-items: center; gap: 3px; font-size: 13px; color: #b06a1e; font-weight: 600; }
 body.phone #lanCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 76%; border-radius: 18px 18px 0 0; border-bottom: none; z-index: 12; }
-body.phone #lanRead { bottom: 12px; padding: 12px 12px 10px; } .lrf button { white-space: nowrap; } body.phone .lrf { gap: 5px; } body.phone .lrf .go { font-size: 13px; padding: 5px 7px; } body.phone .lrf .big { font-size: 14px; padding: 4px 10px; }</style>
+body.phone #lanRead { bottom: 12px; padding: 12px 12px 10px; } .lrf button { white-space: nowrap; } body.phone .lrf { gap: 5px; } body.phone .lrf .go { font-size: 13px; padding: 5px 7px; } body.phone .lrf .big { font-size: 14px; padding: 4px 10px; }/* Round 2 step 5: the island app (src/app.js): bell button left of the sound button, the Island app card, the install chip */
+#appBtn { position: absolute; right: 64px; bottom: 14px; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; z-index: 7; background: #efeaf7; cursor: pointer; }
+#appBtn.on { background: #fffbf2; } #appBtn:hover { background: #fff6d6; } #appBtn svg.ic { width: 25px; height: 25px; }
+#appCard { position: absolute; right: 12px; bottom: 66px; width: 330px; max-height: calc(100% - 90px); overflow: auto; z-index: 14; padding: 0 14px 10px; background: #fffbf2; }
+#appCard .pch { background: #fffbf2; position: sticky; top: 0; z-index: 1; } .appt { flex: 1; font-size: 20px; display: flex; align-items: center; gap: 6px; } .appt svg.ic { width: 24px; height: 24px; }
+#appCard h4 { margin: 8px 0 4px; font: 400 16px 'Lilita One', sans-serif; color: #2a2442; } #appCard p { margin: 4px 0; font-size: 13.5px; line-height: 1.3; }
+#appCard .sub { font-size: 11.5px; color: #5d567a; } #appCard .st-push { color: #3f8a3a; font-weight: 600; } #appCard .st-blocked, #appCard .st-ios { color: #a0522d; }
+#appCard p.ok { display: flex; align-items: center; gap: 6px; font-weight: 600; } #appCard svg.ic { width: 22px; height: 22px; flex: none; }
+#appCard .big { display: inline-flex; align-items: center; gap: 6px; font-size: 16px; padding: 6px 14px; margin: 4px 0 2px; }
+#appCard .steps { margin: 4px 0; padding: 0; list-style: none; counter-reset: s; } #appCard .steps li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin: 5px 0; }
+#appCard .steps li::before { counter-increment: s; content: counter(s); font: 400 15px 'Lilita One', sans-serif; width: 20px; height: 20px; border-radius: 50%; background: #ffd36a; border: 2px solid #2a2442; display: grid; place-items: center; flex: none; }
+#appCard .kinds { margin: 4px 0 2px 4px; } #appCard .tog.sm { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 5px 0; } #appCard .tog.sm svg.ic { width: 20px; height: 20px; }
+#appCard .qh { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; } #appCard .qh > span { font-size: 13px; display: flex; align-items: center; gap: 4px; }
+#appCard select { font: 600 13px Fredoka, sans-serif; border: 2px solid #2a2442; border-radius: 8px; background: #fff; padding: 1px 3px; }
+#appAsk { position: absolute; right: 12px; bottom: 66px; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; z-index: 7; background: #fffbf2; opacity: 0; transform: translateY(8px); transition: opacity .6s, transform .6s; pointer-events: none; }
+#appAsk.in { opacity: 1; transform: none; pointer-events: auto; } #appAsk svg.ic { width: 26px; height: 26px; flex: none; }
+#appAsk span { font-weight: 600; font-size: 14px; display: flex; flex-direction: column; line-height: 1.1; } #appAsk small { font-weight: 500; font-size: 11px; color: #5d567a; }
+#appAsk .big { font-size: 15px; padding: 5px 12px; } #appAsk .ghost { font-size: 12px; }
+body.visit #appBtn, body.visit #appCard, body.visit #appAsk { display: none; }
+body.phone #appBtn { right: 8px; bottom: auto; top: 200px; width: 38px; height: 38px; } body.phone #appBtn svg.ic { width: 22px; height: 22px; }
+body.phone #appCard { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 76%; border-radius: 18px 18px 0 0; border-bottom: none; }
+body.phone #appAsk { right: 8px; left: 8px; bottom: 150px; padding: 4px 6px 4px 8px; gap: 6px; } body.phone #appAsk span { font-size: 13px; flex: 1; } body.phone #appAsk .big { font-size: 13px; padding: 4px 8px; }
+</style>
 </head>
 <body>
 <div id="app">
@@ -516,7 +548,6 @@ body.phone #lanRead { bottom: 12px; padding: 12px 12px 10px; } .lrf button { whi
   <div id="loading"><div class="card">Waking the Elder Tree...</div></div>
 </div>
 <div id="err"></div>
-<script>window.ELDER_LIB = 'lib/';</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>

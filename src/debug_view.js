@@ -17,7 +17,7 @@ const Q = new URLSearchParams(location.search);
 const PHONE = Q.get('phone') === '1' || matchMedia('(pointer: coarse)').matches;
 const FIXW = Q.get('phone') === '1' ? 375 : 0, FIXH = Q.get('phone') === '1' ? 812 : 0;
 const W = () => FIXW || innerWidth, H = () => FIXH || innerHeight;
-const LIB = Q.get('lib') || '../Schiffy%20Asset%20Library/glb/';
+const LIB = Q.get('lib') || 'lib/';
 const renderer = new THREE.WebGLRenderer({ antialias: !PHONE });
 renderer.setPixelRatio(FIXW ? 1.5 : Math.min(devicePixelRatio, PHONE ? 1.5 : 2)); renderer.setSize(W(), H());
 renderer.outputEncoding = THREE.sRGBEncoding; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;

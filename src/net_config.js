@@ -5,4 +5,7 @@
 window.NET_CONFIG = {
   url: 'https://rdsjgmswwwcspiklgsav.supabase.co',          // the user's free project (2026-10-31)
   anonKey: 'sb_publishable_acEonY9LmFvRFnKbL_idcw_NvEGcFOy',  // publishable key: public by design
+  // Web Push (Round 2 step 5): the PUBLIC VAPID key (public by design). Its private half lives only in the Supabase Edge Function's
+  // secrets (VAPID_PRIVATE_KEY) and on the owner's PC outside the repo. A new pair: node tools/push_check.mjs --keygen <file>.
+  vapidPublic: 'BMs8R7fXuLU7ZOoEfFzq2DMi8JmxfLPCh4ABXpK6_nDguPNWqxPIRI5aYDE2p1JLlOvwmpX8b61Dxzaz5CkmTiE',
 };

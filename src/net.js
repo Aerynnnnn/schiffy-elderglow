@@ -18,6 +18,8 @@
 // Round 2 step 4 (lantern notes + World Bloom, server/patch_3.sql; { setup: true } = patch not run yet): lanternSend({ body, col }) -> { ok, id, left },
 //   lanternInbox() -> [{ id, from, body, col, at, read, warm }] (marks them delivered), lanternAct(id, 'read'|'warmth'|'report'),
 //   lanternSent() -> [{ id, at, found, warm }] (never who), bloomStatus() -> { cyc, total, prev, today, mine, cap }, bloomAdd(n) -> { added, today, total }
+// Round 2 step 5 (push, server/patch_4.sql; { setup: true } = patch not run yet): pushSubscribe({ endpoint, p256dh, auth, prefs, qf, qt, tz }),
+//   pushUnsubscribe(endpoint), pushPlan(tripKey, dueMs, n) (boat home push while the app is away), pushUnplan(tripKey | null)
 (function () {
   'use strict';
   const SB_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
@@ -236,12 +238,31 @@
         o.pet[k] = { n: cur.n + add, at: Date.now() }; o.tot[c] = (o.tot[c] || 0) + add; wrL(o);
         return { ok: true, added: add, today: cur.n + add, cap, cyc: c, total: o.tot[c] };
       },
+      // ---- push (Round 2 step 5): the mock only remembers devices + planned boats (nothing is ever sent: there is no sender)
+      async pushSubscribe(p) {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        if (!/^https:\/\//.test(p.endpoint || '')) return { ok: false, why: 'not a valid push subscription' };
+        const o = rdP(); for (const e in o.subs) if (e === p.endpoint) delete o.subs[e];
+        o.subs[p.endpoint] = { owner: uid, prefs: p.prefs, qf: p.qf, qt: p.qt, tz: p.tz, at: Date.now() }; wrP(o);
+        return { ok: true, devices: Object.values(o.subs).filter(s => s.owner === uid).length };
+      },
+      async pushUnsubscribe(endpoint) { const o = rdP(); const had = o.subs[endpoint] && o.subs[endpoint].owner === uid; if (had) delete o.subs[endpoint]; if (!Object.values(o.subs).some(s => s.owner === uid)) o.plan = o.plan.filter(x => x.owner !== uid); wrP(o); return { ok: true, removed: had ? 1 : 0 }; },
+      async pushPlan(key, due, n) {
+        const o = rdP(); if (!Object.values(o.subs).some(s => s.owner === uid && s.prefs && s.prefs.boat)) return { ok: false, why: 'off' };
+        if (!(due > Date.now() + 30000 && due < Date.now() + 30 * 3600000)) return { ok: false, why: 'bad time' };
+        o.plan = o.plan.filter(x => !(x.owner === uid && x.key === key)); o.plan.push({ owner: uid, key, due, n }); wrP(o); return { ok: true };
+      },
+      async pushUnplan(key) { const o = rdP(), n0 = o.plan.length; o.plan = o.plan.filter(x => !(x.owner === uid && (key == null || x.key === key))); wrP(o); return { ok: true, n: n0 - o.plan.length }; },
+      pushPlanned() { return rdP().plan.filter(x => x.owner === uid); },   // tests only
       onAuth(fn) { authSubs.push(fn); },
       onChange(fn) { subs.push(fn); },
     };
     const SKEY = KEY + '.saves', AKEY = KEY + '.auth', LKEY = KEY + '.lan', authSubs = [];
     const rdL = () => { try { const o = JSON.parse(localStorage.getItem(LKEY) || 'null'); if (o && Array.isArray(o.lan) && o.tot && o.pet) return o; } catch (e) {} return { seq: 0, lan: [], tot: {}, pet: {} }; };
     const wrL = o => { localStorage.setItem(LKEY, JSON.stringify(o)); if (bc) bc.postMessage(1); };
+    const PKEY = KEY + '.push';
+    const rdP = () => { try { const o = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (o && o.subs && Array.isArray(o.plan)) return o; } catch (e) {} return { subs: {}, plan: [] }; };
+    const wrP = o => localStorage.setItem(PKEY, JSON.stringify(o));
     const rdS = () => { try { const o = JSON.parse(localStorage.getItem(SKEY) || 'null'); if (o && o.saves) return o; } catch (e) {} return { saves: {} }; };
     const wrS = o => localStorage.setItem(SKEY, JSON.stringify(o));
     const rdA = () => { try { const o = JSON.parse(localStorage.getItem(AKEY) || 'null'); if (o && o.users && Array.isArray(o.mails)) return o; } catch (e) {} return { users: {}, mails: [] }; };
@@ -400,6 +421,15 @@
       async lanternSent() { const r = await sb.rpc('my_lanterns'); if (r.error) return failL(r.error); return (r.data || []).map(l => ({ id: lid(l.id), at: Date.parse(l.at), found: !!l.found, warm: !!l.warm })); },
       async bloomStatus() { const r = await sb.rpc('bloom_status'); if (r.error) return failL(r.error); const d = r.data || {}; return { ok: true, cyc: d.cycle, total: +d.total || 0, prev: +d.prev || 0, today: +d.today || 0, mine: +d.mine || 0, cap: d.cap || 20 }; },
       async bloomAdd(n) { const r = await sb.rpc('bloom_add', { p_n: Math.max(0, Math.round(+n || 0)) }); if (r.error) return failL(r.error); const d = r.data || {}; return d.ok ? { ok: true, added: d.added, today: d.today, cap: d.cap, cyc: d.cycle, total: +d.total || 0 } : { ok: false, why: d.why || 'no' }; },
+      // ---- gentle push notifications (server/patch_4.sql; a missing function = patch_4 not run yet -> { setup: true })
+      async pushSubscribe(p) {
+        if (!uid) return { ok: false, why: 'not signed in' };
+        const r = await sb.rpc('push_subscribe', { p_endpoint: p.endpoint, p_p256dh: p.p256dh, p_auth: p.auth, p_prefs: p.prefs, p_quiet_from: p.qf, p_quiet_to: p.qt, p_tz: p.tz });
+        if (r.error) return failP(r.error); return r.data && r.data.ok ? { ok: true, devices: r.data.devices } : { ok: false, why: (r.data && r.data.why) || 'no' };
+      },
+      async pushUnsubscribe(endpoint) { if (!uid) return { ok: false, why: 'not signed in' }; const r = await sb.rpc('push_unsubscribe', { p_endpoint: endpoint }); return r.error ? failP(r.error) : { ok: true, removed: r.data && r.data.removed }; },
+      async pushPlan(key, due, n) { if (!uid) return { ok: false, why: 'not signed in' }; const r = await sb.rpc('push_plan', { p_key: String(key), p_due: new Date(due).toISOString(), p_n: n || 1 }); if (r.error) return failP(r.error); return r.data && r.data.ok ? { ok: true } : { ok: false, why: (r.data && r.data.why) || 'no' }; },
+      async pushUnplan(key) { if (!uid) return { ok: false, why: 'not signed in' }; const r = await sb.rpc('push_unplan', { p_key: key == null ? null : String(key) }); return r.error ? failP(r.error) : { ok: true, n: r.data }; },
       onAuth(fn) {   // a magic link opened in this tab / another tab signed in: tell the game (deferred: no supabase calls inside the callback)
         ready().then(() => sb.auth.onAuthStateChange((ev, ses) => { const id = ses && ses.user ? ses.user.id : null; if (id && uid && id !== uid) { uid = id; myId = null; setTimeout(() => fn('switched', id), 0); } else if (ev === 'USER_UPDATED') setTimeout(() => fn('updated', id), 0); })).catch(() => {});
       },
@@ -410,6 +440,7 @@
     const lid = n => 'l' + pad(n, 12);   // bigint lantern id -> sortable string id (Lanterns.merge sorts by id)
     // a missing RPC (PGRST202 / 42883) = server/patch_3.sql not run yet: the game keeps lanterns + the bloom quiet
     const failL = e => (e && (e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01' || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'lanterns are not switched on on the server yet (server/patch_3.sql)' } : fail(e);
+    const failP = e => (e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|function .* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'notifications are not switched on on the server yet (server/patch_4.sql)' } : fail(e);
     const failS = e => (e && (e.code === '42P01' || e.code === 'PGRST205' || /could not find the table|relation .*saves.* does not exist/i.test(e.message || ''))) ? { ok: false, setup: true, why: 'cloud save is not switched on on the server yet (server/patch_2.sql)' } : fail(e);
     function authFail(e) {
       const c = (e && e.code) || '', m = String((e && e.message) || ''), st = e && e.status;

@@ -8,7 +8,7 @@
   const Q = new URLSearchParams(location.search);
   const FIX = Q.get('phone') === '1';
   const PHONE = FIX || matchMedia('(pointer: coarse)').matches;
-  const LIB = Q.get('lib') || window.ELDER_LIB || '../Schiffy%20Asset%20Library/glb/';   // ELDER_LIB: set by publish_pages.ps1
+  const LIB = Q.get('lib') || window.ELDER_LIB || 'lib/';   // lib/ = the map files, refreshed by sync_lib.ps1
   const SPEED = Math.max(0, Math.min(3600, +Q.get('speed') || 1));
   // v1 is read once + migrated, then left as a backup. ?slot=NAME = a separate save (tests never touch the real island)
   // lower-cased: ?slot=liveA used to fail the test silently and run on the REAL save (2026-10-31 live test)
@@ -51,7 +51,7 @@
   // ---- Round 2 step 1: sound (src/audio.js). Off until the player says yes (prefs in localStorage, not the save); ?mute=1 =
   // silent test mode (output gain 0, own prefs key). Never touches the sim: the game only calls snd.sfx* + snd.update (4x/s).
   const snd = ElderSound.make({ silent: Q.get('mute') === '1' || window.__ELDER_SILENT === true });
-  let sndUI = null, sndWater = null;
+  let sndUI = null, sndWater = null, appUI = null;
   const $ = id => document.getElementById(id);
   const app = $('app');
   if (FIX) document.body.classList.add('fix');
@@ -1457,10 +1457,13 @@
     $('loading').remove(); booted = true; bootAt = performance.now(); m.readyAt = performance.now() - t0;
     ElderMap.uRestC.value.set(nav.TP[0], nav.TP[2], Story.C.Y0, Story.C.YK);
     sndUI = ElderSound.ui(snd, {});
+    // Round 2 step 5: the island app (install + gentle notifications, src/app.js + sw.js; server side server/patch_4.sql + send-push)
+    if (window.ElderApp) appUI = ElderApp.ui({ net: NET, get S() { return S; }, mode: VISIT ? 'visit' : 'home', toast, esc, phone: PHONE, closeOthers: () => { if (soc) soc.close(); closePlot(); closeExp(); closeEvents(); closeNeed(); },
+      busy: () => !$('away').hidden || !$('gift').hidden || !$('mem').hidden || !$('book').hidden || !!boatCam || !!tween });
     save();
     giftCheck(true);
     window.__snd = snd;
-    window.__game = { snd, get sndUI() { return sndUI; }, sndState, renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
+    window.__game = { snd, get sndUI() { return sndUI; }, get appUI() { return appUI; }, sndState, renderer, get S() { return S; }, set S(v) { S = v; syncPups(); }, nav, map: m, pups, fx, plots, Sim, save, load, camera, controls, catchUp: sec => { const r = Sim.catchUp(S, sec, nav); syncPups(); return r; }, ev, focusPup, refreshTree, refreshRoster, refreshBuild, SAVE_KEY, lastAway: sum, ground, get social() { return soc; }, get cloud() { return cloud; }, get cloudUI() { return cloudUI; }, NET, CLOUD_ON, bootCloud: ld.cloud, get walker() { return walker; }, VISIT,
       snap() { hs = S.health; hl = S.needs.light; fx.setScale(Sim.scaleOf(S)); syncPups(); refreshRoster(true); refreshBuild(true); }, flyHome, openPlot, closePlot, showAway, syncPups, flyTo,
       // day / night (tests): setTime('21:30' | hours | null = back to the real clock), clock() = island HH:MM, dn = DayNight
       dn, setTime(x) { TIME_FIX = parseT(x); anchorClock(0); refreshTree(); return this.clock(); },
