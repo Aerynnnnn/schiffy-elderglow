@@ -449,6 +449,7 @@
     ro.addEventListener('click', e => {
       const row = e.target.closest('.pup'); if (!row) return; const i = +row.dataset.i;
       if (e.target.closest('[data-diary]')) { openDiary(i); return; }
+      if (e.target.closest('[data-ward]')) { openWard(i); return; }
       const b = e.target.closest('button[data-job]');
       if (b) { setJob(i, b.dataset.job); return; }
       focusPup(i);
@@ -460,12 +461,17 @@
     $('bookBtn').onclick = () => { if ($('book').hidden) openBook(S.book.read < S.level ? 'mem' : Story.unread(S) ? 'words' : bookTab); else closeBook(); };
     // Round 2 step 2: the tree's voice bubble + pup diaries
     $('tsIc').innerHTML = IC.tree; $('tsOk').onclick = $('tsClose').onclick = closeSay; $('tsLog').onclick = () => { closeSay(); openBook('words'); };
+    // Round 3 update 1: the wardrobe card
+    $('wdClose').onclick = closeWard; $('wdOff').onclick = wardOff; $('wdPrev').onclick = () => wardStep(-1); $('wdNext').onclick = () => wardStep(1); $('wdIc').innerHTML = IC.scarf;
+    $('wdGrid').addEventListener('click', e => { const b = e.target.closest('button[data-fit]'); if (b) wardPick(b.dataset.fit); });
+    $('gGot').addEventListener('click', e => { if (e.target.closest('[data-dress]')) { closeGift(); openWard(wardWho()); } });
     $('dyClose').onclick = closeDiary; $('diary').addEventListener('click', e => { if (e.target.id === 'diary') closeDiary(); });
     $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
     if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
     for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['crit', 'critter'], ['lan', 'lantern'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
     $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem);
+      const wf = e.target.closest('[data-bfit]'); if (wf) { const w = Wardrobe.wearer(S, wf.dataset.bfit); openWard(w >= 0 ? w : wardWho()); return; }
       const ch = e.target.closest('[data-crit]'); if (ch) { closeBook(); meetCritter(+ch.dataset.crit, true); }   // a visitor here now: fly there + its card
       const ct = e.target.closest('[data-csp]'); if (ct && Critters.status(S, ct.dataset.csp) === 'seen') openCritCard(ct.dataset.csp, null, false); });
     $('ccClose').onclick = closeCritCard;
@@ -552,7 +558,7 @@
       // friendship hint: hearts = friends; the selected pup shows who (and a puppy its parents)
       const fl = Needs.friendsOf(S, i), fc = row.querySelector('.frc'), best = fl.length ? fl[0].lv : 0;
       fc.innerHTML = fl.length ? `${IC.friends}<b>${fl.length}</b>` : ''; fc.className = 'frc' + (best >= 3 ? ' close' : ''); fc.title = fl.length ? friendLine(i, true).replace(/<[^>]+>/g, '') : '';
-      const fv = row.querySelector('.frl'); if (pups.selected === i) { const tr = traitOf(i), h = (tr ? `<span class="trtl">${traitChip(i)} <i>${esc(Traits.INFO[tr].what)}</i></span>` : '') + friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : '') + (VISIT ? '' : `<button class="dybtn" data-diary="${i}" title="${esc(p.name)}'s diary">${IC.diary}Diary</button>`); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
+      const fv = row.querySelector('.frl'); if (pups.selected === i) { const tr = traitOf(i), h = (tr ? `<span class="trtl">${traitChip(i)} <i>${esc(Traits.INFO[tr].what)}</i></span>` : '') + friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : '') + (VISIT ? '' : `<button class="dybtn" data-diary="${i}" title="${esc(p.name)}'s diary">${IC.diary}Diary</button><button class="dybtn wdbtn" data-ward="${i}" title="Dress ${esc(p.name)}">${IC.scarf}Wardrobe</button>`); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
       row.querySelector('.mor b').textContent = Math.round(p.morale);
       row.querySelector('.st').textContent = statusOf(p);
       const xc = row.querySelector('.xpc'), xl = expLv(p); xc.textContent = p.xpE > 0 ? 'Explorer ' + xl : ''; xc.hidden = !(p.xpE > 0);
@@ -617,7 +623,7 @@
   let sayOpen = false, sayT = 0, sayTimer = null;
   const overlayOpen = () => ['away', 'gift', 'mem', 'haul', 'book', 'diary'].some(id => $(id) && !$(id).hidden) || !!document.querySelector('#pickCard:not([hidden]), #safeCard:not([hidden])');
   function trySpeak(force) {
-    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || boatCam || tour || CQ.length || RST.wave || PM))) return null;   // (not while placing a decoration)
+    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || wardI >= 0 || boatCam || tour || CQ.length || RST.wave || PM))) return null;   // (not while placing a decoration)
     const r = session.speak(S); if (!r) return null;
     showSay(r.w, r.e); save(); return r;
   }
@@ -662,6 +668,40 @@
     $('diary').hidden = false; snd.sfx('open');
   }
   function closeDiary() { $('diary').hidden = true; snd.sfx('close'); }
+  // ---- Round 3 update 1: the wardrobe (src/wardrobe.js). A card at the bottom (no backdrop): the camera comes close to the pup,
+  // so the pup on the island IS the preview. Tap an outfit = put it on (whoever wore it takes it off), Take off, < > = next pup.
+  let wardI = -1; const WARD_D = PHONE ? 38 : 26;   // camera distance while the wardrobe is open (a portrait phone sees less across)
+  const hex = c => '#' + c.toString(16).padStart(6, '0');
+  function openWard(i) {
+    if (VISIT || !S.pups.length) return; i = S.pups[i] ? i : 0;
+    closeDiary(); closeSay(); if (!$('book').hidden) closeBook(); wardI = i;
+    focusPup(i, WARD_D); renderWard(); $('wardCard').hidden = false; snd.sfx('open');
+  }
+  function closeWard() { if ($('wardCard').hidden) return; $('wardCard').hidden = true; wardI = -1; snd.sfx('close'); }
+  function renderWard() {
+    const p = S.pups[wardI]; if (!p) { closeWard(); return; }
+    $('wdDot').style.background = p.collar; $('wdName').textContent = p.name;
+    const own = new Set(S.inv.outfits);
+    $('wdNow').innerHTML = p.fit ? `${esc(p.name)} wears the <b>${esc(Wardrobe.name(p.fit))}</b>.` : own.size ? `${esc(p.name)} wears nothing yet: tap an outfit.` : 'No outfits yet: they come from the daily gift (day 7) and rare sky-trip finds.';
+    $('wdGrid').innerHTML = Wardrobe.IDS.map(id => {
+      const D = Wardrobe.DEFS[id], w = Wardrobe.wearer(S, id);
+      if (!own.has(id)) return `<div class="wt lock"><i class="wsw">${IC.lock}</i><b>???</b><small>${Wardrobe.where(id)}</small></div>`;
+      return `<button class="wt${p.fit === id ? ' on' : ''}" data-fit="${id}"><i class="wsw" style="--c:${hex(D.look.col)};--c2:${hex(D.look.col2)}">${IC.scarf}</i><b>${esc(D.name)}</b><small>${w === wardI ? 'wearing it' : w >= 0 ? 'on ' + esc(S.pups[w].name) : 'free'}</small></button>`;
+    }).join('');
+    $('wdOff').disabled = !p.fit;
+  }
+  function wardPick(id) {
+    const p = S.pups[wardI]; if (!p) return;
+    if (p.fit === id) { wardOff(); return; }
+    const r = Wardrobe.wear(S, wardI, id); if (!r.ok) return;
+    save(); renderWard(); snd.sfx('like');
+    const P = pups.list[wardI]; if (P) floater([P.holder.position.x, P.holder.position.y + 9, P.holder.position.z], IC.heart);
+    toast(`${IC.scarf}<b>${esc(p.name)}</b> puts on the ${esc(Wardrobe.name(id))}${r.from >= 0 ? ` (${esc(S.pups[r.from].name)} takes it off)` : ''}`, 2600);
+  }
+  function wardOff() { const p = S.pups[wardI]; if (p && Wardrobe.off(S, wardI)) { save(); renderWard(); snd.sfx('assign'); toast(`${IC.scarf}${esc(p.name)} takes the outfit off`, 1800); } }
+  function wardStep(d) { const n = S.pups.length; if (!n) return; wardI = ((wardI + d) % n + n) % n; focusPup(wardI, WARD_D); renderWard(); }
+  // "Dress a pup" from a gift / haul: the selected pup, else the first one not wearing anything, else the first
+  const wardWho = () => pups.selected >= 0 && S.pups[pups.selected] ? pups.selected : Math.max(0, S.pups.findIndex(p => !p.fit));
   // a dream for the away card (only after a night away); it is this session's one unprompted message
   function awayDream(sum, away) {
     if (!sum || away < 60) return;
@@ -799,8 +839,9 @@
       h += lan ? lan.bookHtml() : '<p class="bsub">Lanterns live on your own island.</p>';
     } else {
       const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
-      h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>. The wardrobe (dress your pups) comes in a later update.</p><div class="pgrid">`;
-      for (const o of all) h += `<div class="ptile${own.has(o) ? '' : ' lock'}"><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? 'in the wardrobe' : Exped.OUTFITS.includes(o) ? 'a rare sky-trip find' : 'a daily-gift outfit'}</small></div>`;
+      h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>.${VISIT ? '' : ' Tap one to dress a pup.'}</p><div class="pgrid">`;
+      for (const o of all) { const w = Wardrobe.wearer(S, o), tag = own.has(o) && !VISIT ? 'button' : 'div';
+        h += `<${tag} class="ptile${own.has(o) ? ' fitt' : ' lock'}"${tag === 'button' ? ` data-bfit="${o}"` : ''}><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? (w >= 0 ? 'worn by ' + esc(S.pups[w].name) : 'in the wardrobe') : Wardrobe.where(o)}</small></${tag}>`; }
       h += '</div>';
     }
     $('bookBody').innerHTML = h;
@@ -916,7 +957,7 @@
     if (giftJust) {
       const g = giftJust, items = giftItems(g);
       if (g.month) { if (g.month.sap) items.push(`<span class="gl">${IC.sap}+${g.month.sap}</span>`); if (g.month.decor) items.push(`<span class="gl">${IC.jar}${Daily.DECOR[g.month.decor]}</span>`); if (g.month.seeds) items.push(`<span class="gl">${IC.seed}+${g.month.seeds} seeds</span>`); }
-      $('gGot').innerHTML = `<b>You got:</b> ${items.join(' ')}${g.month ? ' <b class="mb">+ monthly bonus!</b>' : ''}${g.pup ? `<br><small>${esc(g.pup.name)} moves in as soon as a bed is free.</small>` : g.outfit ? '<br><small>Outfits go in the wardrobe (coming in a later update).</small>' : g.seeds || g.decor ? '<br><small>Seeds and decorations are kept for later updates.</small>' : ''}`;
+      $('gGot').innerHTML = `<b>You got:</b> ${items.join(' ')}${g.month ? ' <b class="mb">+ monthly bonus!</b>' : ''}${g.pup ? `<br><small>${esc(g.pup.name)} moves in as soon as a bed is free.</small>` : g.outfit ? '<br><small>Find it in the wardrobe: tap a pup, then Wardrobe.</small> <button class="ghost sm" data-dress="1">Dress a pup</button>' : g.decor ? '<br><small>Place it on the island: Sky trips card, then Place.</small>' : g.seeds ? '<br><small>Seeds grow glow sprouts by the roots (gardeners work better).</small>' : ''}`;
       $('gGot').hidden = false;
     } else $('gGot').hidden = true;
     $('gClaim').textContent = st.can ? 'Claim!' : 'Lovely!';
@@ -1150,7 +1191,7 @@
     $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + `<small class="trip">${Exped.TIERS[h.tier].label} trip</small>`;
     $('hItems').innerHTML = items.map((x, m) => `<div class="hi${x.rare ? ' rare' : ''}" style="animation-delay:${(0.45 + m * 0.32).toFixed(2)}s">${x.ic}<b>${x.txt}</b><small>${x.sub}</small></div>`).join('');
     $('hSack').classList.remove('open'); void $('hSack').offsetWidth; $('hSack').classList.add('open');
-    $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0);
+    $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0); $('hWard').hidden = !h.outfit;
     $('haul').hidden = false;
     snd.sfx('sting_haul'); items.forEach((x, m) => snd.sfx('pop', { delay: 0.5 + m * 0.32, rate: 1 + m * 0.07, gain: x.rare ? 1 : 0.8, force: true }));   // the items pop in (CSS delays)
   }
@@ -1304,6 +1345,7 @@
     $('decMenu').addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) decMenuAct(b.dataset.a); });
     $('hOk').onclick = closeHaul;
     $('hDecor').onclick = () => { closeHaul(); openExp(); setTimeout(() => { const e = document.querySelector('#ecBody .dec'); if (e) e.scrollIntoView({ block: 'center' }); }, 50); };
+    $('hWard').onclick = () => { closeHaul(); openWard(wardWho()); };
     $('hPup').onclick = () => { const h = S.exp.hauls[haulK], i = h ? h.pupIdx : -1; closeHaul(); if (i >= 0) { focusPup(i); showAway(null); } };
     $('ecBody').addEventListener('click', e => {
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
@@ -1623,11 +1665,14 @@
   }
   function flyTo(eye, target, dur, then) { tween = { e0: camera.position.clone(), t0: controls.target.clone(), e1: eye.clone(), t1: target.clone(), t: 0, dur: dur || 1.2, then }; }
   function flyHome() { const h = homeView(); flyTo(h.eye, h.target, 1.4); }
-  function focusPup(i) {
+  const fdy = () => wardI >= 0 ? 0.6 : 4;   // the followed pup's aim height (the wardrobe card covers the lower screen: aim below it)
+  function focusPup(i, near) {   // near = camera distance (the wardrobe comes close), else 28-55 m
     if (VISIT) { const p = S.pups[i]; if (p) toast(`<span class="dot" style="background:${p.collar}"></span> <b>${esc(p.name)}</b> &middot; ${p.breed} &middot; ${IC[p.job] || ''}${JOB_NAMES[p.job] || ''}`, 2200); pups.select(i); return; }
     follow = i; pups.select(i); refreshRoster(true);
-    if (i < 0) return;
-    const p = pups.list[i].holder.position, tgt = p.clone().setY(p.y + 4);
+    if (i < 0) { closeWard(); return; }
+    if (wardI >= 0 && i !== wardI) closeWard();   // another pup picked on the island / roster: the wardrobe was for the old one
+    const p = pups.list[i].holder.position, tgt = p.clone().setY(p.y + fdy());
+    if (near) { const yw = pups.list[i].yaw + 0.55; flyTo(tgt.clone().add(new THREE.Vector3(Math.sin(yw), 0.42, Math.cos(yw)).setLength(near)), tgt, 1.0); return; }   // the wardrobe: a 3/4 front view
     const dir = camera.position.clone().sub(controls.target); const d = Math.min(Math.max(dir.length(), 28), 55);
     dir.setLength(d); if (dir.y < d * 0.35) dir.y = d * 0.35;
     flyTo(tgt.clone().add(dir.setLength(d)), tgt, 1.0);
@@ -1637,13 +1682,14 @@
     if (boatCam) boatCamTick(dt);
     else if (tween) {
       tween.t += dt; const k = Math.min(1, tween.t / tween.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      let t1 = tween.t1; if (follow >= 0 && !tween.then) t1 = pups.list[follow].holder.position.clone().setY(pups.list[follow].holder.position.y + 4);
+      let t1 = tween.t1; if (follow >= 0 && !tween.then) t1 = pups.list[follow].holder.position.clone().setY(pups.list[follow].holder.position.y + fdy());
       const off1 = tween.e1.clone().sub(tween.t1);
       controls.target.lerpVectors(tween.t0, t1, e); camera.position.lerpVectors(tween.e0, t1.clone().add(off1), e);
       if (k >= 1) { const th = tween.then; tween = null; if (th) th(); }
     } else if (follow >= 0 && pups.list[follow]) {
-      const p = pups.list[follow].holder.position; v3.set(p.x, p.y + 4, p.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 5));
+      const p = pups.list[follow].holder.position; v3.set(p.x, p.y + fdy(), p.z).sub(controls.target).multiplyScalar(Math.min(1, dt * 5));
       controls.target.add(v3); camera.position.add(v3);
+      if (wardI === follow) { const yw = pups.list[follow].yaw + 0.55; v3.set(Math.sin(yw), 0.42, Math.cos(yw)).setLength(WARD_D).add(controls.target); camera.position.lerp(v3, Math.min(1, dt * 1.6)); }   // wardrobe: keep a 3/4 front view while the pup turns
     } else if (drift) drift.update(dt);   // vibe 2 lane C: the idle camera (starts by itself after ~20 s without input)
   }
   // vibe 2 lane C: what the idle camera may drift to now ({id, w weight (>= 9 cuts in), r frame radius m, el, hold s, pos()})
@@ -1842,7 +1888,7 @@
     // vibe pass 1: the calm view (src/calm.js): the panel folds to a pill when idle, the HUD fades after ~9 s without input.
     // Never while something is in use: a card / menu / the tree's words / a selected or followed pup / a text field / the tour.
     if (!VISIT && window.ElderCalm) {
-      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu'];
+      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu', 'wardCard'];
       const vis = id => { const el = $(id); return !!el && !el.hidden && el.offsetParent !== null; };
       calm = ElderCalm.make({ side: $('side'), phone: () => document.body.classList.contains('phone'),
         busy: () => overlayOpen() || sayOpen || !!tour || CQ.length > 0 || pups.selected >= 0 || follow >= 0 || curPlot !== null || CARDS.some(vis) ||
@@ -1906,7 +1952,7 @@
       },
       // Round 2 step 2 (tests): Story, RST (shown colour radius / wave), session, trySpeak(force), showSay(words), closeSay,
       // openDiary(i), closeDiary, setColour(R | null, wave) = jump the shown radius (null = back to the earned one)
-      Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, startWave, get wfx() { return wfx; }, wetness, PORTRAIT, homeView,
+      Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, Wardrobe, openWard, closeWard, wardPick, startWave, get wfx() { return wfx; }, wetness, PORTRAIT, homeView,
       // Round 2 step 3 (tests): Critters, crFx, meetCritter(id, fly), critCam(id), openCritCard(c, visit, first), closeCritCard,
       // spawnCritter(c, key, min) = put a visitor here NOW (captures only: use ?nosave=1 / a test slot), renderCritters
       // Round 2 step 4 (tests): Lanterns, lan (LanternUI: sync, open(tab), openRead(id), status, claim), lfx (LanternFx: release, setSky, setBloom, bloomPos)
@@ -2084,7 +2130,8 @@
     nfx.dance(poses);   // resting pups near a performance dance
     if (life) { const dc = Sim.dayCurve(Sim.dayH(S)); life.apply(S, poses, t, dt, { night: dn.state.night, dusk: dc.dusk, winter: sw[3] || 0, rain: S.events.active.some(e => e.type === 'shower'), camera, target: controls.target, W: W(), H: H() }); }
     if (steer) steer.apply(poses, dt);   // pathing pass: make room for each other + props (view only)
-    for (let i = 0; i < poses.length; i++) { const ps = poses[i]; pups.update(i, ps, t, dt, ps.air ? airY : ground); ps.y = pups.list[i] ? pups.list[i].y : ps.p[1]; }
+    pups.glow(dn.state.night);   // Round 3 update 1: outfits (dress = no-op unless the outfit changed)
+    for (let i = 0; i < poses.length; i++) { const ps = poses[i]; if (S.pups[i]) pups.dress(i, S.pups[i].fit); pups.update(i, ps, t, dt, ps.air ? airY : ground); ps.y = pups.list[i] ? pups.list[i].y : ps.p[1]; }
     nfx.update(S, t, dt, poses, dn.state.night, camera, renderer.domElement.height);
     plots.update(S, t, dt, S.level, poses);
     cameraTick(dt); if (walker) walker.update(dt); controls.update();

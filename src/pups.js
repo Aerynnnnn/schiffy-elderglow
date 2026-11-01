@@ -93,6 +93,67 @@
   }
   const CARRY = ['log', 'rock', 'berries', 'compost', 'fruit'], TOOLS = ['axe', 'pick', 'hammer', 'basket', 'trowel', 'broom'], INSTR = ['lute', 'drum'];
 
+  // ---- outfits (Round 3 update 1, src/wardrobe.js DEFS[id].look): primitives, one template per outfit (geometry + materials
+  // shared by every pup wearing it), parented to a joint so they follow every animation. Head / face items hang on _head
+  // (head sphere ~0.45 round the joint, face +z), neck / back items on _body (hips joint; neck ~0.66 above it).
+  const fitMats = {}, fitGlow = [];
+  const fitMat = (c, glow) => { const k = c + (glow ? 'g' : ''); if (fitMats[k]) return fitMats[k];
+    const col = new THREE.Color(c).convertSRGBToLinear();
+    const m = glow ? new THREE.MeshBasicMaterial({ color: col }) : toon(col); if (glow) { m.userData.base = col.clone(); fitGlow.push(m); } return fitMats[k] = m; };
+  const STAR = (() => { const s = new THREE.Shape(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 0.045 : 0.1, a = k / 10 * Math.PI * 2 + Math.PI / 2; s[k ? 'lineTo' : 'moveTo'](Math.cos(a) * r, Math.sin(a) * r); } return new THREE.ExtrudeGeometry(s, { depth: 0.04, bevelEnabled: false }).translate(0, 0, -0.02); })();
+  const fitTpl = {};
+  function outfitTemplate(id) {
+    if (fitTpl[id]) return fitTpl[id];
+    const D = window.Wardrobe && window.Wardrobe.DEFS[id]; if (!D) return null;
+    const L = D.look, g = new THREE.Group(), a = fitMat(L.col), b = fitMat(L.col2, L.glow), ink = [];
+    const add = (geo, m, pos, rot, sc, inked) => { const o = new THREE.Mesh(geo, m); if (pos) o.position.fromArray(pos); if (rot) o.rotation.fromArray(rot); if (sc) o.scale.fromArray(sc); g.add(o); if (inked) ink.push(o); return o; };
+    const K = L.kind;
+    // measured on art/pups.glb: head = +-0.47 round its joint (top 0.43, snout front 0.5), ears at x +-0.23 from y 0.29 up to 0.53;
+    // the body's neck band (under the head) at body y ~0.46, ~0.46 round; the back at z ~-0.55
+    if (K === 'acorn') {   // half-sphere cap with a darker rim + a stalk
+      add(new THREE.SphereGeometry(0.46, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), a, [0, 0.27, -0.02], null, [1, 0.62, 1], true);
+      add(new THREE.TorusGeometry(0.46, 0.06, 8, 24), b, [0, 0.27, -0.02], [Math.PI / 2, 0, 0]);
+      add(new THREE.CylinderGeometry(0.04, 0.06, 0.22, 8), b, [0.03, 0.63, -0.02], [0, 0, -0.35]);
+    } else if (K === 'leaves') {   // a big leaf over the crown, one over each ear + a curled stem
+      const leaf = new THREE.SphereGeometry(0.24, 12, 8).scale(1, 0.24, 0.6);
+      add(leaf, a, [0, 0.47, -0.04], [-0.2, 0, 0], [1.5, 1, 1.5], true);
+      add(leaf, b, [-0.33, 0.42, 0], [0, 0.3, 0.85], null, true);
+      add(leaf, b, [0.33, 0.42, 0], [0, -0.3, -0.85], null, true);
+      add(new THREE.TorusGeometry(0.07, 0.022, 6, 10, Math.PI * 1.4), b, [0, 0.56, 0.16], [0, Math.PI / 2, 0]);
+    } else if (K === 'beret') {   // flat beret tilted to one side + one long feather
+      add(new THREE.CylinderGeometry(0.4, 0.36, 0.12, 22), a, [0.06, 0.45, -0.02], [0.1, 0, -0.22], null, true);
+      add(new THREE.SphereGeometry(0.06, 8, 6), a, [0.14, 0.53, -0.02]);
+      add(new THREE.SphereGeometry(0.12, 10, 8), b, [-0.3, 0.7, 0.04], [0.15, 0, 0.6], [0.5, 2.8, 0.24], true);
+    } else if (K === 'goggles') {   // two rings + lenses pushed up on the forehead, strap round the head
+      for (const s of [-1, 1]) { add(new THREE.TorusGeometry(0.13, 0.04, 8, 16), a, [s * 0.16, 0.27, 0.4], [-0.5, 0, 0]); add(new THREE.CircleGeometry(0.115, 16), b, [s * 0.16, 0.275, 0.41], [-0.5, 0, 0]); }
+      add(new THREE.TorusGeometry(0.47, 0.035, 6, 28), a, [0, 0.22, 0], [Math.PI / 2 - 0.3, 0, 0]);
+    } else if (K === 'scarf') {   // wrapped round the neck band + two tails at the back + a little glowing star
+      add(new THREE.TorusGeometry(0.46, 0.1, 10, 26), a, [0, 0.46, 0.02], [Math.PI / 2, 0, 0], null, true);
+      add(new THREE.BoxGeometry(0.16, 0.38, 0.06), a, [0.14, 0.28, -0.5], [0.3, 0, 0.12]);
+      add(new THREE.BoxGeometry(0.16, 0.3, 0.06), a, [-0.06, 0.31, -0.51], [0.25, 0, -0.18]);
+      add(STAR, b, [0.18, 0.42, 0.55], [0, 0.3, 0], [1.3, 1.3, 1.3]);
+    } else if (K === 'stars') {   // a thin band with five star charms across the chest
+      add(new THREE.TorusGeometry(0.46, 0.045, 6, 26), fitMat(L.col2), [0, 0.46, 0.02], [Math.PI / 2, 0, 0]);
+      for (let k = -2; k <= 2; k++) { const an = k * 0.4; add(STAR, fitMat(L.col, true), [Math.sin(an) * 0.5, 0.4 - Math.abs(k) * 0.02, Math.cos(an) * 0.5 + 0.02], [0, an, 0], [1.3, 1.3, 1.3]); }
+    } else if (K === 'bandana') {   // a triangle over the chest + a knot at the back
+      add(new THREE.TorusGeometry(0.46, 0.06, 8, 26), a, [0, 0.46, 0.02], [Math.PI / 2, 0, 0]);
+      add(new THREE.ConeGeometry(0.3, 0.4, 3), a, [0, 0.28, 0.46], [Math.PI - 0.25, 0, 0], [1, 1, 0.3], true);
+      add(new THREE.SphereGeometry(0.07, 8, 6), b, [0, 0.24, 0.53]);
+      add(new THREE.SphereGeometry(0.09, 8, 6), a, [0, 0.46, -0.48]);
+    } else if (K === 'cape') {   // a curved cape from the neck down the back, glowing firefly dots
+      add(new THREE.CylinderGeometry(0.47, 0.66, 0.66, 20, 1, true, Math.PI * 0.6, Math.PI * 0.8), new THREE.MeshToonMaterial({ color: a.color, gradientMap: grad, side: THREE.DoubleSide }), [0, 0.15, 0.02], null, null, true);
+      add(new THREE.TorusGeometry(0.46, 0.05, 6, 24), a, [0, 0.47, 0.02], [Math.PI / 2, 0, 0]);
+      const dot = new THREE.SphereGeometry(0.05, 6, 5);
+      for (const [d, y] of [[-0.5, 0.38], [0.35, 0.3], [-0.1, 0.14], [0.7, 0.05], [-0.75, 0.0], [0.15, -0.1]]) { const r = 0.48 + (0.48 - y) / 0.66 * 0.19, an = Math.PI + d; add(dot, b, [Math.sin(an) * r, y, Math.cos(an) * r + 0.02]); }   // on the cape's outside
+    } else if (K === 'cloud') {   // puffy cloud balls along the back, a soft blue underside
+      const ball = new THREE.SphereGeometry(0.19, 12, 9);
+      for (const [x, y, z, s, m] of [[0, 0.46, -0.5, 1.1, a], [-0.27, 0.42, -0.45, 0.95, a], [0.27, 0.42, -0.45, 0.95, a], [-0.16, 0.2, -0.6, 1, a], [0.16, 0.2, -0.6, 1, a], [0, -0.02, -0.64, 0.9, b], [-0.34, 0.08, -0.52, 0.75, b], [0.34, 0.08, -0.52, 0.75, b]]) add(ball, m, [x, y, z], null, [s, s, s * 0.8], m === a && y > 0.3);
+    }
+    for (const o of ink) { const h = new THREE.Mesh(o.geometry, inkMat); h.userData.ink = 1; o.add(h); }   // ink hulls on the big pieces only
+    g.userData = { slot: D.slot };
+    return fitTpl[id] = g;
+  }
+
   // ---- primitive stand-in (same joint layout as the GLB pups)
   function primitivePup(col) {
     const root = new THREE.Group(), body = toon(col), light = toon(0xfff3e0);
@@ -288,8 +349,18 @@
         const far = P.holder.position.distanceTo(cam) > (FAR || 170);
         if (P.far === far) continue; P.far = far;
         for (const o of P.j._detail || []) o.visible = !far;
+        if (P.fit) P.fit.traverse(o => { if (o.userData.ink) o.visible = !far; });
       }
     };
+    // outfits: dress(i, id | null) swaps pup i's outfit (no-op when unchanged; game.js calls it every frame from S.pups[i].fit)
+    api.dress = (i, id) => {
+      const P = typeof i === 'object' ? i : list[i]; if (!P) return;   // (an npc's P too: tools/wardrobe_review.js) id = id || null; if (P.fitId === id) return;
+      if (P.fit) P.fit.parent.remove(P.fit); P.fit = null; P.fitId = id;
+      const t = id && outfitTemplate(id), jt = t && (t.userData.slot === 'head' || t.userData.slot === 'face' ? P.j.head : P.j.body); if (!jt) return;
+      const o = t.clone(true); o.traverse(x => { if (x.userData.ink) x.visible = !P.far; }); jt.add(o); P.fit = o;
+    };
+    // glowing outfit parts (unlit): a little dimmer by day, brighter at night (k = DayNight night 0..1)
+    api.glow = k => { for (const m of fitGlow) m.color.copy(m.userData.base).multiplyScalar(0.85 + 0.75 * k); };
     api.select = i => { api.selected = i; if (i < 0) ring.visible = false; };
     api.head = (i, out) => { const P = list[i]; return out.copy(P.holder.position).setY(P.holder.position.y + S * 1.85); };
     return api;

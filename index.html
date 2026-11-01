@@ -438,6 +438,20 @@
   .dyl { display: flex; gap: 10px; padding: 4px 0; font-size: 14px; line-height: 1.45; } .dyl b { flex: none; width: 52px; font-family: var(--disp); font-weight: 400; color: #b07a45; font-size: 13px; padding-top: 1px; }
   .dyl span { font-style: italic; color: #3e3860; } .dyl.today b { color: #8f6bff; } .dsub { margin: 6px 0; font-size: 12px; color: #6a5a7a; }
   body.phone .dcard { width: 100%; max-height: 80%; align-self: flex-end; border-radius: 18px 18px 0 0; }
+  /* Round 3 update 1: the wardrobe (bottom card, the pup on the island is the preview) */
+  #wardCard { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(520px, 94%); z-index: 21; padding: 10px 14px 10px; background: linear-gradient(175deg, #fffdf6, #fff0f6); animation: tin .3s ease-out; }
+  #wardCard[hidden] { display: none; } .wdh { display: flex; align-items: center; gap: 6px; } .wdh > b { font-size: 20px; margin-right: auto; } .wdh svg.ic { width: 22px; height: 22px; }
+  .wdp { display: inline-flex; align-items: center; gap: 5px; min-width: 84px; justify-content: center; font-size: 15px; } .wdp .dot { width: 13px; height: 13px; }
+  .wdnav { padding: 2px 8px; font-size: 12px; } #wdClose { border: none; background: none; font-size: 17px; cursor: pointer; margin-left: 4px; }
+  #wdNow { margin: 4px 0 6px; font-size: 13px; color: #5a4a6a; }
+  #wdGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; max-height: 210px; overflow-y: auto; }
+  .wt { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 4px 5px; border: 2px solid #e2d6ef; border-radius: 12px; background: #fff; font: 600 12px Fredoka, sans-serif; color: var(--ink); cursor: pointer; text-align: center; }
+  .wt small { font-weight: 400; font-size: 10.5px; color: #7a6a8a; } .wt.on { border-color: #4fbf6a; background: #effbef; box-shadow: 0 0 0 2px #4fbf6a55; } .wt.lock { opacity: .55; cursor: default; }
+  .wsw { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, var(--c2, #ddd) 0 28%, var(--c, #bbb) 30%); border: 2px solid var(--ink); }
+  .wsw svg.ic { width: 18px; height: 18px; } .wt.lock .wsw { background: #e8e2ee; }
+  .wdf { display: flex; align-items: center; gap: 8px; margin-top: 7px; } .wdf small { font-size: 11px; color: #7a6a8a; margin-right: auto; }
+  .pup .frl .wdbtn { margin-left: 4px; } .ptile.fitt { cursor: pointer; font: inherit; color: inherit; } button.ptile.fitt:hover { filter: brightness(1.04); } .ggot .ghost.sm { padding: 2px 10px; font-size: 12px; margin-top: 4px; }
+  body.phone #wardCard { width: 100%; bottom: 0; border-radius: 18px 18px 0 0; box-sizing: border-box; padding: 10px 12px 12px; } body.phone #wdGrid { max-height: 170px; grid-template-columns: repeat(3, 1fr); }
   /* Round 2 step 3: sky critters (card on tap, album tab, first-sighting sparkle) */
   #critCard { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); width: min(400px, 92%); z-index: 21; padding: 12px 16px 12px; background: linear-gradient(175deg, #fffdf6, #f3edff); animation: tin .35s ease-out; }
   #critCard[hidden] { display: none; } #ccClose { position: absolute; top: 8px; right: 10px; border: none; background: none; font-size: 17px; cursor: pointer; }
@@ -600,7 +614,7 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
   <div id="expCard" class="card" hidden><div class="pch"><span id="ecTitle" class="disp"></span><button id="ecClose" title="Close">&#10005;</button></div><div id="ecBody"></div></div>
   <div id="evCard" class="card" hidden><div class="pch"><span id="evTitle" class="disp"></span><button id="evClose" title="Close">&#10005;</button></div><div id="evBody"></div></div>
   <div id="needCard" class="card" hidden><div class="pch"><span id="ncTitle" class="disp"></span><button id="ncClose" title="Close">&#10005;</button></div><div id="ncBody"></div></div>
-  <div id="haul" hidden><div class="card hcard"><div id="hSack" class="sack"><i></i></div><h2 id="hTitle" class="disp"></h2><div id="hTeam" class="hteam"></div><div id="hItems" class="hitems"></div><div class="gf"><button class="big" id="hOk">Lovely!</button><button class="ghost" id="hDecor" hidden>Place decorations</button><button class="ghost" id="hPup" hidden>Say hi to the new pup</button></div></div></div>
+  <div id="haul" hidden><div class="card hcard"><div id="hSack" class="sack"><i></i></div><h2 id="hTitle" class="disp"></h2><div id="hTeam" class="hteam"></div><div id="hItems" class="hitems"></div><div class="gf"><button class="big" id="hOk">Lovely!</button><button class="ghost" id="hDecor" hidden>Place decorations</button><button class="ghost" id="hWard" hidden>Dress a pup</button><button class="ghost" id="hPup" hidden>Say hi to the new pup</button></div></div></div>
   <div id="plotCard" class="card" hidden><div class="pch"><span id="pcTitle" class="disp"></span><button id="pcPrev" title="Previous plot">&#9664;</button><button id="pcNext" title="Next plot">&#9654;</button><button id="pcClose" title="Close">&#10005;</button></div><div id="pcBody"></div></div>
   <div id="socCard" class="card" hidden><div class="pch"><span id="socTitle" class="disp"></span><button id="socClose" title="Close">&#10005;</button></div><div id="socBody"></div></div>
   <div id="visBan" class="card" hidden></div>
@@ -618,6 +632,7 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
   <div id="mem" hidden><div class="card mcard"><div id="memBody"></div><button class="big" id="memOk">Lovely!</button></div></div>
   <div id="treeSay" class="card" hidden><div class="tsh"><span id="tsIc"></span><b class="disp">The Elder Tree</b><small id="tsKind"></small><button id="tsClose" title="Close">&#10005;</button></div><p id="tsText"></p><div id="tsPups"></div><div class="tsf"><button class="ghost" id="tsLog">All the tree's words</button><button class="big" id="tsOk">Mm.</button></div></div>
   <div id="diary" hidden><div class="card dcard"><div class="gh"><span class="dot" id="dyDot"></span><h2 id="dyTitle"></h2><button id="dyClose" title="Close">&#10005;</button></div><div id="dyBody"></div></div></div>
+  <div id="wardCard" class="card" hidden><div class="wdh"><span id="wdIc"></span><b class="disp">Wardrobe</b><button class="ghost wdnav" id="wdPrev" title="Previous pup">&#9664;</button><span class="wdp"><span class="dot" id="wdDot"></span><b id="wdName"></b></span><button class="ghost wdnav" id="wdNext" title="Next pup">&#9654;</button><button id="wdClose" title="Close">&#10005;</button></div><p id="wdNow"></p><div id="wdGrid"></div><div class="wdf"><small>One of each outfit: putting it on another pup moves it.</small><button class="ghost" id="wdOff">Take off</button></div></div>
   <div id="critCard" class="card" hidden><button id="ccClose" title="Close">&#10005;</button><div id="ccBody"></div></div>
   <div id="loading"><div class="lsc" aria-hidden="true"><div class="glow"></div>
     <svg viewBox="0 0 200 200"><g fill="#2a2442">
@@ -639,7 +654,7 @@ body.phone #placeBar { bottom: 12px; left: 8px; right: 8px; transform: none; max
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

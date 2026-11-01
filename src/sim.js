@@ -137,13 +137,13 @@
 
   function newPup(def, job, at) {
     return { id: def.id, name: def.name, breed: def.breed, collar: def.collar, like: def.like, dislike: def.dislike,
-      job, phase: 'idle', t: 0, dur: 0, leg: null, at, face: null, trips: 0, acc: 0, morale: 70, task: null, tgt: null, exp: null, xpE: 0, dy: [], dd: null, dt0: 0 };
+      job, phase: 'idle', t: 0, dur: 0, leg: null, at, face: null, trips: 0, acc: 0, morale: 70, task: null, tgt: null, exp: null, xpE: 0, dy: [], dd: null, dt0: 0, fit: null };
   }
   function create(nav, seed) {   // seed: the island's event seed (the game passes a random one for a fresh island)
     const sc = C.SCALE[0];
     if (nav.setDecor) nav.setDecor([], '');   // a fresh island has no decor: its nap spots must not dodge another island's
     const s = {
-      v: 11, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 12, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -515,7 +515,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -587,6 +587,7 @@
       if (typeof q.xpE === 'number') p.xpE = q.xpE;   // explorer xp (v4); trips are checked by Exped.sanitize below
       if (q.isNew === true && !v1) p.isNew = true;
       if (q.special === true && !v1) p.special = true;
+      if (o.v >= 12 && typeof q.fit === 'string') p.fit = q.fit;   // v12 wardrobe: checked by Wardrobe.sanitize below
       if (window.Story) window.Story.pupIn(p, v1 ? null : q);   // v8: diary
       s.pups.push(p);
     });
@@ -608,6 +609,8 @@
     if (window.Critters) window.Critters.sanitize(s, o.v >= 9 ? o : {});
     // v10 (Round 2 step 4): lantern notes (received / sent logs, a lantern waiting for dusk) + World Bloom petals + claimed gifts
     if (window.Lanterns) window.Lanterns.sanitize(s, o.v >= 10 ? o : {});
+    // v12 (Round 3 update 1): outfits on pups (owned ids only, one pup per outfit); older saves: everyone undressed
+    if (window.Wardrobe) window.Wardrobe.sanitize(s);
     s.health = healthOf(s); return s;
   }
 

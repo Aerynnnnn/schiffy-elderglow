@@ -82,7 +82,7 @@
   function snapshot(s, sea, nav) {
     const so = s.social, pups = s.pups.slice(0, 40).map((p, i) => {
       const nm = nameCheck(p.name, 'pup').ok ? p.name : window.Sim.NAMES[i % window.Sim.NAMES.length];   // a rude pup name never goes public
-      return [nm, p.breed, p.collar, p.exp ? 'rest' : p.job, p.like, p.dislike, p.parents ? 1 : 0];
+      return [nm, p.breed, p.collar, p.exp ? 'rest' : p.job, p.like, p.dislike, p.parents ? 1 : 0, p.fit || 0];   // 8th = outfit (wardrobe, v12); an older game reads 7
     });
     const plots = []; for (const k in s.plots) { const e = s.plots[k]; plots.push([+k, e.type, e.done ? 1 : 0, e.done ? 100 : Math.round(100 * e.prog / Math.max(1, window.Sim.workOf(e.type, (nav && nav.plotBy[k]) || { piece: '' }) || 1))]); }
     plots.sort((a, b) => a[0] - b[0]);
@@ -122,6 +122,7 @@
     const st = Sim.sanitize({ v: 7, level: lv, xp: Sim.C.LV_XP[lv - 1], needs, plots, queue: [], pups, placed, inv: { decor: placed.map(x => x.id).filter(x => typeof x === 'string') },
       wards: Array.isArray(o.wards) ? o.wards : [], wake: { t: o.wk ? -7200 : null }, res: { wood: 50, stone: 50, food: 200, crystal: 0 } }, nav);
     if (!st) return null;
+    if (window.Wardrobe) window.Wardrobe.unsnap(st, o.pups);   // outfits (8th entry; a 7-entry snapshot = everyone undressed)
     st.events.slot = 1e9; st.decide = false; st.lastArrive = 1e9; st.social.acct = null;   // quiet: no events, no arrivals, no account
     return st;
   }
