@@ -26,6 +26,9 @@
     EG_Bush_A: [0.09, 0.1, 0.97, 1.09], EG_Bush_B: [-0.09, -0.07, 1.42, 1.4], EG_WispTree_A: [-0.02, -0.28, 1.63, 1.73], EG_WispTree_B: [-0.11, -0.01, 1.54, 1.71],
     EG_RuneBoulder_A: [-0.05, -0.12, 1.31, 0.9], EG_RuneBoulder_B: [-0.01, 0, 0.94, 0.8], EG_FallenLog_A: [0.27, 0, 4.06, 1.5], EG_FallenLog_B: [0, -0.26, 1.75, 0.71],
     EG_CrystalPillar: [0.19, 0.21, 2.38, 2.45], EG_LightOrb: [-0.02, -0.08, 1.2, 1.2],
+    // map cleanup (2026-11-01): the library's cozy sets (kit_elderglow_cozy, placed at 2x); stepping stones are walked on, so none
+    EG_Bench: [0.02, -0.11, 0.98, 0.39], EG_BerryCart: [-0.18, 0.2, 1.69, 0.95], EG_Fence: [0, 0.07, 1.59, 0.15], EG_FlowerBed: [0.19, -0.02, 1.44, 1.27],
+    EG_LanternPost: [0.27, 0.02, 0.54, 0.28], EG_Picnic: [0, 0, 0.9, 0.9], EG_Signpost: [0.03, 0.17, 0.68, 0.57], EG_WoodPile: [0.39, 0.3, 1.74, 0.96],
   };
   const PUP_R = 0.9;   // half a drawn pup's width (pups are drawn ~3x life size): footprints grow by this much
   const SLACK = 6;     // m a walk may still be over water next to an end point that lies in the water mask (bank / shore nodes)
@@ -139,6 +142,7 @@
           if (!di && !dj) continue; const a = i + di, b = j + dj, o = open(a, b); if (!o) continue;
           const mx = cx(i) + di * WC / 2, mz = cz(j) + dj * WC / 2;   // the step itself must stay dry (a sliver of river between two dry cell centres)
           if (wetM(mx, mz) || wetM((cx(i) + mx) / 2, (cz(j) + mz) / 2) || wetM((cx(a) + mx) / 2, (cz(b) + mz) / 2)) continue;
+          if (useBlk && o !== 3 && open(i, j) !== 3 && blockAt(mx, mz, ex)) continue;   // nor clip a footprint's corner (a diagonal step past an oak)
           const nk = b * nx + a, ng = g[k] + Math.hypot(di, dj) * WC * (o === 2 ? 1.8 : o === 3 ? 4 : 1);
           if (ng < g[nk]) { g[nk] = ng; from[nk] = k; push(ng + H(a, b), nk); }
         }
