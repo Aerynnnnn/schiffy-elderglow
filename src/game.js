@@ -195,7 +195,7 @@
     return (STATUS[p.job] || {})[p.phase] || '';
   }
 
-  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, crFx = null, wfx = null, life = null, booted = false, bootAt = 0;   // wfx = vibe pass 2 living world (src/world_fx.js)
+  let map, nav, S, pups, fx, plots, ground, dn, expFx, nfx, seaFx, crFx = null, wfx = null, life = null, steer = null, booted = false, bootAt = 0;   // wfx = vibe pass 2 living world (src/world_fx.js)
   const newSeed = () => (+Q.get('seed') >>> 0) || ((Math.random() * 4294967296) >>> 0) || 1;   // ?seed=N (tests)   // a fresh island's event seed (the sim itself never uses Math.random)
   const ev = [];
 
@@ -249,6 +249,27 @@
     for (const k of cells) { let i = Math.round(k / 100003), j = k - i * 100003; if (j > 50000) { j -= 100003; i += 1; } else if (j < -50000) { j += 100003; i -= 1; } pairs.push([i, j]); }
     pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     const runs = []; for (const [i, j] of pairs) { const r = runs[runs.length - 1]; if (r && r[0] === i && r[2] === j - 1) r[2] = j; else runs.push([i, j, j]); }
+    return runs;
+  }
+  // pathing pass: data/water_cells.json `fine` = 1 m cells whose centre is inside a water triangle AND whose water is >= 0.4 m
+  // deep over the ground grid (the river sheets run on under the banks; the shallow rim is shore). __game.waterFine() re-makes them.
+  function waterFine(m) {
+    const cells = new Map();
+    for (const geo of m.batches.filter(b => b.terrain && b.inst[0] && b.inst[0].role === 'water').flatMap(b => [b.geo].concat(b.see.map(s => s.geo))).filter(x => x && x.index)) {
+      const A = geo.attributes.position, I = geo.index.array;
+      for (let t = 0; t < I.length; t += 3) {
+        const a = I[t], c = I[t + 1], d = I[t + 2], ax = A.getX(a), ay = A.getY(a), az = A.getZ(a), bx = A.getX(c), by = A.getY(c), bz = A.getZ(c), cx = A.getX(d), cy = A.getY(d), cz = A.getZ(d);
+        const den = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(den) < 1e-9) continue;
+        for (let i = Math.floor(Math.min(ax, bx, cx)); i <= Math.floor(Math.max(ax, bx, cx)); i++) for (let j = Math.floor(Math.min(az, bz, cz)); j <= Math.floor(Math.max(az, bz, cz)); j++) {
+          const px = i + 0.5, pz = j + 0.5, w1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / den, w2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / den, w3 = 1 - w1 - w2;
+          if (w1 < 0 || w2 < 0 || w3 < 0) continue;
+          const k = i + ',' + j, wy = w1 * ay + w2 * by + w3 * cy; if (!cells.has(k) || cells.get(k) < wy) cells.set(k, wy);
+        }
+      }
+    }
+    const keep = []; for (const [k, wy] of cells) { const [i, j] = k.split(',').map(Number), g = ground.raw(i + 0.5, j + 0.5); if (g === null || g < wy - 0.4) keep.push([i, j]); }
+    keep.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const runs = []; for (const [i, j] of keep) { const r = runs[runs.length - 1]; if (r && r[0] === i && r[2] === j - 1) r[2] = j; else runs.push([i, j, j]); }
     return runs;
   }
   function waterFree(m) {
@@ -1589,6 +1610,8 @@
     // vibe pass 2 lane B: pup life (visual only): moments while pups rest, reactions to critters + lanterns, chatter bubbles
     if (window.PupLife) life = PupLife(scene, nav, ground, { phone: PHONE, map: m, wfx, plots, pups, crFx: () => crFx, lfx: () => lfx, scale: () => fx.scale,
       quiet: () => !booted || overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || !!tween });
+    // pathing pass: drawn pups make room for each other + lane A's props (view only, src/steer.js)
+    if (window.PupSteer) steer = PupSteer(nav, { wfx });
     // Round 2 step 3: sky critters (the library's elderglow_critters.glb; loads in the background, never blocks the boot)
     crFx = CritterFx(scene, m, nav, ground, { phone: PHONE, scale: () => fx.scale, H: () => renderer.domElement.height });
     crFx.load(LIB + 'elderglow_critters.glb', loader).catch(e => console.warn('critters not loaded:', e));
@@ -1623,7 +1646,7 @@
     if (ld.fresh) { hintShown = true; $('hint').hidden = false; }
     bootSum = sum && ld.away >= 60 ? sum : null;
     if (VISIT) {   // step 6: Schiffy walks in from the tree door; the camera follows her
-      walker = Walker(scene, { nav, ground, camera, controls }); await walker.load(new THREE.GLTFLoader());
+      walker = Walker(scene, { nav, ground, camera, controls, wfx }); await walker.load(new THREE.GLTFLoader());
       // she starts on the path out of the tree door, past the pups' nap spots (rest grid reaches ~40 m beyond the door)
       const TP = nav.TP, dp = nav.door(fx.scale).p, ux = dp[0] - TP[0], uz = dp[2] - TP[2], ul = Math.hypot(ux, uz) || 1, out = 48;
       const sx = dp[0] + ux / ul * out, sz = dp[2] + uz / ul * out; walker.place([sx, ground(sx, sz, dp[1]), sz]); const wp = walker.pos();
@@ -1690,7 +1713,7 @@
       // vibe pass 1 (tests): calm (ElderCalm: faded, folded, pinned, fold(v), setPin(v)), toast(html, ms, onClick) through the queue,
       // TQ (queue + live toasts), queueCard(k, open), CQ, runTour(stops) / endTour, tour (null when none), tourStops(sum, news)
       // vibe pass 2 lane B: life = PupLife (force(kind, i, S, poses), say(i, text), stats(), st), Traits, poses (last frame's drawn poses)
-      get life() { return life; }, Traits: window.Traits, get poses() { return poses; },
+      get life() { return life; }, Traits: window.Traits, get poses() { return poses; }, get steer() { return steer; },   // pathing pass
       // vibe 2 lane C (tests): laneC = { light (LightFx: K, on, gold, stats()), drift (ElderDrift: IDLE, force(v), active, subject, list(), stop()),
       // voice (TreeVoice: show(text), next, count, live), foley (stats) }, driftSubjects(), critCam(id)
       laneC: { get light() { return lightFx; }, get drift() { return drift; }, get voice() { return voice; }, get foley() { return foley; } }, driftSubjects, critCam, closeSay,
@@ -1727,7 +1750,7 @@
       Critters, get crFx() { return crFx; }, meetCritter, critCam, openCritCard, closeCritCard, sparkleAt,
       spawnCritter(c, key, min) { const sp = Critters.BY[c]; if (!sp) return null; S.crit.vis = S.crit.vis.filter(v => v.c !== c); const v = { id: ++S.crit.n, c, k: key || 't0', t0: S.time - 10, end: S.time + (min || 60) * 60, tap: 0 }; S.crit.vis.push(v); Critters.entry(S, c).v++; return v; },
       setColour(R, wave) { RST.lock = null; RST.wave = null; ElderMap.uRestWave.value = 0; if (R === null) { RST.R = Story.radius(S).R; return RST.R; } if (wave) { RST.R = Math.min(RST.R, R); startWave(RST.R, R); RST.wave.lockEnd = R; } else RST.lock = R; return R; },
-      waterRuns() { return waterRuns(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
+      waterRuns() { return waterRuns(m); }, waterFine() { return waterFine(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
   }).catch(e => { err('Could not start: ' + (e.stack || e)); window.__mapError = String(e); });
 
   // ---- loop: fixed sim steps from real time, render reads the sim
@@ -1893,6 +1916,7 @@
     }
     nfx.dance(poses);   // resting pups near a performance dance
     if (life) { const dc = Sim.dayCurve(Sim.dayH(S)); life.apply(S, poses, t, dt, { night: dn.state.night, dusk: dc.dusk, winter: sw[3] || 0, rain: S.events.active.some(e => e.type === 'shower'), camera, target: controls.target, W: W(), H: H() }); }
+    if (steer) steer.apply(poses, dt);   // pathing pass: make room for each other + props (view only)
     for (let i = 0; i < poses.length; i++) { const ps = poses[i]; pups.update(i, ps, t, dt, ps.air ? airY : ground); ps.y = pups.list[i] ? pups.list[i].y : ps.p[1]; }
     nfx.update(S, t, dt, poses, dn.state.night, camera, renderer.domElement.height);
     plots.update(S, t, dt, S.level, poses);

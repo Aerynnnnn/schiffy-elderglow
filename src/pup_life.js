@@ -47,6 +47,9 @@
     // the bridge deck under (x, z): the lowest up-facing surface of the map's bridge pieces near the road height (null = none)
     const RC = new THREE.Raycaster(), DOWN = new THREE.Vector3(0, -1, 0), NM = new THREE.Matrix3();
     function deckY(x, z, y0) {
+      // pathing pass: the nav's deck profile first (the raycast below only sees bridges drawn this frame: a seat or deck
+      // height asked for while that bridge was culled came back null and stayed cached)
+      if (nav.deckY) { const y = nav.deckY(x, z); if (y !== null) return y > y0 - 1.5 && y < y0 + 8 ? y : null; }
       const ms = o.map ? o.map.batches.filter(b => /Bridge/.test(b.key) && b.mesh).map(b => b.mesh) : []; if (!ms.length) return null;
       RC.set(new THREE.Vector3(x, y0 + 25, z), DOWN); RC.far = 40; let best = null;
       for (const h of RC.intersectObjects(ms, false)) {
@@ -94,6 +97,8 @@
         const ax = w.water[0] - w.p[0], az = w.water[2] - w.p[2], l = Math.hypot(ax, az) || 1, ux = ax / l, uz = az / l;
         for (const s of [-1, 1]) { const x = w.p[0] + ux * Math.min(2.2, l * 0.5) - uz * s * 6, z = w.p[2] + uz * Math.min(2.2, l * 0.5) + ux * s * 6; SP.river.push({ key: 'r' + k + s, p: [x, w.p[1], z], face: [ux, uz], n: w.n }); }
       });
+      // pathing pass: a bank seat that is really in the river (some lake job spots stand in it) or in a house is dropped
+      if (nav.wet) SP.river = SP.river.filter(v => !nav.wet(v.p[0], v.p[2]) && !(nav.blockAt && nav.blockAt(v.p[0], v.p[2], null)));
       return SP;
     }
     function benchSeats() {

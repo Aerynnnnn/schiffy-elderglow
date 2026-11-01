@@ -1,13 +1,16 @@
 // Walker (step 6): the visitor walks someone's island as Schiffy (art/schiffy.glb = Sky Patrol's rigged model, a COPY
-// via Pawty; Idle + Run clips). Simpler than the library viewer's walk mode (walktest.js): no wall collision.
+// via Pawty; Idle + Run clips). Simpler than the library viewer's walk mode (walktest.js).
 //  - PC: WASD / arrows walk (camera-relative, Shift = run), the camera orbits + follows; click the ground = walk there
 //  - phone: tap the ground = walk there (the road graph, like the pups: bridges, bent round the trunk)
-// Height from the game's ground grid (the same one the pups stand on); off the map = blocked.
+// Height from the game's ground grid (the same one the pups stand on), the deck on a bridge; off the map = blocked.
+// Pathing pass (2026-11-01): she no longer walks into deep water off a bridge, through a house / tree / rock footprint
+// (nav.blockAt) or lane A's props (wfx.propsNear); WASD slides along them, a tap walks round them (nav legs) and a tap
+// in the river / on a roof walks to the nearest free spot.
 (function () {
   'use strict';
   const V3 = THREE.Vector3;
   function Walker(scene, opt) {
-    const { nav, ground, camera, controls } = opt;
+    const { nav, ground, camera, controls, wfx } = opt;
     const H = 5.2, SPEED = 11, RUN = 20;
     const holder = new THREE.Group(); scene.add(holder);
     let model = null, mixer = null, idle = null, run = null, ready = false;
@@ -45,15 +48,26 @@
         }, undefined, e => { console.warn('Schiffy model', e); res(false); });
       });
     }
-    const gy = (x, z, fb, br) => ground(x, z, fb, br);
+    const deck = (x, z) => (nav.deckY ? nav.deckY(x, z) : null);
+    const gy = (x, z, fb, br) => { const d = deck(x, z); return d !== null ? d : ground(x, z, fb, br); };
+    // where she may stand: not deep water (off a deck), not inside a footprint, not on a prop (R = her half width)
+    const PR = [], R = 1.1;
+    function free(x, z) {
+      if (nav.wet && nav.wet(x, z)) return false;
+      if (nav.blockAt && nav.blockAt(x, z, null)) return false;
+      if (wfx && wfx.propsNear) for (const c of wfx.propsNear(x, z, 4, PR)) if (Math.hypot(x - c[0], z - c[1]) < c[2] + R) return false;
+      return true;
+    }
+    // the nearest free point to p (rings out to 24 m), or p
+    function freeNear(p) { if (free(p[0], p[2])) return p; for (let r = 2; r <= 24; r += 2) for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, x = p[0] + Math.cos(a) * r, z = p[2] + Math.sin(a) * r; if (free(x, z) && ground.raw(x, z) !== null) return [x, gy(x, z, p[1]), z]; } return p; }
     function place(p) { st.x = p[0]; st.z = p[2]; st.y = gy(p[0], p[2], p[1]); st.path = null; holder.position.set(st.x, st.y, st.z); }
-    // nearest road node (bridges included: tapping a bridge walks onto it)
-    function nodeNear(x, z) { let bi = 0, bd = Infinity; nav.nodes.forEach((n, i) => { const d = (n.p[0] - x) ** 2 + (n.p[2] - z) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; }
+    // nearest road node (bridges included: tapping a bridge walks onto it; never a door node: she would go in at that door)
+    function nodeNear(x, z) { let bi = 0, bd = Infinity; nav.nodes.forEach((n, i) => { if (n.door) return; const d = (n.p[0] - x) ** 2 + (n.p[2] - z) ** 2; if (d < bd) { bd = d; bi = i; } }); return bi; }
     function walkTo(p, trunkR) {
+      p = freeNear(p);
       const a = { p: [st.x, st.y, st.z], n: nodeNear(st.x, st.z) }, b = { p: [p[0], p[1], p[2]], n: nodeNear(p[0], p[2]) };
-      // a short hop goes straight; a long one follows the roads
-      const direct = Math.hypot(p[0] - st.x, p[2] - st.z) < 30;
-      st.path = direct ? { pts: [a.p, b.p], cum: [0, Math.hypot(p[0] - st.x, p[2] - st.z)], br: [false, false] } : nav.leg(a, b, trunkR);
+      // a short hop goes straight when that line is dry + clear; else the nav leg (round water, houses, trees, by the bridges)
+      const direct = Math.hypot(p[0] - st.x, p[2] - st.z) < 30 && (!nav.segOk || nav.segOk(a.p, b.p, null, true));      st.path = direct ? { pts: [a.p, b.p], cum: [0, Math.hypot(p[0] - st.x, p[2] - st.z)], br: [false, false] } : nav.leg(a, b, trunkR);
       if (direct) st.path.len = st.path.cum[1];
       st.s = 0; st.dest = p.slice(); ring.position.set(p[0], gy(p[0], p[2], p[1]) + 0.25, p[2]); ring.visible = true;
     }
@@ -85,8 +99,13 @@
       if (mx || mz) {
         camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize(); side.set(-fwd.z, 0, fwd.x);
         const l = Math.hypot(mx, mz); mx /= l; mz /= l; sp = K.run ? RUN : SPEED;
-        const nx = st.x + (fwd.x * mz + side.x * mx) * sp * dt, nz = st.z + (fwd.z * mz + side.z * mx) * sp * dt, g = ground.raw(nx, nz);
-        if (g !== null && Math.abs(g - st.y) < 6) { st.x = nx; st.z = nz; st.y = g; }
+        const vx = (fwd.x * mz + side.x * mx) * sp * dt, vz = (fwd.z * mz + side.z * mx) * sp * dt;
+        // blocked ahead: slide along the edge (only the x or only the z part of the step); already stuck inside something
+        // (a door spawn, a prop that popped in on her) = any step that is free counts
+        const ok = (x, z) => { const g = ground.raw(x, z); return g !== null && Math.abs(gy(x, z, st.y) - st.y) < 6 && (free(x, z) || !free(st.x, st.z)); };
+        let nx = st.x + vx, nz = st.z + vz;
+        if (!ok(nx, nz)) { if (ok(st.x + vx, st.z)) nz = st.z; else if (ok(st.x, st.z + vz)) nx = st.x; else { nx = st.x; nz = st.z; } }
+        if (nx !== st.x || nz !== st.z) { st.x = nx; st.z = nz; st.y = gy(nx, nz, st.y); }
       } else if (st.path) {
         sp = st.path.len > 80 ? RUN : SPEED; st.s = Math.min(st.path.len, st.s + sp * dt);
         const q = nav.at(st.path, st.s); st.x = q.p[0]; st.z = q.p[2]; st.y = gy(q.p[0], q.p[2], q.p[1], q.bridge);
@@ -103,7 +122,7 @@
       const tgt = new V3(st.x, st.y + 4, st.z), dv = tgt.sub(controls.target).multiplyScalar(Math.min(1, dt * 6));
       controls.target.add(dv); camera.position.add(dv);
     }
-    return { holder, load, place, walkTo, pickGround, update, st, get ready() { return ready; }, pos: () => [st.x, st.y, st.z] };
+    return { holder, load, place, walkTo, pickGround, update, st, free, freeNear, get ready() { return ready; }, pos: () => [st.x, st.y, st.z] };
   }
   window.Walker = Walker;
 })();
