@@ -387,7 +387,7 @@ vec3 egWood(vec3 p) {
         }
         burstRing.position.copy(crown.position); burstRing.material.opacity = bk * 0.8; burstRing.scale.setScalar(cp.r * (2 + (3 - Math.min(3, burstT)) * 2.2));
         // falling leaves when health < 55 (more the worse it is), sparkles when >= 72
-        leafAcc += dt * Math.min(1, Math.max(0, (58 - h) / 35)) * 45;
+        leafAcc += dt * Math.min(1, Math.max(0, (58 - h) / 35)) * 45 * (1 - 0.7 * (api.season[3] || 0));   // a winter tree has few leaves left to drop
         while (leafAcc > 1) {
           leafAcc--; const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * cp.r;
           const brown = Math.random(), wi = api.season[3] || 0;   // vibe pass 2: a winter tree drops dull brown-grey leaves, not autumn orange
@@ -416,7 +416,8 @@ vec3 egWood(vec3 p) {
             s: 1.2 + Math.random() * 1.4, r: cy ? 0.55 : 1, g: cy ? 1 : 0.9, b: cy ? 0.95 : 0.55, a: 0.8 });
         }
         // seasons: spring petals + autumn leaves drift down from the canopy (healthy tree; on top of the sick-leaf fall)
-        const sw = api.season, pk = sw[0] > sw[2] ? 0 : 2, sk = Math.max(sw[0], sw[2]);
+        // seasons pass: the first snow ends the autumn leaf fall at once (it used to keep falling through the 6 h blend into winter)
+        const sw = api.season, pk = sw[0] > sw[2] ? 0 : 2, sk = Math.max(sw[0], sw[2]) * Math.pow(1 - (sw[3] || 0), 4);
         seaAcc += dt * sk * 14 * (0.3 + hk * 0.7);
         while (seaAcc > 1) {
           seaAcc--; const a = Math.random() * 6.28, rr = Math.sqrt(Math.random()) * cp.r * 1.05, c = SEA_LEAF[pk][Math.floor(Math.random() * 3)];
@@ -425,7 +426,7 @@ vec3 egWood(vec3 p) {
         }
         // vibe pass 2: a season's own leaves / petals stop the moment its weight is gone (a forced setSeason, or the end of the real
         // 6 h blend): the ones in the air fade out within a second instead of drifting down for up to 18 s
-        for (const p of leaves.P) if (p.kind === 2 && p.life > 1 && (sw[p.sk] || 0) < 0.04) p.life = 1;
+        for (const p of leaves.P) if (p.kind === 2 && p.life > 1 && ((sw[p.sk] || 0) < 0.04 || (p.sk === 2 && (sw[3] || 0) > 0.35))) p.life = 1;
         const gy = TP[1] + 0.3;
         leaves.tick(dt, (p, d) => {
           if (p.kind === 3 && p.y > gy) {   // a spiralling leaf: round the trunk, drifting in a little

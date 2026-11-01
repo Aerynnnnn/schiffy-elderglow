@@ -87,7 +87,7 @@
     const batchOf = {}; for (const b of map.batches) batchOf[b.key] = b;
     const lit = batchOf.EG_Pebbles && batchOf.EG_Pebbles.mesh ? batchOf.EG_Pebbles.mesh.material : map.batches.find(b => b.mesh && !b.terrain).mesh.material;
     const ink = ElderMap.inkMat;
-    const Y = new THREE.Vector3(0, 1, 0), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), CO = new THREE.Color();
+    const Y = new THREE.Vector3(0, 1, 0), M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), SC = new THREE.Vector3(), CO = new THREE.Color(), PV = new THREE.Vector3();
     const gy = (x, z) => { const r = ground.raw ? ground.raw(x, z) : null; return r === null || r === undefined ? ground(x, z, TP[1]) : r; };
     const dxz = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 
@@ -331,7 +331,7 @@
       const nR = Math.sin(x * 0.043 + z * 0.029) * 0.55 + Math.sin(z * 0.067 - x * 0.051 + 1.7) * 0.3 + Math.sin((x + z) * 0.13) * 0.15;
       return dR - u.x - nR * NOISE() < -EDGE() * 0.35;
     }
-    let landK = '', first = true, lastR = -1, homeSig = '', homes = [], camX = 1e9, camZ = 1e9, winterK = -1, nightK = -1, wetK = -1;
+    let landK = '', first = true, lastR = -1, homeSig = '', homes = [], camX = 1e9, camZ = 1e9, winterK = -1, nightK = -1, wetK = -1, clothSw = false;
     const api = { curios, K, stats: () => ({ curios: curios.length, awake: curios.filter(c => c.awake).length, flower: K.flower ? K.flower.items.length : 0, bench: K.bench.items.length, stone: K.stone.items.length, puddle: pud.items.length }) };
     // homes: built cottages -> a laundry line on one side, a pile of pup things on the other (side + which by hash of the plot)
     function syncHomes(S) {
@@ -356,7 +356,8 @@
         if (j >= k.max) break;
         const pop = it.t < POP ? back(it.t / POP) : 1, s = it.s * pop * it.shown * (extraS ? extraS(it) : 1); if (s < 0.01) continue;
         Q.setFromAxisAngle(Y, it.yaw); if (it.swing) Q.multiply(new THREE.Quaternion().setFromAxisAngle(V.set(1, 0, 0), it.swing));
-        V.set(it.x, it.y, it.z); SC.set(s * (it.sx || 1), s, s); k.m.setMatrixAt(j, M4.compose(V, Q, SC));
+        V.set(it.x, it.y, it.z);
+        if (it.swing && it.pivH) { const hh = it.pivH * s; V.y += hh; V.sub(PV.set(0, hh, 0).applyQuaternion(Q)); }   // weather pass: cloth swings from its rope SC.set(s * (it.sx || 1), s, s); k.m.setMatrixAt(j, M4.compose(V, Q, SC));
         if (k.m.instanceColor && it.tint) k.m.setColorAt(j, CO.setRGB(it.tint[0], it.tint[1], it.tint[2]));
         j++;
       }
@@ -391,13 +392,16 @@
       { const ls = nav.landSig ? nav.landSig() : ''; if (ls !== landK) { landK = ls; for (const key of ['flower', 'stone', 'bench']) { const k = K[key]; if (!k) continue; for (const it of k.items) it.onPaint = !!ls && nav.paintDist(it.x, it.z, 3) < (key === 'bench' ? 2.6 : 1.5); k.sig = ''; } } }
       // 3. animation: swings sway (awake), cloth flutters gently, lamps lit only when awake
       for (const it of K.seat.items) { const c = it.hang; it.swing = c.awake ? Math.sin(t * 1.4 + c.x) * 0.28 * Math.min(1, (t - c.wakeT) / 3) : 0; }
+      // seasons + weather pass: laundry blows on the line in a wind (opt2.wind 0..1 from the game's weather)
+      const wnd = opt2.wind || 0; for (const it of K.cloth.items) { it.pivH = 3.45; it.swing = wnd > 0.02 ? (Math.sin(t * 2.6 + it.x) * 0.22 + 0.28) * wnd : 0; }
       // 4. write the instance lists when something changed or the camera moved (distance culls)
       const camMoved = Math.abs(cp.x - camX) + Math.abs(cp.z - camZ) > 6; if (camMoved) { camX = cp.x; camZ = cp.z; }
       const wk = Math.round(winter * 20) / 20, nk = night > 0.45 ? 1 : 0, wet = opt2.wet || 0, wtk = Math.round(wet * 40) / 40;
       const seasonChanged = wk !== winterK || nk !== nightK; winterK = wk; nightK = nk;
       for (const key in K) {
         const k = K[key]; if (!k) continue;
-        if (!(any || camMoved || seasonChanged || k.sig === '' || key === 'seat')) continue;
+        if (!(any || camMoved || seasonChanged || k.sig === '' || key === 'seat' || (key === 'cloth' && (wnd > 0.02 || clothSw)))) continue;
+        if (key === 'cloth') clothSw = wnd > 0.02;
         k.sig = 'x';
         if (key === 'flower') write(k, cp, it => 1 - 0.85 * winter);
         else if (key === 'cloth') write(k, cp, () => (nk || winter > 0.5 ? 0 : 1));   // taken in at night (and in deep winter)

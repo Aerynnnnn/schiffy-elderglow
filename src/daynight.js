@@ -159,16 +159,16 @@
     const NL = anchors.length / 7, lPos = new Float32Array(NL * 3), lPh = new Float32Array(NL * 4);
     for (let k = 0; k < NL; k++) { lPos.set(anchors.slice(k * 7, k * 7 + 3), k * 3); lPh.set(anchors.slice(k * 7 + 3, k * 7 + 7), k * 4); }
     const lGeo = new THREE.BufferGeometry(); lGeo.setAttribute('position', new THREE.BufferAttribute(lPos, 3)); lGeo.setAttribute('ph', new THREE.BufferAttribute(lPh, 4));
-    const LU = { uTime: U.uTime, uNight: { value: 0 }, uDawn: { value: 0 }, uScale: { value: 600 }, uTreeS: { value: 0.45 }, uTP: { value: new THREE.Vector3().fromArray(TP) } };
+    const LU = { uFF: { value: 1 }, uTime: U.uTime, uNight: { value: 0 }, uDawn: { value: 0 }, uScale: { value: 600 }, uTreeS: { value: 0.45 }, uTP: { value: new THREE.Vector3().fromArray(TP) } };
     const lifeMat = new THREE.ShaderMaterial({
       uniforms: LU, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      vertexShader: `attribute vec4 ph; uniform float uTime, uNight, uDawn, uScale, uTreeS; uniform vec3 uTP; varying vec4 vC;
+      vertexShader: `attribute vec4 ph; uniform float uTime, uNight, uDawn, uScale, uTreeS, uFF; uniform vec3 uTP; varying vec4 vC;
         void main(){
           vec3 p = position; float t = uTime, a = 0.0; vec3 col = vec3(1.0);
           if (ph.z < 0.5) {
             p += vec3(sin(t * 0.31 + ph.x * 6.0) * 3.0 + sin(t * 0.73 + ph.y * 9.0) * 1.2, sin(t * 0.5 + ph.x * 4.0) * 1.1, cos(t * 0.27 + ph.y * 7.0) * 3.0);
             float bl = smoothstep(0.2, 1.0, sin(t * (0.9 + ph.y * 0.8) + ph.x * 20.0));
-            a = uNight * (0.12 + 0.88 * bl); col = mix(vec3(0.8, 1.0, 0.35), vec3(1.0, 0.86, 0.38), ph.y);
+            a = uNight * (0.12 + 0.88 * bl) * step(ph.w, 0.5 + 0.45 * uFF) * clamp(uFF, 0.0, 1.6); col = mix(vec3(0.8, 1.0, 0.35), vec3(1.0, 0.86, 0.38), ph.y);
           } else if (ph.z < 1.5) {
             float h = fract(position.y + t * 0.006 * (0.5 + ph.y)), an = ph.x * 6.2831 + t * 0.04 * (ph.y - 0.5), r = length(position.xz);
             p = uTP + vec3(cos(an) * r, 3.0 + h * 130.0, sin(an) * r) * uTreeS;
@@ -203,7 +203,7 @@
       if (o.door) { const d = o.door(); src.push({ id: 'shrine', x: d[0], y: d[1] + 3, z: d[2], r: 16, k: 1.4, col: new THREE.Color(0.5, 0.9, 1.0), pl: true }); }
     }
     const tmpC = new THREE.Color(), WATER_N = new THREE.Color(), GR = new THREE.Vector3(), MISTC = new THREE.Color(), MIST = new THREE.Color(0.8, 0.8, 0.84);
-    const SEA_W = new THREE.Color(0.86, 0.9, 0.97), SEA_A = new THREE.Color(1.0, 0.86, 0.7), SEA_S = new THREE.Color(0.38, 0.66, 1.0), ICE = new THREE.Color(0.78, 0.9, 0.97);
+    const SEA_W = new THREE.Color(0.86, 0.9, 0.97), SEA_A = new THREE.Color(1.0, 0.86, 0.7), SEA_S = new THREE.Color(0.38, 0.66, 1.0), ICE = new THREE.Color(0.78, 0.9, 0.97), HAZE = new THREE.Color(1.0, 0.95, 0.84);
     function updateLights(dt, night) {
       const cam = camera.position, tgt = o.controls.target;
       let n = 0, hn = 0;
@@ -233,7 +233,7 @@
     }
 
     const api = {
-      state, lights, pools, halos, life, dome, stars, plK: 1, season: [0, 0, 0, 0], mist: 0, mistNear: 120, mistFar: 1100,   // mist: Round 2 step 2 (game)   // plK = point-light strength knob (tests); season weights (step 5)
+      state, lights, pools, halos, life, dome, stars, plK: 1, season: [0, 0, 0, 0], weather: { r: 0, w: 0 }, mist: 0, mistNear: 120, mistFar: 1100,   // mist: Round 2 step 2 (game)   // plK = point-light strength knob (tests); season weights (step 5)
       palette: h => palette(h, { zen: new THREE.Color(), hor: new THREE.Color(), gnd: new THREE.Color(), sun: new THREE.Color(), hs: new THREE.Color(), hg: new THREE.Color() }),
       // h = hours 0..24 (Sim.tod), t = seconds (animation), sick 0..1 (unhealthy tree greys the day sky a bit)
       update(h, t, dt, sick, treeScale) {
@@ -246,6 +246,11 @@
         if (sw[3] > 0.001) { pal.hor.lerp(SEA_W, sw[3] * 0.35 * dk); pal.zen.lerp(SEA_W, sw[3] * 0.2 * dk); }
         if (sw[2] > 0.001) pal.hor.lerp(SEA_A, sw[2] * 0.16 * dk);
         if (sw[1] > 0.001) pal.zen.lerp(SEA_S, sw[1] * 0.15 * dk);
+        // seasons + weather pass (api.weather = {r rain 0..1, w wind}): rain greys + lowers the sky and hides the sun; summer middays
+        // get a warm heat haze on the horizon (pale + nearer fog)
+        const wr = Math.min(1, (api.weather && api.weather.r) || 0), haze = sw[1] * sm(10.5, 12.5, h) * (1 - sm(15.5, 17.5, h)) * (1 - wr) * dk;
+        if (wr > 0.001) { pal.hi *= 1 - wr * 0.22; const g = wr * 0.72 * (1 - dc.night * 0.5); for (const c of [pal.hor, pal.zen, pal.gnd]) { const l = c.r * 0.3 + c.g * 0.59 + c.b * 0.11; MISTC.setRGB(l * 0.94, l * 0.98, l * 1.06); c.lerp(MISTC, g); } pal.sunI *= 1 - wr * 0.5; }
+        if (haze > 0.001) pal.hor.lerp(HAZE, haze * 0.22);
         // Round 2 step 2: a grey island (api.mist 0..1 = how much colour is still asleep) has a paler, greyer sky + a soft mist
         const mi = api.mist || 0;
         if (mi > 0.001) {
@@ -257,12 +262,14 @@
         U.sunDir.value.copy(sp.sun); U.sunCol.value.copy(pal.sun); U.moonDir.value.copy(sp.moon); U.uTime.value = t; U.uNight.value = dc.night;
         U.uPx.value = o.renderer.getPixelRatio();
         const sunK = sm(-0.02, 0.12, sp.sinEl), moonK = 1 - sm(-0.2, -0.03, sp.sinEl); state.sunK = sunK; state.moonK = moonK;
-        U.sunK.value = sm(-0.08, 0.02, sp.sinEl); U.moonK.value = moonK;
+        U.sunK.value = sm(-0.08, 0.02, sp.sinEl) * (1 - wr * 0.85); U.moonK.value = moonK * (1 - wr * 0.7);
         scene.background.copy(pal.hor); scene.fog.color.copy(pal.hor);
         // night grade: the fog closes in (blue-violet distance), so the far island sinks into the night and the lights pop
         if (!fog0) fog0 = { near: scene.fog.near, far: scene.fog.far };
         const fk = Math.max(dc.night, dc.dusk * 0.4); scene.fog.near = fog0.near + (260 - fog0.near) * fk; scene.fog.far = fog0.far + (2400 - fog0.far) * fk;
         if (mi > 0.001) { scene.fog.near += (api.mistNear - scene.fog.near) * mi * 0.85; scene.fog.far += (api.mistFar - scene.fog.far) * mi * 0.75; }   // the mist thins as colour returns
+        if (wr > 0.001) { scene.fog.near *= 1 - wr * 0.6; scene.fog.far *= 1 - wr * 0.45; }
+        if (haze > 0.001) scene.fog.near *= 1 - haze * 0.4;
         hemi.color.copy(pal.hs); hemi.groundColor.copy(pal.hg); hemi.intensity = pal.hi - (sick || 0) * 0.12 * (1 - dc.night);
         // directional: the sun while it is up, then the moon (both ~0 around the switch); never lower than 14 deg (no endless shadows)
         const useSun = sunK > 0.001 || moonK < 0.001;
@@ -278,7 +285,8 @@
           const m = ElderMap.seeMats[k]; if (!/^Water/.test(k)) continue; if (!m.userData.c0) m.userData.c0 = m.color.clone();
           m.color.copy(m.userData.c0).multiply(WATER_N.setRGB(1 - 0.55 * dc.night, 1 - 0.5 * dc.night, 1 - 0.2 * dc.night)).lerp(ICE, sw[3] * 0.45 * dk);   // winter: icy pale water if (m.emissive) m.emissive.setRGB(0.03, 0.06, 0.16).multiplyScalar(dc.night);
         }
-        LU.uNight.value = Math.max(dc.night, dc.dusk * 0.35); LU.uDawn.value = dc.dawn; LU.uTreeS.value = treeScale || 0.45;
+        LU.uNight.value = Math.max(dc.night, dc.dusk * (0.35 + sw[1] * 0.4));   // summer: fireflies out at dusk already
+        LU.uFF.value = (1 + sw[1] * 0.6 - sw[3] * 0.95 - sw[0] * 0.3) * (1 - wr * 0.8);   // lots in summer, few in spring, none in winter or rain LU.uDawn.value = dc.dawn; LU.uTreeS.value = treeScale || 0.45;
         const scl = o.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
         LU.uScale.value = scl; haloMat.uniforms.scale.value = scl;
         if (o.plots && o.plots.setNight) o.plots.setNight(dc.night);

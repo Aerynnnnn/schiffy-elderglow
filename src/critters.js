@@ -17,7 +17,7 @@
   'use strict';
   const H = 3600, MIN = 60;
   const C = {
-    SLOT: 1200, START: 600, MAX: 4, LOG: 30, RAIN_K: 4,
+    SLOT: 1200, START: 600, MAX: 4, LOG: 30, RAIN_K: 4, WIND_K: 2.5,   // weather pass: wind critters (finch, sprites) x WIND_K in a wind
     P: { common: 0.05, uncommon: 0.025, rare: 0.015, legendary: 0.0028 },   // per slot at a perfect match
   };
   // when: d day, k dusk, n night, a dawn (0..1 each); sea: [spring, summer, autumn, winter]; stay: minutes [min, max];
@@ -51,18 +51,18 @@
       gift: { k: 'snowberry', name: 'snowberries', food: 6, pct: 25 }, fav: 'cosy cottages', verb: 'hopped about', col: '#dfe6f7',
       note: 'The snow hare has a little star of frost on its forehead. It visits cosy cottages to warm its paws by the windows.',
       whenT: 'in winter', hint: ['Small round tracks in the snow...', 'It visits warm cottages when it is cold.', 'Build cottages; it comes in winter.'] },
-    { id: 'sprite', name: 'Petal sprites', piece: 'EG_Critter_PetalSprite', rar: 'common', when: { d: 1, k: 0.4, n: 0, a: 0.6 }, sea: [1.5, 0.4, 0.15, 0], stay: [30, 50],
+    { id: 'sprite', name: 'Petal sprites', piece: 'EG_Critter_PetalSprite', rar: 'common', when: { d: 1, k: 0.4, n: 0, a: 0.6 }, sea: [1.5, 0.4, 0.15, 0], stay: [30, 50], wind: true,
       gift: { k: 'petal', name: 'a petal seed', seeds: 1, pct: 30 }, fav: 'gardens + fairy rings', verb: 'played', col: '#f2a9cf', swarm: 3,
       note: 'Petal sprites are born when a blossom laughs. They play tag in gardens and fall asleep in flowers.',
-      whenT: 'in spring', hint: ['Giggles among the flowers...', 'They play where things bloom and grow.', 'Build a Berry garden or place a Fairy ring; spring is best.'] },
-    { id: 'finch', name: 'Song finch', piece: 'EG_Critter_SongFinch', rar: 'uncommon', when: { d: 1, k: 0.3, n: 0, a: 1 }, sea: [1.2, 1, 0.8, 0.6], stay: [25, 45],
+      whenT: 'in spring', hint: ['Giggles among the flowers...', 'They play where things bloom and grow.', 'Build a Berry garden or place a Fairy ring; a breezy spring day is best.'] },
+    { id: 'finch', name: 'Song finch', piece: 'EG_Critter_SongFinch', rar: 'uncommon', when: { d: 1, k: 0.3, n: 0, a: 1 }, sea: [1.2, 1, 0.8, 0.6], stay: [25, 45], wind: true,
       gift: { k: 'note', name: 'a song feather', sap: 6, pct: 30 }, fav: 'music (the stage)', verb: 'sang along', col: '#ffd24a',
       note: 'The song finch never sings its own song. It learns the pups\' tunes and sings them back, a little better.',
-      whenT: 'by day', hint: ['A bright little voice joins in the music...', 'It comes wherever pups play music.', 'Build the Music stage (or let a pup busk).'] },
-    { id: 'snail', name: 'Glow snail', piece: 'EG_Critter_GlowSnail', rar: 'common', when: { d: 0, k: 0.2, n: 1, a: 0.8 }, sea: [1.2, 1, 1.2, 0.3], stay: [60, 120],
+      whenT: 'by day', hint: ['A bright little voice joins in the music...', 'It comes wherever pups play music.', 'Build the Music stage (or let a pup busk). It rides in on the wind.'] },
+    { id: 'snail', name: 'Glow snail', piece: 'EG_Critter_GlowSnail', rar: 'common', when: { d: 0, k: 0.2, n: 1, a: 0.8 }, sea: [1.2, 1, 1.2, 0.3], stay: [60, 120], rain: true,
       gift: { k: 'trail', name: 'a jar of glow trail', sap: 4, pct: 25 }, fav: 'glow shrooms + fairy rings', verb: 'left a glowing trail', col: '#b48cd8',
       note: 'The glow snail is in no hurry at all. It leaves a silver trail that shines until morning.',
-      whenT: 'at night', hint: ['A silver line shines on the ground at dawn...', 'It loves mushrooms and soft garden soil.', 'Place Glow shrooms or a Fairy ring (root sprouts help).'] },
+      whenT: 'at night', hint: ['A silver line shines on the ground at dawn...', 'It loves mushrooms and soft garden soil.', 'Place Glow shrooms or a Fairy ring (root sprouts help). It loves a rainy night.'] },
     { id: 'whale', name: 'Sky whale', piece: 'EG_Critter_SkyWhale', rar: 'legendary', when: { d: 1, k: 1, n: 0.6, a: 0.8 }, sea: [1, 1, 1, 1], stay: [14, 18], minLv: 2,
       gift: { k: 'song', name: 'whale song: 2 crystals and glow sap', crystal: 2, sap: 20, pct: 100 }, fav: 'a healing island', verb: 'sang as it drifted', col: '#5b80cc', sky: true,
       note: 'Once in a long while a sky whale drifts over a healing island. Nobody knows where it goes. It always sings on the way.',
@@ -104,7 +104,10 @@
   const range = (ch, n) => [...Array(Math.max(0, n))].map((_, i) => ch + i);
   // (free decor: a decor spot is taken when a placed thing has its index as handle (migrated) or stands within 6 m of it)
   function freeSpots(s, nav, n) { const P = s.placed || [], out = []; for (let k = 0; k < nav.decorSpots.length && out.length < n; k++) { const p = nav.decorSpots[k].p; if (!P.some(x => x.k === k || Math.hypot(x.x - p[0], x.z - p[2]) < 6)) out.push('e' + k); } return out; }
-  const rainAt = (s, t) => { const E = s.events, D = window.Events ? window.Events.C.DUR.shower : 1200; if (!E) return false; return E.active.some(e => e.type === 'shower' && e.t0 <= t && t < e.end) || E.log.some(e => e.type === 'shower' && e.t <= t && t < e.t + D); };
+  const W_ = () => window.Weather;
+  const rainAt = (s, t) => { const E = s.events, D = window.Events ? window.Events.C.DUR.shower : 1200; if (!E) return false; return E.active.some(e => e.type === 'shower' && e.t0 <= t && t < e.end) || E.log.some(e => e.type === 'shower' && e.t <= t && t < e.t + D) ||
+    (!!W_() && W_().rainAt(s, t) > W_().C.RAIN_ON); };   // a weather rain spell (src/weather.js) counts too
+  const windAt = (s, t) => !!W_() && W_().windAt(s, t) > W_().C.WIND_ON;
   function attract(s, nav, sp, t) {
     const L = [], add = (keys, w) => { for (const k of keys) L.push({ k, w }); };
     let A = 0;
@@ -136,9 +139,9 @@
     const tw = Math.min(1, w.d * day + w.k * dc.dusk + w.n * dc.night + w.a * dc.dawn);
     const sw = k === null ? 1 : sp.sea[k];
     const at = attract(s, nav, sp, t); if (!at.A || !tw || !sw) return { p: 0, at };
-    const rain = sp.rain && rainAt(s, t) ? C.RAIN_K : 1;
+    const rain = sp.rain && rainAt(s, t) ? C.RAIN_K : 1, wind = sp.wind && windAt(s, t) ? C.WIND_K : 1;
     const ck = window.Catalog ? window.Catalog.critK(s, nav, sp.id) : 1;   // three of its favourite pieces close together (catalog.js)
-    return { p: Math.min(0.5, C.P[sp.rar] * tw * sw * at.A * rain * ck), at };
+    return { p: Math.min(0.5, C.P[sp.rar] * tw * sw * at.A * rain * wind * ck), at };
   }
 
   // ---------------------------------------------------------------- per sim step

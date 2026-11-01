@@ -107,7 +107,7 @@
   // step 5: built faction buildings (fac) and the season's multipliers (sea; 1 when the island has no timestamp yet)
   const fac = (s, type) => { for (const k in s.plots) { const e = s.plots[k]; if (e.done && e.type === type) return true; } return false; };
   const facK = (s, type, key) => fac(s, type) ? C.FAC[type][key] : 1;
-  const sea = (s, key) => window.Seasons ? window.Seasons.k(s, key) : 1;
+  const sea = (s, key) => (window.Seasons ? window.Seasons.k(s, key) : 1) * (window.Weather ? window.Weather.k(s, key) : 1);   // + weather (src/weather.js)
   const season = s => window.Seasons ? window.Seasons.of(s) : null;
   const hash = n => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); return (n ^ (n >>> 15)) >>> 0; };
 
@@ -307,7 +307,7 @@
   function deliver(s, i, nav, ev, kind) {
     const p = s.pups[i], c = counts(s);
     const boost = kind === 'wood' ? 1 + C.B.woodshed.boost * Math.min(4, c.woodshed) : kind === 'stone' ? 1 + C.B.quarry.boost * Math.min(4, c.quarry) : 1;
-    const amt = C.GATHER[kind] * p.acc / H * boost * facK(s, 'forge', 'gather') * sea(s, 'gather') * catK(s, nav, 'gather');   // Gale Forge tools, autumn harvest, a tidy work yard (catalog.js)
+    const amt = C.GATHER[kind] * p.acc / H * boost * facK(s, 'forge', 'gather') * sea(s, 'gather') * catK(s, nav, 'gather') * (kind === 'wood' ? sea(s, 'wood') : 1);   // Gale Forge tools, autumn harvest, a tidy work yard (catalog.js), windfall branches (weather.js)
     s.res[kind] += amt; s.stats[kind] += amt; p.acc = 0; p.trips++; s.stats.trips++;
     if (ev) ev.push({ type: 'deliver', pup: i, job: kind, amount: amt });
   }
@@ -433,6 +433,7 @@
     window.Exped.tick(s, dt, nav, ev);   // expeditions: depart when the team is aboard, land + haul when due
     N.tick(s, dt, nav, ev);              // wake-ups, blight, sprouts, friendships (src/needs.js)
     window.Events.tick(s, dt, nav, ev);  // small events (src/events.js)
+    if (window.Weather) window.Weather.tick(s, dt);              // rain / snow fill Water a little (src/weather.js)
     if (window.Critters) window.Critters.tick(s, dt, nav, ev);   // sky critters come + go (src/critters.js; after Events: rain)
     // needs: water + light decay; the other three sleep (drift toward a floor) until they wake, then decay gently
     // (ramping up), never below their min
@@ -621,6 +622,8 @@
     // that already went on a trip wakes its new needs from now)
     window.Needs.sanitize(s, o.v >= 5 ? o : {}, nav);
     window.Events.sanitize(s, o.v >= 5 ? o : {});
+    // weather (no save field): a sky boat in the air gets its wind-shortened trip back (needs the event seed, so after Events)
+    for (const t of s.exp.trips) if (t.dep >= 0) t.dur = window.Exped.durOf(s, t);
     // v7 (step 6): account id, public flag, island + host names, gift / outbox ids already merged; older saves: none yet
     if (window.Social) window.Social.sanitize(s, o.v >= 7 ? o : {});
     // v8 (Round 2 step 2): colour ring, the tree's log, chapters; older saves get the ring of their progress (no grey regression)

@@ -187,7 +187,7 @@
       }
       case 'carry': work('feed', C.GARDEN.FEED, toward(p.at.p, nav.TP)); break;
       case 'feed': {
-        const k = (1 + C.GARDEN.SPROUT_K * s.garden.sprouts.length) * (1 + C.GARDEN.CONS_K * Math.min(1, built(s, 'conserv'))) * Sim.facK(s, 'greenhold', 'nourish') * (window.Seasons ? window.Seasons.k(s, 'nourish') : 1) * (window.Catalog ? window.Catalog.at(s, nav).garden : 1);   // water + flowers by the beds (catalog.js)
+        const k = (1 + C.GARDEN.SPROUT_K * s.garden.sprouts.length) * (1 + C.GARDEN.CONS_K * Math.min(1, built(s, 'conserv'))) * Sim.facK(s, 'greenhold', 'nourish') * (window.Seasons ? window.Seasons.k(s, 'nourish') : 1) * (window.Catalog ? window.Catalog.at(s, nav).garden : 1) * (window.Weather ? window.Weather.k(s, 'nourish') : 1);   // water + flowers by the beds (catalog.js); wet ground helps (weather.js)
         const amt = supply('nourish', k); s.garden.fed++;
         if (ev) ev.push({ type: 'deliver', pup: i, job: 'nourish', amount: amt });
         next(); break;

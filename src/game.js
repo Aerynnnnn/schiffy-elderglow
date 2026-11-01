@@ -20,7 +20,7 @@
   let soc = null, walker = null, bootSum = null, cloudUI = null, noSaves = false, lan = null, lfx = null;   // Round 2 step 4: lantern notes + World Bloom
   let calm = null;   // vibe pass 1: the calm view (src/calm.js), home only
   // vibe pass 2 lane C: day light pass (src/light_fx.js), idle camera drift (cam_drift.js, home), night whispers (tree_voice.js, home), foley (foley.js)
-  let lightFx = null, drift = null, voice = null, foley = null;
+  let lightFx = null, drift = null, voice = null, foley = null, wxFx = null, wxUI = null;   // wxFx = seasons + weather pass (src/weather_fx.js)
   // ---- step 7: ONE backend (src/net.js) for the social side and the cloud save; the cloud check starts NOW (sign-in +
   // fetch run while the map loads) so a newer cloud copy is in place before load() reads the save. Off for visits (never
   // saved), ?nosave=1, ?reset=1 (test sessions) and ?cloud=0. ?mockdb=NAME = a separate pretend server.
@@ -756,7 +756,9 @@
       toast(`${IC.sparkle || IC.tree} The colour woke ${S3.length > 1 ? S3.slice(0, -1).join(', ') + ' and ' + S3[S3.length - 1] : S3[0]}`, 6000); }, 4500);
   }
   // puddles: up while a shower falls, drying over ~40 min of island time after it
-  function wetness() {
+  // the ground's wetness for the view: a sudden shower (events) or a weather rain (src/weather.js, smoothed by weather_fx)
+  function wetness() { return Math.max(showerWet(), wxFx ? wxFx.wx.wet : 0); }
+  function showerWet() {
     const E = S.events, sh = E.active.find(e => e.type === 'shower');
     if (sh) return Math.min(1, (S.time - sh.t0) / 120);
     const last = E.last && E.last.shower; if (last === undefined) return 0;
@@ -2277,6 +2279,7 @@
     if (!VISIT) { awayDream(sum, ld.away); Story.openDay(S, Daily.dayNum(new Date())); }
     dn = DayNight({ scene, renderer, camera, controls, hemi, sun, center: c, lightR: r * 1.2, map: m, nav, ground, plots, phone: PHONE, door: () => nav.door(fx.scale).p });
     if (window.LightFx) lightFx = LightFx(scene, m, nav, ground, { phone: PHONE, water: sndWater, camera });   // vibe 2 lane C: wind, cloud shadows, plaza warmth, god rays, dawn mist
+    if (window.WeatherFx) { wxFx = WeatherFx(scene, m, nav, ground, { phone: PHONE }); wxUI = WeatherFx.chip({ $, toast }); }   // seasons + weather pass
     growLand(S.level); fx.level = S.level;
     if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree has ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
     syncPups();
@@ -2398,7 +2401,7 @@
       },
       // Round 2 step 2 (tests): Story, RST (shown colour radius / wave), session, trySpeak(force), showSay(words), closeSay,
       // openDiary(i), closeDiary, setColour(R | null, wave) = jump the shown radius (null = back to the earned one)
-      Catalog, openCraft, closeCraft, craftAct, openPhoto, closePhoto, savePhoto, get PHOTO() { return PHOTO; }, Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, Wardrobe, openWard, closeWard, wardPick, startWave, get wfx() { return wfx; }, wetness, PORTRAIT, homeView,
+      Catalog, openCraft, closeCraft, craftAct, openPhoto, closePhoto, savePhoto, get PHOTO() { return PHOTO; }, Story, RST, session, trySpeak, showSay, closeSay, openDiary, closeDiary, Wardrobe, openWard, closeWard, wardPick, startWave, get wfx() { return wfx; }, wetness, get wxFx() { return wxFx; }, Weather: window.Weather, setWeather: (r, w, wet) => { if (wxFx) wxFx.force = r === null ? null : { r, w, wet }; }, PORTRAIT, homeView,
       // Round 2 step 3 (tests): Critters, crFx, meetCritter(id, fly), critCam(id), openCritCard(c, visit, first), closeCritCard,
       // spawnCritter(c, key, min) = put a visitor here NOW (captures only: use ?nosave=1 / a test slot), renderCritters
       // Round 2 step 4 (tests): Lanterns, lan (LanternUI: sync, open(tab), openRead(id), status, claim), lfx (LanternFx: release, setSky, setBloom, bloomPos)
@@ -2503,7 +2506,10 @@
     const players = [], builders = [];
     S.pups.forEach((p, i) => { if (!pups.list[i]) return; if ((p.task === 'stage' || p.task === 'busk') && p.phase === 'play') players.push(pups.list[i]); else if (p.task === 'site' && p.phase === 'build') builders.push(pups.list[i]); });
     const B = pos(builders, 300);
-    return { night: dn.state.night, dawn: dn.state.dawn, dusk: dn.state.dusk, sw: sndSW, rain: S.events.active.some(x => x.type === 'shower') ? 1 : 0, river, tree, health: hs, camD, say: sayOpen ? 1 : 0,
+    // seasons + weather pass: rain 0..1 from the weather (a shower counts), wind + gusts, drips while wet, roof patter near cottages
+    const wx = wxFx ? wxFx.wx : null; let rd = 1e9; for (const d of homeDoors()) rd = Math.min(rd, Math.hypot(d[0] - tg.x, d[1] - tg.z));
+    return { night: dn.state.night, dawn: dn.state.dawn, dusk: dn.state.dusk, sw: sndSW, rain: wx ? clamp01(wx.r * (wx.snow ? 0.25 : 1)) : S.events.active.some(x => x.type === 'shower') ? 1 : 0, river, tree, health: hs, camD, say: sayOpen ? 1 : 0,
+      wind: wx ? wx.windy : 0, gust: wx ? wx.gust : 0, wet: wx ? wx.wet : 0, roof: clamp01(1 - (rd - 25) / 140) * (0.35 + 0.65 * close),
       cam: [cam.x, cam.y, cam.z], right, stage: pos(players, 380), build: B ? { g: B.g * Math.min(1, 0.5 + builders.length * 0.25) * 0.5, pan: B.pan } : null };
   }
   const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x, clamp = (a, b, x) => x < a ? a : x > b ? b : x;
@@ -2560,8 +2566,11 @@
     // the sky reads the season-warped hour (summer long days, winter short)
     const sw = PHOTO && PHOTO.sea !== null ? [0, 1, 2, 3].map(i => i === PHOTO.sea ? 1 : 0) : Seasons.weights(S.ep0 !== null ? S.ep0 + S.time : Seasons.localNow());   // (photo mode: a view-only season preview)
     dn.season = sw; fx.season = sw; fx.level = S.level; sndSW = sw;
+    // seasons + weather pass: the weather the view shows (rain, wind, gusts, wet ground; src/weather_fx.js) -> sky, light, particles
+    const wx = wxFx ? wxFx.view(S, t, dt, sw, { wet: showerWet() }) : null, shw = S.events.active.some(e => e.type === 'shower');
+    dn.weather = wx || { r: shw ? 0.75 : 0, w: 0 }; seaFx.wx = wx;
     dn.update(PHOTO && PHOTO.h !== null ? PHOTO.h : Sim.dayH(S), t, dt, sick, fx.scale);   // (photo mode: a view-only time preview)
-    if (lightFx) lightFx.update(dn, fx, t, dt, sw, { rain: S.events.active.some(e => e.type === 'shower') });   // vibe 2 lane C
+    if (lightFx) lightFx.update(dn, fx, t, dt, sw, { rain: wx ? wx.r : shw ? 1 : 0, wind: wx ? wx.windy * wx.motion : 0 });   // vibe 2 lane C
     { const fe = S.events.active.find(e => e.type === 'fest'); seaFx.fest = fe ? 1 : 0; seaFx.festSea = fe ? fe.sea : -1; }
     seaFx.update(sw, t, dt, dn.state.night, controls.target, renderer, homeDoors(), nav.trunkR(fx.scale));
     seasonCheck();
@@ -2579,7 +2588,7 @@
       const ov = expFx.pupPose(S, i, ps, t); if (ov) ps = ov; poses.push(ps);
     }
     nfx.dance(poses);   // resting pups near a performance dance
-    if (life) { const dc = Sim.dayCurve(Sim.dayH(S)); life.apply(S, poses, t, dt, { night: dn.state.night, dusk: dc.dusk, winter: sw[3] || 0, rain: S.events.active.some(e => e.type === 'shower'), camera, target: controls.target, W: W(), H: H() }); }
+    if (life) { const dc = Sim.dayCurve(Sim.dayH(S)); life.apply(S, poses, t, dt, { night: dn.state.night, dusk: dc.dusk, winter: sw[3] || 0, rain: wx ? wx.r > 0.3 : shw, wet: wx ? wx.wet : 0, windy: wx ? wx.windy : 0, camera, target: controls.target, W: W(), H: H() }); }
     if (steer) steer.apply(poses, dt);   // pathing pass: make room for each other + props (view only)
     pups.glow(dn.state.night);   // Round 3 update 1: outfits (dress = no-op unless the outfit changed)
     for (let i = 0; i < poses.length; i++) { const ps = poses[i]; if (S.pups[i]) pups.dress(i, S.pups[i].fit); pups.update(i, ps, t, dt, ps.air ? airY : ground); ps.y = pups.list[i] ? pups.list[i].y : ps.p[1]; }
@@ -2590,7 +2599,8 @@
     // vibe pass 1: a pup right in front of the lens (critter / tour / free camera) is hidden instead of filling the screen
     for (const P of pups.list) { const hp = P.holder.position, near = camera.position.distanceToSquared(v3n.set(hp.x, hp.y + 2.5, hp.z)) < 36; if (near !== !!P.nearHid) { P.nearHid = near; P.holder.visible = !near; } }
     restoreTick(dt, t);   // Round 2 step 2: the colour radius (one uniform set) + the mist
-    if (wfx) wfx.update(S, t, dt, dn.state.night, camera, sw, { wet: wetness(), rain: S.events.active.some(e => e.type === 'shower'), H: renderer.domElement.height });   // vibe pass 2
+    if (wfx) wfx.update(S, t, dt, dn.state.night, camera, sw, { wet: wetness(), rain: wx ? wx.r > 0.3 : shw, wind: wx ? wx.windy * wx.motion : 0, H: renderer.domElement.height });   // vibe pass 2
+    if (wxFx) { const ur = ElderMap.uRest.value; wxFx.update(S, t, dt, dn.state.night, camera, controls.target, renderer, poses, sw, { w: ur.w, x: ur.x, h: dn.state.h }); }   // umbrellas, puffs, sunflowers, leaf piles
     map.update(camera, t, renderer.domElement.height);
     renderer.render(scene, camera);
     if (TPM || GUIDE) tourFrame();   // piece 5: tour pins (home) / the guide's bubble (visit)
@@ -2615,7 +2625,7 @@
     expLabels();
     if (voice) voice.update(dt);   // vibe 2 lane C: night whispers by the trunk
     if (foley) foley.update(dt, { night: dn.state.night, h: dn.state.h, wind: 0.5 + 0.5 * (1 - dn.state.night), poses, quiet: overlayOpen() || !!boatCam });
-    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (session.n === 0) trySpeak(false); if (snd.live) snd.update(sndState()); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
+    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (session.n === 0) trySpeak(false); if (snd.live) snd.update(sndState()); if (wxUI && wxFx) wxUI.refresh(wxFx.wx, S, now); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
     if (now - lastSave > 5000) save();
     cpu += performance.now() - c0; frames++; pacc += real;
     if (pacc >= 0.5) {

@@ -152,8 +152,9 @@
   }
   const ownOf = s => ({ pups: s.pups.map(p => p.id).concat(s.invite ? [s.invite.id] : []), outfits: s.inv.outfits });
 
+  const durOf = (s, t) => window.Weather ? window.Weather.tripDur(s, TIERS[t.tier].sec, t.dep) : TIERS[t.tier].sec;
   function depart(s, t, nav) {
-    t.dep = Math.round((s.time) * 1000) / 1000;
+    t.dep = Math.round((s.time) * 1000) / 1000; t.dur = durOf(s, t);   // a wind at departure = a tail wind home (src/weather.js)
     t.team.forEach((i, k) => { const p = s.pups[i]; const at = dockSpot(s, nav, k); p.phase = 'away'; p.leg = null; p.t = 0; p.dur = 0; p.at = { p: at.p.slice(), n: at.n }; });
   }
   function land(s, t, nav, ev) {
@@ -257,6 +258,6 @@
   }
   function create(s) { s.exp = { n: 0, trips: [], hauls: [] }; s.placed = []; }
 
-  window.Exped = { C, TIERS, DEST, DESTBY, DECOR, ISLE_PUPS, OUTFITS, LIKE, LIKE_TXT, lvOf, board, maxTrips, unlocked, dockSpot, busy, canSend, send, recall, haul, ownOf, tick, estimate,
+  window.Exped = { C, TIERS, DEST, DESTBY, DECOR, ISLE_PUPS, OUTFITS, LIKE, LIKE_TXT, lvOf, board, maxTrips, unlocked, dockSpot, busy, canSend, send, recall, haul, ownOf, tick, estimate, durOf,
     place, unplace, ownedFree, sanitize, create, rng, hash };
 })();

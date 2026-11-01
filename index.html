@@ -316,6 +316,17 @@ body.phone .hsw { width: 34px; height: 34px; }
 
   /* step 5: growth stage tag, season chip, the Book (memories, pups, decorations, outfits), tree memory card */
   .th .stg { font: 600 12px Fredoka, sans-serif; background: #e9f7e0; border: 2px solid var(--ink); border-radius: 999px; padding: 0 8px; margin-left: -4px; }
+  /* seasons + weather pass: the weather chip in the resource bar + its little card */
+  #resbar #wxChip { cursor: pointer; } #wxChip.wx-rain, #wxChip.wx-drizzle { background: #e2eefa; } #wxChip.wx-snow { background: #eef5ff; } #wxChip.wx-windy { background: #eef7e8; } #wxChip.wx-wet { background: #e6f4fb; }
+  #wxChip.busy #wxT::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 4px; border-radius: 50%; background: #7fd36a; vertical-align: middle; }
+  #wxCard { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); width: min(300px, calc(100% - 24px)); padding: 10px 14px; border-radius: 16px; z-index: 6; cursor: pointer; }
+  #wxCard .wxh { display: flex; align-items: center; gap: 6px; font-size: 17px; } #wxCard .wxh svg.ic { width: 24px; height: 24px; }
+  #wxCard ul { list-style: none; margin: 8px 0 4px; padding: 0; } #wxCard li { display: flex; align-items: center; gap: 7px; font: 500 14px/1.5 Fredoka, sans-serif; }
+  #wxCard li i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
+  #wxCard .wxl { margin: 6px 0 0; font: italic 500 13px/1.35 Fredoka, sans-serif; color: #5d567a; }
+  body.phone #resbar #wxChip span:last-child { display: none; } @media (max-width: 1180px) { #resbar #wxChip span:last-child { display: none; } }
+  body.phone #wxCard { top: 96px; }
+  body.calm #wxCard { opacity: 0; pointer-events: none; transition: opacity 1.8s ease; }
   #resbar #seaChip { cursor: pointer; } #seaChip.sea-spring { background: #ffe8f2; } #seaChip.sea-summer { background: #fff3c4; } #seaChip.sea-autumn { background: #ffe3cc; } #seaChip.sea-winter { background: #e6f3ff; }
   #bookBtn { position: relative; } #bookBtn.ready { background: #e9dcff; animation: wig 2.4s ease-in-out infinite; }
   #bookBtn.ready::after { content: ''; position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: #8f6bff; border: 2px solid var(--ink); }
@@ -737,7 +748,7 @@ body.phone #visBar button { min-width: 46px; padding: 3px 2px; font-size: 11px; 
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/weather.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/weather_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

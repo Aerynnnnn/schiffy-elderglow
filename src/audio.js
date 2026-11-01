@@ -139,6 +139,22 @@
     for (let k = 0; k < sec * 3; k++) { const at = Math.floor(r() * N), f0 = 1400 + r() * 1500, g = 0.06 + r() * 0.08, L = Math.round(0.03 * SR); let ph = 0; for (let i = 0; i < L; i++) { const u = i / L; ph += TAU * f0 * (1 - 0.35 * u) / SR; a[(at + i) % N] += Math.sin(ph) * g * Math.exp(-u * 4); } }
     return norm(a, 0.5);
   }
+  // seasons + weather pass: rain on roofs + porches (harder, brighter ticks on wood and slate, a few gutter plinks, little hiss)
+  function roofRain(sec, seed) {
+    const r = rng(seed), N = Math.round(sec * SR), F = Math.round(0.3 * SR), b = new Float32Array(N + F), hp = Biquad('hp', 2600, 0.7);
+    for (let i = 0; i < N + F; i++) b[i] = hp(r() * 2 - 1) * 0.06;
+    const a = loopify(b, F), bp = Biquad('bp', 3000, 3);
+    for (let k = 0; k < sec * 110; k++) { const at = Math.floor(r() * N), g = (0.15 + Math.pow(r(), 2) * 0.6) * (r() < 0.5 ? 1 : -1); bp.tune(2200 + r() * 3800, 3 + r() * 3); for (let i = 0; i < 70; i++) a[(at + i) % N] += bp(i < 2 ? g : 0); }
+    const lo = Biquad('bp', 420, 2); for (let k = 0; k < sec * 9; k++) { const at = Math.floor(r() * N), g = 0.3 + r() * 0.4; lo.tune(300 + r() * 260, 2); for (let i = 0; i < 300; i++) a[(at + i) % N] += lo(i < 3 ? g : 0) * 0.6; }
+    for (let k = 0; k < sec * 1.2; k++) { const at = Math.floor(r() * N), f0 = 900 + r() * 700, L = Math.round(0.06 * SR); let ph = 0; for (let i = 0; i < L; i++) { const u = i / L; ph += TAU * f0 * (1 + 0.6 * u) / SR; a[(at + i) % N] += Math.sin(ph) * 0.1 * Math.exp(-u * 5); } }
+    return norm(a, 0.5);
+  }
+  // a single drip off a leaf after the rain (a little rising plip)
+  function drip(seed) {
+    const r = rng(seed), L = Math.round(0.09 * SR), a = new Float32Array(L), f0 = 700 + r() * 900; let ph = 0;
+    for (let i = 0; i < L; i++) { const u = i / L; ph += TAU * f0 * (1 + 1.1 * u) / SR; a[i] = Math.sin(ph) * Math.exp(-u * 6) * Math.min(1, i / 40); }
+    return norm(a, 0.5);
+  }
   function crickets(sec, seed) {   // 3 crickets: chirps of 3-4 pulses (~28 Hz) on a 4-5 kHz carrier, wrapped = seamless
     const r = rng(seed), N = Math.round(sec * SR), a = new Float32Array(N);
     for (const fc of [4300, 4680, 4980]) {
@@ -306,13 +322,13 @@
   function build(ctx) {   // async, yields between instruments so a phone keeps drawing
     if (BANK) return Promise.resolve(BANK);
     if (building) return building;
-    const B = { inst: {}, drums: {}, birds: [], tinks: [], toks: [], sfx: {}, loops: {} }, jobs = [];
+    const B = { inst: {}, drums: {}, birds: [], tinks: [], toks: [], drips: [], sfx: {}, loops: {} }, jobs = [];
     const t0 = performance.now();
     for (const k of Object.keys(RANGES)) { const [lo, hi] = RANGES[k], r = rng(k.charCodeAt(0) * 31 + 7); B.inst[k] = []; for (let m = lo; m <= hi; m += 6) jobs.push(() => { B.inst[k].push({ m, b: mkBuf(ctx, INST[k](mtof(m), r)) }); }); }   // one note per job
     jobs.push(() => { B.drums.kick = mkBuf(ctx, kick()); B.drums.brush = [mkBuf(ctx, brush(1)), mkBuf(ctx, brush(2))]; B.drums.shk = [mkBuf(ctx, shaker(3)), mkBuf(ctx, shaker(4)), mkBuf(ctx, shaker(5))]; });
-    jobs.push(() => { const kinds = ['trill', 'whistle', 'feebee', 'chip', 'warble', 'whistle', 'trill', 'whistle', 'chip', 'warble', 'trill', 'whistle', 'feebee', 'dove']; kinds.forEach((k, i) => B.birds.push({ k, b: mkBuf(ctx, bird(k, 100 + i * 17)) })); for (let i = 0; i < 5; i++) B.tinks.push(mkBuf(ctx, tink(200 + i))); for (let i = 0; i < 3; i++) B.toks.push(mkBuf(ctx, tok(300 + i))); });
+    jobs.push(() => { const kinds = ['trill', 'whistle', 'feebee', 'chip', 'warble', 'whistle', 'trill', 'whistle', 'chip', 'warble', 'trill', 'whistle', 'feebee', 'dove']; kinds.forEach((k, i) => B.birds.push({ k, b: mkBuf(ctx, bird(k, 100 + i * 17)) })); for (let i = 0; i < 5; i++) B.tinks.push(mkBuf(ctx, tink(200 + i))); for (let i = 0; i < 3; i++) B.toks.push(mkBuf(ctx, tok(300 + i))); for (let i = 0; i < 4; i++) B.drips.push(mkBuf(ctx, drip(400 + i))); });
     jobs.push(() => { B.loops.vinylA = mkBuf(ctx, vinyl(7.1, 41)); B.loops.vinylB = mkBuf(ctx, vinyl(5.3, 42)); B.loops.wind = mkBuf(ctx, wind(14, 43)); });
-    jobs.push(() => { B.loops.river = mkBuf(ctx, river(11, 44)); B.loops.rain = mkBuf(ctx, rain(10, 45)); B.loops.crickets = mkBuf(ctx, crickets(8, 46)); });
+    jobs.push(() => { B.loops.river = mkBuf(ctx, river(11, 44)); B.loops.rain = mkBuf(ctx, rain(10, 45)); B.loops.crickets = mkBuf(ctx, crickets(8, 46)); B.loops.roof = mkBuf(ctx, roofRain(9, 47)); });
     for (const k of Object.keys(SFX)) jobs.push(() => { B.sfx[k] = mkBuf(ctx, SFX[k]()); });
     building = new Promise(res => {
       const next = () => { const t = performance.now(); while (jobs.length && performance.now() - t < 12) jobs.shift()(); if (jobs.length) setTimeout(next, 0); else { B.ms = Math.round(performance.now() - t0); BANK = B; res(B); } };
@@ -441,7 +457,7 @@
     let ctx = o.ctx || null, G = null, started = false, ready = false, timer = 0, hidden = false;
     const R = rng(o.seed !== undefined ? o.seed : (Date.now() & 0xffffff));
     const st = { night: 0, dawn: 0, dusk: 0, sw: [0, 0, 1, 0], rain: 0, river: 0, tree: 0, health: 80, wind: 0.5, stage: null, build: null, cam: [0, 0, 0], right: [1, 0, 0], camD: 200, fest: 0, say: 0 };
-    let forceTheme = null, sec = null, step = 0, nextT = 0, secN = 0, seaNow = 2, last = {}, nextBird = 0, nextTink = 0, nextTok = 0, duckUntil = 0;
+    let forceTheme = null, sec = null, step = 0, nextT = 0, secN = 0, seaNow = 2, last = {}, nextBird = 0, nextTink = 0, nextTok = 0, nextDrip = 0, duckUntil = 0;
     const E = { prefs, get ctx() { return ctx; }, get ready() { return ready; }, get on() { return prefs.on; }, get live() { return started && prefs.on && !hidden; }, st, SR };
 
     function makeCtx() {
@@ -469,9 +485,9 @@
       // ambience
       const loop = (b, to, rate, off) => { const s = c.createBufferSource(); s.buffer = b; s.loop = true; s.playbackRate.value = rate || 1; s.connect(to); s.start(0, off || 0); return s; };
       g.windG = gain(0, g.ambVol); g.windLP = c.createBiquadFilter(); g.windLP.type = 'lowpass'; g.windLP.frequency.value = 8000; g.windLP.connect(g.windG);
-      g.riverG = gain(0, g.ambVol); g.rainG = gain(0, g.ambVol); g.cricG = gain(0, g.ambVol); g.hushG = gain(0, g.ambVol); g.treeG = gain(0, g.ambVol); g.oneG = gain(1, g.ambVol);
+      g.riverG = gain(0, g.ambVol); g.rainG = gain(0, g.ambVol); g.cricG = gain(0, g.ambVol); g.hushG = gain(0, g.ambVol); g.treeG = gain(0, g.ambVol); g.oneG = gain(1, g.ambVol); g.roofG = gain(0, g.ambVol);
       const hlp = c.createBiquadFilter(); hlp.type = 'lowpass'; hlp.frequency.value = 380; hlp.connect(g.hushG);
-      g.srcs = [loop(BANK.loops.vinylA, g.vinyl), loop(BANK.loops.vinylB, g.vinyl, 1, 2.1), loop(BANK.loops.wind, g.windLP), loop(BANK.loops.river, g.riverG), loop(BANK.loops.rain, g.rainG), loop(BANK.loops.wind, hlp, 0.5, 5)];
+      g.srcs = [loop(BANK.loops.vinylA, g.vinyl), loop(BANK.loops.vinylB, g.vinyl, 1, 2.1), loop(BANK.loops.wind, g.windLP), loop(BANK.loops.river, g.riverG), loop(BANK.loops.rain, g.rainG), loop(BANK.loops.wind, hlp, 0.5, 5), loop(BANK.loops.roof, g.roofG)];
       const cp = (p, rate, off) => { if (c.createStereoPanner) { const pn = c.createStereoPanner(); pn.pan.value = p; pn.connect(g.cricG); g.srcs.push(loop(BANK.loops.crickets, pn, rate, off)); } else g.srcs.push(loop(BANK.loops.crickets, g.cricG, rate, off)); };
       cp(-0.45, 1, 0); cp(0.5, 0.93, 3.3);
       // tree hum: soft drone on the key's root + fifth, slowly beating
@@ -532,6 +548,10 @@
       const tinkK = st.night * (sw[0] * 1 + sw[1] * 1.3 + sw[2] * 0.7) * rainK;
       if (nextTink < now) nextTink = now + R() * 3;
       while (nextTink < until) { if (tinkK > 0.05) birdAt(BANK.tinks[Math.floor(R() * BANK.tinks.length)], nextTink, (0.05 + R() * 0.07) * tinkK, (R() * 2 - 1) * 0.7, 0.95 + R() * 0.1); nextTink += (3 + R() * 7) / Math.max(0.3, tinkK); }
+      // seasons + weather pass: drips off the leaves while the ground is wet after a rain (st.wet, st.rain from the game's weather)
+      const dripK = (st.wet || 0) * (1 - Math.min(1, st.rain * 1.6)) * (1 - sw[3]);
+      if (nextDrip < now) nextDrip = now + R() * 2;
+      while (nextDrip < until) { if (dripK > 0.04) birdAt(BANK.drips[Math.floor(R() * BANK.drips.length)], nextDrip, (0.05 + R() * 0.08) * Math.min(1, dripK * 1.5), (R() * 2 - 1) * 0.8, 0.85 + R() * 0.3); nextDrip += (0.4 + R() * 1.8) / Math.max(0.3, dripK); }
       const B = st.build;
       if (nextTok < now) nextTok = now + 0.2;
       while (nextTok < until) { if (B && B.g > 0.02) birdAt(BANK.toks[Math.floor(R() * 3)], nextTok, B.g * (0.6 + R() * 0.4), B.pan, 0.9 + R() * 0.2); nextTok += 0.45 + R() * 0.7 + (R() < 0.15 ? 1.2 : 0); }
@@ -562,12 +582,15 @@
       set(P(G.duck.gain), (1 - 0.45 * stG) * (ctx.currentTime < duckUntil ? 0.45 : 1) * (st.say ? 0.72 : 1), tc || 0.4);   // vibe 2 lane C: the tree's bubble open = the music steps back a little
       set(P(G.vinyl.gain), 0.1 * (1 + sw[2] * 0.6) * (sec && sec.kind === 'rest' ? 0.6 : 1), tc || 2);
       const high = clamp(st.camD / 600, 0, 1);
-      set(P(G.windG.gain), (0.07 + 0.08 * high + 0.06 * sw[2] - 0.03 * sw[3]) * (1 + rainK * 0.5), tc || 2);
-      set(P(G.windLP.frequency), 8000 - 6000 * sw[3], tc || 3);
+      // seasons + weather pass: wind gusts swell + brighten the wind (st.wind 0..1, st.gust 0..1), rain on roofs near cottages (st.roof)
+      const wnd = st.wind || 0, gst = st.gust || 0;
+      set(P(G.windG.gain), (0.07 + 0.08 * high + 0.06 * sw[2] - 0.03 * sw[3]) * (1 + rainK * 0.5) + wnd * (0.1 + 0.16 * gst), tc || (wnd > 0.05 ? 0.9 : 2));
+      set(P(G.windLP.frequency), 8000 - 6000 * sw[3] + wnd * gst * 2500, tc || 1.2);
       set(P(G.riverG.gain), 0.32 * st.river, tc || 1);
       set(P(G.rainG.gain), 0.38 * rainK, tc || 3);
+      set(P(G.roofG.gain), 0.3 * rainK * clamp(st.roof || 0, 0, 1) * (1 - sw[3] * 0.8), tc || 2);
       set(P(G.cricG.gain), 0.1 * n * (sw[0] * 0.7 + sw[1] * 1 + sw[2] * 0.6) * (1 - rainK * 0.7), tc || 3);
-      set(P(G.hushG.gain), 0.35 * sw[3], tc || 3);
+      set(P(G.hushG.gain), 0.35 * sw[3] + 0.22 * wnd, tc || 3);
       set(P(G.treeG.gain), 0.16 * st.tree * (0.5 + 0.5 * clamp(st.health / 100, 0, 1)), tc || 1.2);
       set(P(G.master.gain), prefs.on ? prefs.master : 0, tc || 0.25);
       set(P(G.musicVol.gain), prefs.music, 0.1); set(P(G.ambVol.gain), prefs.amb, 0.1); set(P(G.sfxVol.gain), prefs.sfx, 0.1);
@@ -674,7 +697,7 @@
     card.innerHTML = `<div class="pch"><span class="disp sndt">${ICON.on}Sound</span><button id="sndClose" title="Close">&#10005;</button></div>
       <label class="tog sndon"><input type="checkbox" id="sndOn"><i></i><b>Sound on</b></label>
       ${row('master', 'Volume')}${row('music', 'Lo-fi music')}${row('amb', 'Nature')}${row('sfx', 'Little sounds')}
-      <p class="sub">Soft tunes follow your clock and the season; birds by day, crickets at night, rain when it showers. Sound pauses when you leave the tab.</p>`;
+      <p class="sub">Soft tunes follow your clock and the season; birds by day, crickets at night, rain on the leaves and roofs, wind in the trees. Sound pauses when you leave the tab.</p>`;
     const refresh = () => { btn.innerHTML = E.on ? ICON.on : ICON.off; btn.classList.toggle('off', !E.on); $('sndOn').checked = E.on; card.classList.toggle('muted', !E.on); };
     btn.onclick = () => { card.hidden = !card.hidden; };
     $('sndClose').onclick = () => { card.hidden = true; };

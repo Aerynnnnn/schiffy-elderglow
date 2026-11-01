@@ -242,8 +242,11 @@
       } else {
         const golden = dusk > 0.3 || night > 0.25;
         add('bench', weightOf('bench', tr)); add('bridge', weightOf('bridge', tr)); add('river', weightOf('river', tr)); add('curio', weightOf('curio', tr));
-        add('tag', weightOf('tag', tr) * (small ? 4 : 1)); add('nap2', weightOf('nap2', tr) * 0.4);
-        if (winter > 0.5) add('snow', weightOf('snow', tr) * 2.5); else add('moth', weightOf('moth', tr));
+        // seasons + weather pass: puddle play after a rain (the running game, with splashes from weather_fx), chasing blown leaves /
+        // petals in a wind (the chase moment)
+        const wetK = env.wet > 0.3 ? 3 : 1, windK = env.windy > 0.4 && winter < 0.5 ? 2.5 : 1;
+        add('tag', weightOf('tag', tr) * (small ? 4 : 1) * wetK); add('nap2', weightOf('nap2', tr) * 0.4);
+        if (winter > 0.5) add('snow', weightOf('snow', tr) * 2.5); else add('moth', weightOf('moth', tr) * windK);
         if (golden && fires(S).length) add('fire', weightOf('fire', tr) * 3);
       }
       let tot = opts.reduce((a, x) => a + x[1], 0), r = hsh(Math.floor(tNow * 3) * 7 + i * 31) * tot, k = null;

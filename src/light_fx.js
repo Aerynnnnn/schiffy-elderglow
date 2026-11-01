@@ -94,14 +94,16 @@
       // dn = DayNight, fx = TreeFx, sw = season weights, env = { rain }
       update(dn, fx, t, dt, sw, env) {
         env = env || {}; const h = dn.state.h, night = dn.state.night, day = 1 - night, on = api.on;
-        const winter = sw ? sw[3] || 0 : 0, rain = env.rain ? 1 : 0;
+        // seasons + weather pass: env.rain is the weather's rain 0..1 (a shower counts), env.wind = windiness 0..1 (src/weather_fx.js,
+        // already x the reduced-motion factor): canopies + grass sway harder, gusts roll across day AND night, clouds race
+        const winter = sw ? sw[3] || 0 : 0, rain = Math.min(1, +env.rain || 0), wnd = Math.min(1, +env.wind || 0);
         // golden hour (17:25 - 18:35 full) and a softer dawn glow; dawn mist 05:30 - 08:00
         const gold = on ? sm(16.3, 17.4, h) * (1 - sm(18.6, 19.4, h)) * day : 0, dawnG = on ? sm(5.6, 6.3, h) * (1 - sm(7.2, 8.0, h)) * (1 - night * 0.6) : 0;
         api.gold = gold;
         // wind + clouds + plaza warmth (all 0 / 1 at night = the shipped look)
-        const W = ElderMap.uWind.value; scroll += dt * K.cloudSpeed * (1 + rain);
-        if (on) W.set(1 + K.sway * day * (1 + rain * 0.6), (K.grassNight + (K.grass - K.grassNight) * day) * (1 - winter * 0.5) * (1 + rain * 0.5), K.gust * day * (1 + rain), 0);
-        else W.set(1, 0, 0, 0);
+        const W = ElderMap.uWind.value, ww = W.w; scroll += dt * K.cloudSpeed * (1 + rain + wnd * 3.5);
+        if (on) W.set(1 + K.sway * day * (1 + rain * 0.6) + wnd * 1.4, (K.grassNight + (K.grass - K.grassNight) * day) * (1 - winter * 0.5) * (1 + rain * 0.5) + wnd * 0.9, K.gust * day * (1 + rain) + wnd * 1.1, ww);
+        else W.set(1, 0, 0, ww);
         const cl = on ? K.cloud * day * (1 - dawnG * 0.5) * (1 - rain * 0.6) * (1 - (dn.mist || 0) * 0.5) : 0;
         ElderMap.uCloud.value.set(cl, 1 / K.cloudSize, -WIND.x * scroll, -WIND.y * scroll);
         const s = fx ? fx.scale : 0.6;

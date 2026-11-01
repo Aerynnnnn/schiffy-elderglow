@@ -79,6 +79,8 @@
   // autumn orange / red / gold patches; green ground + grass turn golden in autumn; winter = snow on up-facing surfaces
   // (ground, roofs, canopy tops; patchy) + a cold, paler world. No new models.
   const uSeason = { value: new THREE.Vector4(0, 0, 0, 0) }, uCozy = { value: 0 };
+  // seasons + weather pass (src/weather_fx.js sets it): uWet = (ground wetness 0..1, rain on water 0..1 = ripples, -, -)
+  const uWet = { value: new THREE.Vector4(0, 0, 0, 0) };
   const SEA_VS = `
     { vec3 nS = objectNormal; vec4 pS = vec4(transformed, 1.0);
       #ifdef USE_INSTANCING
@@ -98,16 +100,27 @@
       float nz2 = fract(sin(dot(floor(vSeaWP * 0.18), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
       float green = clamp((c.g - max(c.r, c.b)) * 5.0, 0.0, 1.0);
       if (vSeaLeaf > 0.5) {
+        float dec = step(0.9, vSeaLeaf);   // seasons pass: 0 = evergreen (spruce): no blossom, no autumn colour
         vec3 pink = mix(vec3(1.0, 0.56, 0.74), vec3(1.0, 0.76, 0.86), vSeaSeed) * (0.6 + sl * 0.6);
-        c = mix(c, pink, uSeason.x * (vSeaSeed < 0.62 ? 0.9 : 0.35 * smoothstep(0.45, 0.6, nz)));   // most puffs in blossom
-        c = mix(c, c * vec3(0.82, 1.06, 0.8), uSeason.y);
+        c = mix(c, pink, dec * uSeason.x * (vSeaSeed < 0.62 ? 0.9 : 0.35 * smoothstep(0.45, 0.6, nz)));   // most puffs in blossom
+        c = mix(c, c * vec3(0.66, 1.0, 0.6), uSeason.y);   // seasons pass: summer canopies a deep lush green
         float na = vSeaSeed * 0.85 + nz * 0.15;
         vec3 au = mix(mix(vec3(0.97, 0.47, 0.13), vec3(0.85, 0.22, 0.15), smoothstep(0.32, 0.46, na)), vec3(1.0, 0.72, 0.2), smoothstep(0.56, 0.7, na));
-        c = mix(c, au * (0.55 + sl * 0.9), uSeason.z * 0.88);
+        c = mix(c, au * (0.55 + sl * 0.9), dec * uSeason.z * 0.88);
       } else {
         c = mix(c, mix(c, vec3(0.74, 0.6, 0.26) * (0.55 + sl * 0.8), 0.42), uSeason.z * green);
-        c = mix(c, c * vec3(0.92, 1.07, 0.9), uSeason.y * green);
-        c = mix(c, c * vec3(0.96, 1.06, 0.92), uSeason.x * green);   // spring: fresh green grass
+        c = mix(c, c * vec3(0.78, 1.0, 0.68), uSeason.y * green);   // summer: deep lush grass
+        c = mix(c, c * vec3(1.03, 1.06, 0.86), uSeason.x * green);   // spring: fresh, light yellow-green grass
+        // seasons pass: what lies on the grass (up-facing green ground, speckle field in world xz): spring blossom petals, summer
+        // buttercups + daisies, autumn fallen leaves in drifts (a slow noise thickens them in places)
+        // (soft noise blobs, colour from a second slow noise: no square cells; drifts = a slow noise that thickens / clears them)
+        float upG = smoothstep(0.55, 0.9, vSeaUp) * green, nz3 = egNoise(vSeaWP.xz * 0.21 + 7.7);
+        float bl = egNoise(vSeaWP.xz * 0.7) * 0.55 + egNoise(vSeaWP.xz * 2.3 + 3.1) * 0.45, dr = egNoise(vSeaWP.xz * 0.03);
+        float blP = egNoise(vSeaWP.xz * 1.6) * 0.6 + egNoise(vSeaWP.xz * 3.9 + 1.3) * 0.4;   // petals: smaller + pinker (white blobs read as snow up close)
+        c = mix(c, mix(vec3(0.95, 0.42, 0.64), vec3(1.0, 0.6, 0.78), nz3) * (0.75 + sl * 0.3), uSeason.x * upG * smoothstep(0.74 - dr * 0.1, 0.79 - dr * 0.1, blP) * 0.8);
+        c = mix(c, nz3 < 0.6 ? vec3(1.0, 0.84, 0.22) : vec3(1.0, 0.97, 0.9), uSeason.y * upG * smoothstep(0.76, 0.8, bl) * 0.8);
+        vec3 lf = mix(mix(vec3(0.9, 0.4, 0.13), vec3(0.74, 0.2, 0.12), smoothstep(0.35, 0.5, nz3)), vec3(0.96, 0.66, 0.2), smoothstep(0.6, 0.75, nz3));
+        c = mix(c, lf * (0.75 + sl * 0.5), uSeason.z * upG * smoothstep(0.74 - dr * 0.3, 0.8 - dr * 0.3, bl) * 0.9);
       }
       c = mix(c, mix(vec3(sl), c, 0.6) * vec3(0.94, 0.97, 1.05), uSeason.w * 0.6);
       float snow = uSeason.w * smoothstep(0.4, 0.82, vSeaUp) * clamp(0.55 + 0.6 * nz, 0.0, 1.0);
@@ -115,10 +128,14 @@
       // (bright crests, blue-lilac hollows) and a faint per-cell sparkle variation; thin snow lets a little ground show at the ripples
       float drift = 0.5 + 0.5 * sin(dot(vSeaWP.xz, vec2(0.41, 0.2)) + nz * 3.4);
       float rip = 0.5 + 0.5 * sin(dot(vSeaWP.xz, vec2(1.1, 0.66)) + drift * 2.5);
-      vec3 snowC = mix(vec3(0.5, 0.58, 0.79), vec3(0.81, 0.85, 0.92), clamp(nz * 0.4 + drift * 0.32 + rip * 0.2 + nz2 * 0.08, 0.0, 1.0));
-      c = mix(c, snowC, snow * (0.74 + 0.26 * drift));
+      // seasons pass (playtest: "blown-out white snow"): a little darker again + trodden paths (brown albedo) keep half their colour
+      vec3 snowC = mix(vec3(0.44, 0.51, 0.72), vec3(0.71, 0.75, 0.83), clamp(nz * 0.4 + drift * 0.32 + rip * 0.2 + nz2 * 0.08, 0.0, 1.0));
+      float trod = clamp((diffuseColor.r - diffuseColor.g) * 5.0, 0.0, 1.0) * (1.0 - vSeaLeaf);
+      c = mix(c, snowC, snow * (0.74 + 0.26 * drift) * (1.0 - 0.5 * trod));
       diffuseColor.rgb = c;
-    }`;
+    }
+    // seasons pass: wet ground after rain (uWet.x 0..1): darker, a little cooler; up-facing surfaces most (roofs, paths, grass)
+    if (vUnlit < 0.5 && uWet.x > 0.001) { float wU = smoothstep(0.2, 0.85, vSeaUp); diffuseColor.rgb *= (1.0 - uWet.x * (0.2 + 0.3 * wU)) * mix(vec3(1.0), vec3(0.92, 0.97, 1.06), uWet.x); }`;
   // Round 2 step 2 (colour restoring, src/story.js): albedo outside the restored radius is a soft misty grey. uRest = (radius m,
   // soft edge half-width m, edge wobble m, strength: 0 = full colour = exactly the shipped look); uRestC = (tree x, z, y0, yk:
   // height above y0 counts yk x, so the sky isles come last); uRestWave 0..1 = a warm glow band riding the edge during a
@@ -160,8 +177,8 @@
     ${DAYLIGHT_FS}
     if (vUnlit < 0.5) { float aL = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb, aL * uGrade.rgb, uGrade.a) * (1.0 - uGradeDark * uNight); }`;
   const GLOW_FOG = 'vec3 preFog = gl_FragColor.rgb;\n#include <fog_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, preFog, gU * uNight * 0.6);';
-  const glowUniforms = s => { s.uniforms.uWind = uWind; s.uniforms.uSwayK = uSwayOne; s.uniforms.uCloud = uCloud; s.uniforms.uPlaza = uPlaza; s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave; s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; };
-  const GLOW_DECL = REST_DECL + 'uniform vec4 uCloud;\nuniform vec4 uPlaza;\n' + NOISE_GLSL + 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
+  const glowUniforms = s => { s.uniforms.uWind = uWind; s.uniforms.uSwayK = uSwayOne; s.uniforms.uCloud = uCloud; s.uniforms.uPlaza = uPlaza; s.uniforms.uRest = uRest; s.uniforms.uRestC = uRestC; s.uniforms.uRestWave = uRestWave; s.uniforms.uNight = uNight; s.uniforms.uGrade = uGrade; s.uniforms.uGradeDark = uGradeDark; s.uniforms.uDayGlow = uDayGlow; s.uniforms.uSeason = uSeason; s.uniforms.uCozy = uCozy; s.uniforms.uWet = uWet; };
+  const GLOW_DECL = REST_DECL + 'uniform vec4 uCloud;\nuniform vec4 uPlaza;\n' + NOISE_GLSL + 'uniform float uNight;\nuniform vec4 uGrade;\nuniform float uGradeDark;\nuniform float uDayGlow;\nuniform vec4 uSeason;\nuniform float uCozy;\nuniform vec4 uWet;\nvarying float vSeaUp;\nvarying vec3 vSeaWP;\nvarying float vSeaLeaf;\nvarying float vSeaSeed;\nfloat gU = 0.0;\n';
   litMat.onBeforeCompile = s => {
     s.uniforms.uTime = uTime; glowUniforms(s);
     s.vertexShader = SWAY_DECL + SEA_DECL_V + 'attribute float unlit;\nvarying float vUnlit;\n' + s.vertexShader
@@ -209,6 +226,22 @@
     ink.customProgramCacheKey = () => 'eg-grass-ink';
     return { lit, ink };
   }
+  // seasons + weather pass, water only: winter = ice sheets in patches + a frosted pale skin (more opaque where frozen, a few cracks),
+  // rain = rings spreading on the surface (one per 2 m cell, each its own beat; uWet.y = the share of cells hit)
+  const WATER_FS = `
+    if (uSeason.w > 0.001) {
+      float fI = egNoise(vRestWP.xz * 0.06) * 0.6 + egNoise(vRestWP.xz * 0.31 + 5.7) * 0.4;
+      float ice = smoothstep(0.5, 0.62, fI), crk = smoothstep(0.035, 0.0, abs(egNoise(vRestWP.xz * 0.9) - 0.5)) * ice;
+      diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.22, 0.45, 0.68), vec3(0.55, 0.72, 0.88), ice), uSeason.w * (0.55 + 0.35 * ice)) - crk * 0.15 * uSeason.w;
+      diffuseColor.a = mix(diffuseColor.a, 0.95, uSeason.w * (0.6 + 0.4 * ice));   // a frozen river hides its snowy bed
+    }
+    if (uWet.y > 0.001) {
+      vec2 cW = vRestWP.xz * 0.5, iW = floor(cW), fW = fract(cW) - 0.5;
+      float hW = egHash(iW), phW = fract(uTime * (0.55 + hW * 0.4) + hW * 7.0);
+      vec2 oW = (vec2(egHash(iW + 7.1), egHash(iW + 3.3)) - 0.5) * 0.45;
+      float rW = smoothstep(0.045, 0.0, abs(length(fW - oW) - phW * 0.42)) * (1.0 - phW) * step(hW, uWet.y) * (1.0 - uSeason.w * 0.8);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.97, 1.0), rW * 0.55);
+    }`;
   const seeCache = {};
   function seeMat(m) {   // Water* / Glass*: as in viewer.html
     if (seeCache[m.name]) return seeCache[m.name];
@@ -223,15 +256,18 @@
             pR = instanceMatrix * pR;
           #endif
           vRestWP = (modelMatrix * pR).xyz; }`);
-      s.fragmentShader = 'varying vec3 vRestWP;\n' + REST_DECL + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + restoreFS('vRestWP', '0.82'));
+      if (water) { s.uniforms.uSeason = uSeason; s.uniforms.uWet = uWet; s.uniforms.uTime = uTime; }
+      s.fragmentShader = 'varying vec3 vRestWP;\n' + REST_DECL + (water ? 'uniform vec4 uSeason;\nuniform vec4 uWet;\nuniform float uTime;\n' + NOISE_GLSL : '') +
+        s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n' + (water ? WATER_FS : '') + restoreFS('vRestWP', '0.82'));
     };
     return (seeCache[m.name] = sm);
   }
 
+  const FOLIAGE = /^EG_(Oak|Spruce|Bush|Birch|Pine|Maple|Willow)/, EVERGREEN = /^EG_(Spruce|Pine)/;
   // ---- geometry merge
   function Builder(ink) { this.pos = []; this.nrm = []; this.col = []; this.unl = []; this.sp = []; this.sw = []; this.idx = []; this.n = 0; this.ink = ink; }
   const _v = new THREE.Vector3(), _nm = new THREE.Matrix3();
-  Builder.prototype.add = function (geo, mat4, color, unlit, pivot) {
+  Builder.prototype.add = function (geo, mat4, color, unlit, pivot, swW) {
     const P = geo.attributes.position, N = geo.attributes.normal, base = this.n;
     _nm.getNormalMatrix(mat4);
     for (let i = 0; i < P.count; i++) {
@@ -239,7 +275,7 @@
       if (N) _v.set(N.getX(i), N.getY(i), N.getZ(i)).applyMatrix3(_nm).normalize(); else _v.set(0, 1, 0);   // normalize = scale-free (quantized normals)
       this.nrm.push(_v.x, _v.y, _v.z);
       if (!this.ink) { this.col.push(color.r, color.g, color.b); this.unl.push(unlit); }
-      if (pivot) { this.sp.push(pivot.x, pivot.y, pivot.z); this.sw.push(1); } else { this.sp.push(0, 0, 0); this.sw.push(0); }
+      if (pivot) { this.sp.push(pivot.x, pivot.y, pivot.z); this.sw.push(swW || 1); } else { this.sp.push(0, 0, 0); this.sw.push(0); }
     }
     const I = geo.index;
     if (I) for (let i = 0; i < I.count; i++) this.idx.push(base + I.getX(i));
@@ -271,9 +307,17 @@
       let pv = null;   // canopy pivot: the nearest ancestor (or self) named *_canopy*, in batch space
       for (let a = m; a && a !== rootObj; a = a.parent) if (a.name.includes('_canopy')) { pv = new THREE.Vector3().setFromMatrixPosition(new THREE.Matrix4().multiplyMatrices(inv, a.matrixWorld)); break; }
       const mat = m.material; const g = m.geometry;
+      // seasons + weather pass: the forest pieces (oaks, spruces, bushes) have no *_canopy child, so their leaves never swayed or
+      // took the season: EGLeaf* parts become canopy too, pivoting at the foot of the crown; spruces = evergreen (swayW 0.75:
+      // they sway + take snow, but never blossom or turn orange)
+      let swW = 1;
+      if (!pv && FOLIAGE.test(key) && /^EGLeaf/.test(mat.name)) {
+        if (!g.boundingBox) g.computeBoundingBox(); const bb = g.boundingBox;
+        pv = new THREE.Vector3((bb.min.x + bb.max.x) / 2, bb.min.y, (bb.min.z + bb.max.z) / 2).applyMatrix4(rel); swW = EVERGREEN.test(key) ? 0.75 : 1;
+      }
       tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
       if (SEE.test(mat.name)) { (see[mat.name] = see[mat.name] || { b: new Builder(false), m: mat }).b.add(g, rel, mat.color, 0, null); continue; }
-      lit.add(g, rel, mat.color, GLOW.test(mat.name) ? (/^GlowWindow/.test(mat.name) ? 2 : 1) : 0, pv);
+      lit.add(g, rel, mat.color, GLOW.test(mat.name) ? (/^GlowWindow/.test(mat.name) ? 2 : 1) : 0, pv, swW);
       if (!g.boundingSphere) g.computeBoundingSphere();
       if (GLOW.test(mat.name)) {   // light-source info per glow class (game: night light pools / point lights)
         const cls = /^GlowWindow/.test(mat.name) ? 'win' : /^Glow(Warm|Skyhole)/.test(mat.name) ? 'warm' : 'cool', n = g.attributes.position.count;
@@ -283,7 +327,7 @@
         a.parts.push({ c, r: g.boundingSphere.radius * new THREE.Vector3().setFromMatrixScale(rel).x });
       }
       const ws = new THREE.Vector3().setFromMatrixScale(rel).x;
-      if (!noInk && g.boundingSphere.radius * ws > 0.6) ink.add(g, rel, null, 0, pv);   // viewer.html rule: tiny parts get no hull
+      if (!noInk && g.boundingSphere.radius * ws > 0.6) ink.add(g, rel, null, 0, pv, swW);   // viewer.html rule: tiny parts get no hull
     }
     for (const k in glow) {   // centroid + mean colour + spread (piece space)
       const a = glow[k]; a.p.multiplyScalar(1 / a.n); a.col.r /= a.n; a.col.g /= a.n; a.col.b /= a.n;
@@ -469,6 +513,6 @@
     kitLit.customProgramCacheKey = () => 'eg-kit-norestore';
     return kitLit;
   }
-  window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, makeTintMat, INK, seeMats: seeCache,
+  window.ElderMap = { load, uRest, uRestC, uRestWave, uTime, uNight, uGrade, uGradeDark, uDayGlow, uSeason, uCozy, uWet, makeTintMat, INK, seeMats: seeCache,
     kitBatch: makeBatch, kitLitMat, inkMat, uWind, uCloud, uPlaza, makeInkMat };   // vibe 2 lane C: wind, cloud shadows, plaza grade, ink with own sway
 })();

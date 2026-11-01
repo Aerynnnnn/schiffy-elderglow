@@ -206,8 +206,8 @@
         api.fruit.push({ id: e.id, j, p: [p[0], p[1] + bob, p[2]] }); fn++;
       }
       fruitM.count = fruitLeaf.count = fn; fruitM.instanceMatrix.needsUpdate = true; fruitLeaf.instanceMatrix.needsUpdate = true;
-      // rain while a shower lasts (fades in / out), around the camera target
-      const raining = S.events.active.some(e => e.type === 'shower');
+      // rain while a shower lasts: drawn by src/weather_fx.js since the seasons + weather pass (a shower = rain 0.75 there)
+      const raining = !window.WeatherFx && S.events.active.some(e => e.type === 'shower');
       rainK += ((raining ? 1 : 0) - rainK) * Math.min(1, dt * 0.8); rain.visible = rainK > 0.02; rainMat.opacity = 0.75 * rainK;
       if (rain.visible) {
         const c = opts.target(), A = rg.attributes.position.array;
