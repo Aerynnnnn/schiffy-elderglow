@@ -7,7 +7,7 @@
 //                    hash of those files, so a new map makes a new cache (and the old 20 MB goes).
 //   cdn-1:           three.js / loaders / meshopt / supabase-js from cdnjs + jsDelivr (pinned versions = immutable) - CACHE FIRST.
 // Never cached: Supabase API calls, anything not GET, other paths of the same origin (e.g. ?lib=../Schiffy Asset Library/).
-const VERSION = '20261101-191759';   // publish_pages.ps1 writes the publish time here
+const VERSION = '20261101-221939';   // publish_pages.ps1 writes the publish time here
 const LIBV = '8cc67a140eb9';      // publish_pages.ps1 writes a hash of lib/ + art/ here
 const SHELL = 'eg-shell-' + VERSION, LIB = 'eg-lib-' + LIBV, CDN = 'eg-cdn-1';
 const BASE = new URL('./', self.registration.scope).href;
