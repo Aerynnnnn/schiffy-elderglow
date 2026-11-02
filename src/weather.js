@@ -97,7 +97,7 @@
     if (a.wet > 0.2) return 'wet';
     return a.w > 0.2 ? 'breezy' : 'clear';
   }
-  const TITLE = { clear: 'Clear skies', breezy: 'Breezy', windy: 'Windy', drizzle: 'Soft drizzle', rain: 'Rain', snow: 'Snowfall', wet: 'After the rain' };
+  const TITLE = { clear: 'Clear skies', breezy: 'Breezy', windy: 'Windy', drizzle: 'Soft drizzle', rain: 'Rain', snow: 'Snowfall', wet: 'After the rain', flurry: 'Light snow' };   // (flurry = view only: winter's drifting flakes, no spell)
   function effects(s, a) {
     a = a || at(s); const out = [];
     if (!a.on) return out;
@@ -117,6 +117,7 @@
     windy: ['The wind is up. It shakes dry branches loose for the woodcutters.', 'Feel that wind! The skyboats will ride it home.', 'Hold on to your hats, little ones. The wind is playing.'],
     breezy: ['A little breeze. It tickles.', 'The breeze carries the smell of the meadows up to me.'],
     wet: ['The ground is soft and wet. The gardens are drinking it all up.', 'Puddles everywhere. I can hear pups splashing.'],
+    flurry: ['A few flakes drifting down. Not a real snowfall, just winter saying hello.'],
   };
   const line = (kd, n) => { const L = LINES[kd]; return L ? L[((n % L.length) + L.length) % L.length] : null; };
 

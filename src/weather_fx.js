@@ -260,20 +260,24 @@
     drizzle: '<svg class="ic" viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M6 13a4 4 0 0 1 1-7.8A5 5 0 0 1 17 6a3.5 3.5 0 0 1 1 7z" fill="#e3effa"/><path d="M9 16l-.6 2M14 16l-.6 2" fill="none"/></svg>',
     rain: '<svg class="ic" viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M6 13a4 4 0 0 1 1-7.8A5 5 0 0 1 17 6a3.5 3.5 0 0 1 1 7z" fill="#bcd7f2"/><path d="M8 16l-1 3M12 16l-1 3M16 16l-1 3" fill="none"/></svg>',
     snow: '<svg class="ic" viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M6 12a4 4 0 0 1 1-7.8A5 5 0 0 1 17 5a3.5 3.5 0 0 1 1 7z" fill="#eef5ff"/><path d="M8 16v4M6 18h4M15 15v4M13 17h4" fill="none"/></svg>',
+    get flurry() { return WXI.snow; },
     wet: '<svg class="ic" viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2" stroke-linejoin="round"><path d="M12 3c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z" fill="#9fd0f5"/></svg>',
   };
   const FXI = { water: '#7fc4f0', garden: '#7fd36a', wood: '#c78b55', boat: '#b8a4f2', dry: '#ffd34d' };
   WeatherFx.chip = function (o) {
     const $ = o.$, bar = $('resbar'); if (!bar) return null;
     bar.insertAdjacentHTML('beforeend', '<div id="wxChip" title="The sky today"><span id="wxI"></span><span id="wxT"></span></div>');
-    const card = document.createElement('div'); card.id = 'wxCard'; card.className = 'card'; card.hidden = true; ($('app') || document.body).appendChild(card);
+    const card = document.createElement('div'); card.id = 'wxCard'; card.className = 'card'; card.dataset.card = 'menu'; card.hidden = true; ($('app') || document.body).appendChild(card);
     const chip = $('wxChip'); let kind = '', open = false, lastFx = '', said = {}, held = { k: '', t: 0 }, lineN = 0;
     chip.onclick = e => { e.stopPropagation(); open = !open; card.hidden = !open; lastFx = ''; };
     card.onclick = () => { open = false; card.hidden = true; };
     const ui = {
       refresh(wx, S, now) {
         const W = window.Weather; if (!W) return;
-        const k = wx.on || wx.r > 0.05 ? wx.kind : 'clear';
+        let k = wx.on || wx.r > 0.05 ? wx.kind : 'clear';
+        // playtest fixes (c4): in winter season_fx always lets a light snow drift down (its season particles), so a "clear" or
+        // breezy winter sky says so instead of "Clear skies" under falling snow (a real snow spell stays 'snow' + its effects)
+        if (wx.snow && (k === 'clear' || k === 'breezy')) k = 'flurry';
         if (k !== kind) { kind = k; $('wxI').innerHTML = WXI[k] || WXI.clear; $('wxT').textContent = W.TITLE[k] || 'Clear skies'; chip.className = 'wx-' + k; }
         const a = Object.assign({}, wx.raw || W.at(S), { r: wx.r, windy: wx.windy, wet: wx.wet, snow: wx.snow, on: true }), fx = W.effects(S, a);
         const sig = k + ':' + fx.map(f => f.t).join('|');

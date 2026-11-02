@@ -171,7 +171,7 @@
     setTimeout(() => ensureReg(false), 1500);
     if (G.mode !== 'home') return { render() {} };
     const btn = document.createElement('button'); btn.id = 'appBtn'; btn.className = 'card'; btn.title = 'The island app: install + gentle notes'; app.appendChild(btn);
-    const card = document.createElement('div'); card.id = 'appCard'; card.className = 'card'; card.hidden = true; app.appendChild(card);
+    const card = document.createElement('div'); card.id = 'appCard'; card.className = 'card'; card.dataset.card = 'side'; card.hidden = true; app.appendChild(card);
     card.innerHTML = `<div class="pch"><span class="disp appt">${IX.phone}The island app</span><button id="appClose" title="Close">&#10005;</button></div><div id="appBody"></div>`;
     const open = () => { if (G.closeOthers) G.closeOthers(); const s = $('sndCard'); if (s) s.hidden = true; card.hidden = false; render(); if (ask) { ask.remove(); ask = null; ls.set(AK, String(Date.now())); } };
     btn.onclick = () => { if (card.hidden) open(); else card.hidden = true; };

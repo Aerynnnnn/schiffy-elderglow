@@ -219,9 +219,9 @@
 
     // ---------------- start
     function build() {
-      const card = document.createElement('div'); card.id = 'lanCard'; card.className = 'card'; card.hidden = true;
+      const card = document.createElement('div'); card.id = 'lanCard'; card.className = 'card'; card.dataset.card = 'side'; card.hidden = true;
       card.innerHTML = `<div class="pch"><span id="lanTitle" class="disp"></span><button id="lanClose" title="Close">&#10005;</button></div><div id="lanBody"></div>`; $('app').appendChild(card);
-      const rd = document.createElement('div'); rd.id = 'lanRead'; rd.className = 'card'; rd.hidden = true; rd.innerHTML = `<button id="lrClose" title="Close">&#10005;</button><div id="lrBody"></div>`; $('app').appendChild(rd);
+      const rd = document.createElement('div'); rd.id = 'lanRead'; rd.className = 'card'; rd.dataset.card = 'side'; rd.dataset.over = ''; rd.hidden = true; rd.innerHTML = `<button id="lrClose" title="Close">&#10005;</button><div id="lrBody"></div>`; $('app').appendChild(rd);
       const btn = document.createElement('button'); btn.id = 'lanBtn'; btn.title = 'Lanterns: kind notes for faraway isles + the World Bloom'; btn.innerHTML = lanIc() + '<span>Lanterns</span>';
       const top = $('topBtns'), sb = $('socBtn'); top.insertBefore(btn, sb ? sb.nextSibling : null);
       btn.onclick = () => { if ($('lanCard').hidden) open(); else close(); };

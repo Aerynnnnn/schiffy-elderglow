@@ -263,6 +263,48 @@
       }
       return true;
     }
+    // playtest fixes (2026-11-02): the same for the MAP's own footprints. The runs a trunk bend adds (radially out to the
+    // circle, round it, back in to the spot) were never checked at all: lamplighters on the orb 870 <-> door leg walked through
+    // light orb 867, and at the Elder size the orbs inside the circle (862 / 864 / 867) were walked through on the way in. A run
+    // that cuts a footprint goes round it, never nearer the trunk than its own two ends (spots inside the circle stay reachable).
+    const rT = p => Math.hypot(p[0] - TP[0], p[2] - TP[2]);
+    // round ONE small footprint in the way: by its corners (grown 0.45 m), one corner or two on the same side, shortest that is
+    // clean (the 2 m detour grid string-pulls too coarsely round a 4 m orb: its runs clipped the corner)
+    function roundBox(p, q, ex, ok) {
+      const l = dxz(p, q), n = Math.max(1, Math.ceil(l / 0.4)); let b = null;
+      for (let k = 1; k < n && !b; k++) { const f = k / n, x = p[0] + (q[0] - p[0]) * f, z = p[2] + (q[2] - p[2]) * f; b = blockAt(x, z, ex); }
+      if (!b || b.r > 12) return null;
+      const g = 0.45, C = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([u, v]) => { const lx = u * (b.hx + g), lz = v * (b.hz + g); return [b.x + lx * b.c + lz * b.sn, 0, b.z - lx * b.sn + lz * b.c]; });
+      let best = null, bl = Infinity;
+      const yAt = c => { const f = Math.min(1, dxz(p, c) / (l || 1)); return r3([c[0], p[1] + (q[1] - p[1]) * f, c[2]]); };
+      for (let i = 0; i < 4; i++) for (const m of [[C[i]], [C[i], C[(i + 1) % 4]], [C[i], C[(i + 3) % 4]]]) {
+        const M = m.map(yAt), P = [p].concat(M, [q]), len = polyLen(P); if (len >= bl || !ok(P)) continue; bl = len; best = M;
+      }
+      return best;
+    }
+    function bendFoot(a, tmp, R) {
+      // an arc point standing in a footprint (the circle runs through the plaza orbs at the Young..Great sizes) steps out
+      // radially until it is clear (the arc is the walk's own choice: further out never nears the trunk)
+      const exE = unite(holding(a), holding(tmp[tmp.length - 1]));
+      tmp = tmp.map((c, i) => {
+        if (i === tmp.length - 1 || !blockAt(c[0], c[2], exE)) return c;
+        const r = rT(c) || 1, ux = (c[0] - TP[0]) / r, uz = (c[2] - TP[2]) / r;
+        for (let d = 0.5; d <= 10; d += 0.5) { const x = c[0] + ux * d, z = c[2] + uz * d; if (!blockAt(x, z, exE) && !wetM(x, z)) return r3([x, c[1], z]); }
+        return c;
+      });
+      const out = []; let p = a;
+      for (const q of tmp) {
+        const ex = unite(holding(p), holding(q));
+        if (!segOk(p, q, ex, true)) {
+          const ok = P => trunkClear(P, Math.min(R, rT(p), rT(q)) - 0.3) && polyOk(P, ex, true);
+          let m = roundBox(p, q, ex, ok);
+          if (!m) { m = detour(p, q, ex, true); if (m && !(m.length && ok([p].concat(m, [q])))) m = null; }
+          if (m) for (const c of m) out.push(c);
+        }
+        out.push(q); p = q;
+      }
+      return out;
+    }
     function bendDec(a, tmp, R) {
       const out = []; let p = a;
       for (const q of tmp) {
@@ -309,6 +351,7 @@
       for (let i = 1; i < raw.length; i++) {
         if (d3(raw[i], pts[pts.length - 1]) < 0.05) { if (ids[i] >= 0) nid[nid.length - 1] = ids[i]; continue; }
         let tmp = []; bend(pts[pts.length - 1], raw[i], trunkR, tmp);
+        if (tmp.length > 1) tmp = bendFoot(pts[pts.length - 1], tmp, trunkR);
         if (tmp.length > 1 && (decB.length || plB.length || homeB.length)) tmp = bendDec(pts[pts.length - 1], tmp, trunkR);
         for (let k = 0; k < tmp.length; k++) { pts.push(tmp[k]); nid.push(k === tmp.length - 1 ? ids[i] : -1); }
       }
@@ -379,6 +422,26 @@
       for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, q = r3([at[0] + Math.cos(a) * r, p[1], at[2] + Math.sin(a) * r]); if (wet(q[0], q[2])) continue; const d = dxz(q, p); if (d < bd) { bd = d; best = q; } }
       return best || p;
     };
+    // playtest fixes (2026-11-02): a stand point boxed in by footprints + water (berry spot 0: bush 1228 between fallen log
+    // 1227 and the river) had no clean way in, so its walk fell back to the water-only line straight through the log. Such a
+    // stand moves round its own piece to the nearest point that IS reachable round every footprint. Only the stand point
+    // moves: the list, its order (ranked from the piece's own node) and every pid stay the same (sim_check 7778ea20).
+    // (= what the walk does: the stand's walking node, then a clean line or a detour round the footprints from it)
+    function reachable(sp, n0) {
+      const n = dryNode(sp, n0); if (n < 0) return false;
+      const ex = unite(holding(N[n].p), holding(sp));
+      return segOk(N[n].p, sp, ex, true) || !!detour(N[n].p, sp, ex, true);
+    }
+    function openStand(at, sp, r, n0) {
+      if (reachable(sp, n0)) return sp;
+      let best = null, bd = Infinity;
+      for (const k of [1, 1.3, 1.7]) for (let a = 0; a < 16; a++) {
+        const an = a / 16 * Math.PI * 2, q = r3([at[0] + Math.cos(an) * r * k, sp[1], at[2] + Math.sin(an) * r * k]);
+        if (wetM(q[0], q[2]) || blocksAt(q[0], q[2]).some(b => !inBox(b, at[0], at[2]))) continue;   // dry, and inside no footprint but its own piece's
+        const d = dxz(q, sp); if (d < bd && reachable(q, n0)) { bd = d; best = q; }
+      }
+      return best || sp;
+    }
     const water = jobs.filter(j => j.kind === 'water').map(j => ({ p: r3(j.at), n: dryNode(r3(j.at), j.node), dip: toward(j.at, j.water || j.at, 2.2), water: j.water || j.at, river: j.river, d: dist[j.node] + dxz(j.at, N[j.node].p) }))
       .filter(w => isFinite(w.d)).sort((a, b) => a.d - b.d);
     const orbs = jobs.filter(j => j.kind === 'light' && j.place === 'orb').map(j => { const p = toward(j.at, TP, 3.2), n0 = dxz(j.at, TP) < 70 ? doorNode : j.node; return { orb: j.at, p, n: dryNode(p, n0), pid: j.placement }; });   // plaza orbs: walk straight from the door
@@ -395,10 +458,11 @@
         const [n, dn] = nearNode(p.pos); if (n < 0 || dn > 30 || dn < 2) continue;
         const d = dist[n] + dn; if (!isFinite(d)) continue;
         const sp = dryStand(p.pos, toward(p.pos, N[n].p, standR * (p.s || 1)), standR * (p.s || 1));
-        out.push({ p: sp, n: dryNode(sp, n), at: p.pos, pid: p.id, d });
+        out.push({ p: sp, n: dryNode(sp, n), at: p.pos, pid: p.id, d, n0: n, r: standR * (p.s || 1) });
       }
       out.sort((a, b) => a.d - b.d || a.pid - b.pid);
-      return out.slice(0, K);
+      // (playtest fixes: a boxed-in stand moves round its piece; ranking above is untouched)
+      return out.slice(0, K).map(o => { const sp = openStand(o.at, o.p, o.r, o.n0); return { p: sp, n: sp === o.p ? o.n : dryNode(sp, o.n0), at: o.at, pid: o.pid, d: o.d }; });
     }
     const gather = {
       wood: spots(p => p.role === 'forest' && keepForest(p.id), 3.2, 8),

@@ -39,9 +39,9 @@
     let view = 'main', email = '', acct = null, msg = '', msgBad = false, busy = false, poll = null;
     // ---------- DOM (cards are made here; CSS in index.html)
     const app = $('app');
-    const safe = document.createElement('div'); safe.id = 'safeCard'; safe.className = 'card'; safe.hidden = true;
+    const safe = document.createElement('div'); safe.id = 'safeCard'; safe.className = 'card'; safe.dataset.card = 'side'; safe.dataset.over = ''; safe.hidden = true;
     safe.innerHTML = `<div class="pch"><span id="safeTitle" class="disp">${IX.shield} Keep my island safe</span><button id="safeClose" title="Close">&#10005;</button></div><div id="safeBody"></div>`;
-    const pick = document.createElement('div'); pick.id = 'pickCard'; pick.hidden = true; pick.innerHTML = '<div class="card"><div id="pickBody"></div></div>';
+    const pick = document.createElement('div'); pick.id = 'pickCard'; pick.dataset.card = 'big'; pick.dataset.over = ''; pick.dataset.keep = ''; pick.hidden = true; pick.innerHTML = '<div class="card"><div id="pickBody"></div></div>';
     app.appendChild(safe); app.appendChild(pick);
     $('safeClose').onclick = () => { safe.hidden = true; stopPoll(); };
 

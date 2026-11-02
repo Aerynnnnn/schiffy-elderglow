@@ -197,7 +197,7 @@
     if (p.job === 'build') {
       if (p.task === 'site') return p.phase === 'build' ? 'building' : 'off to the building site';
       if (p.task === 'wood' || p.task === 'stone') return (STATUS[p.task][p.phase] || 'fetching ' + p.task) + ' for a build';
-      if (p.task === 'wait') return S.queue.length ? 'waiting for glow sap' : 'waiting for plans';
+      if (p.task === 'wait') { const pl = S.queue.length ? planNow() : null, m = pl ? pl.miss.filter(x => !FETCH[x.k]) : []; return m.length ? 'waiting for ' + m.map(x => RES_N[x.k]).join(' + ') : pl ? 'about to start building' : 'waiting for plans'; }
       return 'getting ready';
     }
     return (STATUS[p.job] || {})[p.phase] || '';
@@ -383,21 +383,40 @@
     const key = toastKey(html), now = performance.now(), L = TQ.live.find(t => t.key === key);
     if (L) { L.until = Math.max(L.until, now + (ms || 3200)); return; }
     if (TQ.q.some(t => t.key === key)) return;
-    TQ.q.push({ html, ms: ms || 3200, onClick, key, at: now });
+    TQ.q.push({ html, ms: ms || 3200, onClick, key, at: now, user: now - lastInput < 1200 });   // (user = the player just did something: it answers them)
     if (TQ.q.length > 8) { const k = TQ.q.findIndex(t => !t.onClick); TQ.q.splice(k >= 0 ? k : 0, 1); }
     pumpToasts();
   }
-  const toastHeld = () => noSaves ? false : (overlayOpen() || !!tour);
+  // playtest fixes: held while a big card / the tour is up, and never shown over ANY open card (a side card at 1280 px or a
+  // phone sheet: placed, measured, and put back if it would sit on one); a toast a card opens over goes back to the queue
+  const toastHeld = () => noSaves ? false : (bigOpen() || !!tour);
+  // PC: with a side card open the toasts move to the middle of the free space between the side panel and the card (a narrow
+  // window would otherwise hold every note, even the answer to what the player just did in that card)
+  function placeToasts() {
+    const tb = $('toasts'); if (!tb || document.body.classList.contains('phone')) return;
+    const cards = openCards(['side', 'menu']), a = app.getBoundingClientRect();
+    if (!cards.length) { tb.style.left = ''; tb.style.maxWidth = ''; return; }
+    const sd = $('side'), L = sd && cardVis(sd) ? sd.getBoundingClientRect().right - a.left + 10 : 12;
+    const R = Math.min(...cards.map(c => c.getBoundingClientRect().left)) - a.left - 10;
+    if (R - L >= 240) { tb.style.left = Math.round((L + R) / 2) + 'px'; tb.style.maxWidth = Math.round(R - L) + 'px'; } else { tb.style.left = ''; tb.style.maxWidth = ''; }
+  }
   function dropToast(t) { TQ.live = TQ.live.filter(x => x !== t); t.el.classList.add('out'); setTimeout(() => t.el.remove(), 320); }
   function pumpToasts() {
     const now = performance.now();
     for (const t of TQ.live.slice()) if (now >= t.until) dropToast(t);
+    if (TQ.live.length || sayOpen) lastBusy = now;
+    placeToasts();
+    if (!noSaves) for (const t of TQ.live.slice()) if (underCard(t.el)) { dropToast(t); if (t.onClick || t.until - now > 800) TQ.q.unshift({ html: t.html, ms: Math.max(1600, t.until - now), onClick: t.onClick, key: t.key, at: t.at, user: t.user }); }
     if (toastHeld()) return;
     TQ.q = TQ.q.filter(t => t.onClick || now - t.at < 60000);
-    const max = document.body.classList.contains('phone') ? 1 : 2;
+    const nb = newbie(), max = document.body.classList.contains('phone') || nb ? 1 : 2;
     while (TQ.live.length < max && TQ.q.length) {
-      const t = TQ.q.shift(), d = document.createElement('div'); d.className = 'toast card' + (t.onClick ? ' click' : ''); d.innerHTML = t.html; $('toasts').appendChild(d);
-      t.el = d; t.until = now + t.ms; TQ.live.push(t);
+      const t = TQ.q[0];
+      if (nb && !t.user && !beatOk()) break;   // first launch: one thing at a time, with a breath between (a toast the player caused shows at once)
+      const d = document.createElement('div'); d.className = 'toast card' + (t.onClick ? ' click' : ''); d.innerHTML = t.html; d.style.visibility = 'hidden'; $('toasts').appendChild(d);
+      if (!noSaves && underCard(d)) { d.remove(); break; }
+      TQ.q.shift(); d.style.visibility = '';
+      t.el = d; t.until = now + t.ms; TQ.live.push(t); beat();
       if (t.onClick) d.onclick = () => { t.onClick(); dropToast(t); };
     }
     // never over the tree's words: on a PC the bubble sits where the toasts do, so they move just below it
@@ -406,7 +425,7 @@
     else tb.style.top = '';
   }
   setInterval(pumpToasts, 250);
-  const healthWord = h => h >= 80 ? 'Glowing' : h >= 60 ? 'Thriving' : h >= 40 ? 'Drooping' : h >= 20 ? 'Wilting' : 'Fading';
+  const healthWord = h => (h = Math.round(h)) >= 80 ? 'Glowing' : h >= 60 ? 'Thriving' : h >= 40 ? 'Drooping' : h >= 20 ? 'Wilting' : 'Fading';   // (playtest fixes c5: from the same rounded value the bar shows)
   const healthCol = h => h >= 80 ? 'linear-gradient(90deg,#5fe0c8,#ffd36a)' : h >= 60 ? 'linear-gradient(90deg,#7fd36a,#b8e86a)' : h >= 40 ? 'linear-gradient(90deg,#ffc53d,#ffa04a)' : 'linear-gradient(90deg,#ff7a59,#c9605a)';
   const bName = (type, q) => type === 'home' ? (Sim.bedsFor(q) >= 4 ? 'Treehouse' : Sim.bedsFor(q) >= 3 ? 'Big pup cottage' : 'Pup cottage') : Sim.C.B[type].name;
   function gives(type, q) {
@@ -429,7 +448,21 @@
     if (type === 'nook') return `${IC.decor} a cozy corner: log benches, planters, a little lantern (just for joy)`;
     return '';
   }
-  const have = k => k === 'sap' ? S.sap : S.res[k];
+  const have = k => k === 'sap' ? S.sap : k === 'seed' ? S.inv.seeds : (S.res[k] || 0);
+  // playtest fixes (m3): what a plan is still short of, by its real name, and where it comes from (sim.js shortOf only looks at
+  // wood / stone / sap, the things a builder can fetch or wait for; crystals and berries never come from a builder)
+  const RES_N = { wood: 'wood', stone: 'stone', sap: 'glow sap', food: 'berries', crystal: 'crystals', seed: 'seeds' };
+  const RES_FROM = { wood: 'woodcutters bring it, builders fetch it too', stone: 'stonemasons bring it, builders fetch it too', sap: 'a happy tree makes it',
+    food: 'from berry pickers and berry patches', crystal: 'from skyboat trips and happenings', seed: 'from skyboat trips and the gift basket' };
+  const FETCH = { wood: 1, stone: 1 };   // the builders fetch these themselves
+  const missing = cost => Object.keys(cost).filter(k => have(k) + 1e-9 < cost[k]).map(k => ({ k, n: Math.ceil(cost[k] - have(k)) }));
+  const missTxt = (m, from) => m.map(x => `${IC[x.k] || ''}${x.n} ${RES_N[x.k] || x.k}${from ? ` <small>(${RES_FROM[x.k] || ''})</small>` : ''}`).join(from ? '<br>' : ' + ');
+  // the plan the builders are working toward (sim.js pickBuild: a paid one, else the first in the queue) and what it lacks
+  function planNow() {
+    for (const pid of S.queue) { const e = S.plots[pid]; if (e && !e.done && e.paid) return { pid, e, miss: [] }; }
+    for (const pid of S.queue) { const e = S.plots[pid], q = nav.plotBy[pid]; if (e && !e.done && q) return { pid, e, q, miss: missing(Sim.costOf(e.type, q)) }; }
+    return null;
+  }
   const costHtml = cost => Object.keys(cost).map(k => `<span class="cost${have(k) + 1e-9 < cost[k] ? ' short' : ''}">${IC[k]}${cost[k]}</span>`).join('');
   const plotName = q => q.faction ? q.faction.name : q.free ? 'A spot of your own' : `Plot ${q.i + 1}`;
 
@@ -453,6 +486,10 @@
     // roster
     $('side').addEventListener('touchstart', () => { sideTouch = performance.now(); }, { passive: true });
     $('filter').addEventListener('click', e => { const b = e.target.closest('button[data-f]'); if (!b) return; rosterFilter = b.dataset.f; refreshRoster(true); });
+    // playtest fixes: roster search + sort (shows from 8 pups; the sort is a UI pref in its own key, never the save)
+    $('filter').insertAdjacentHTML('beforebegin', `<div id="rosterTools" class="full" hidden><input id="rosterQ" type="search" maxlength="14" placeholder="Find a pup" aria-label="Find a pup by name"><select id="rosterSort" aria-label="Sort the pups" title="Sort the pups">${Object.entries(ROSTER_SORTS).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select></div>`);
+    $('rosterSort').value = rosterSort; $('rosterSort').onchange = e => { rosterSort = e.target.value; try { localStorage.setItem(ROSTER_KEY, JSON.stringify({ sort: rosterSort })); } catch (er) {} refreshRoster(true); };
+    $('rosterQ').oninput = e => { rosterQ = e.target.value.trim().toLowerCase(); refreshRoster(true); };
     const ro = $('roster');
     ro.addEventListener('click', e => {
       const row = e.target.closest('.pup'); if (!row) return; const i = +row.dataset.i;
@@ -515,9 +552,10 @@
     });
     $('awayList').addEventListener('change', e => { const inp = e.target.closest('input[data-i]'); if (!inp) return; if (Sim.rename(S, +inp.dataset.i, inp.value)) { save(); refreshRoster(true); } else inp.value = S.pups[+inp.dataset.i].name; });
     $('side').hidden = false; $('topBtns').hidden = false; $('resbar').hidden = false;
+    $('app').insertAdjacentHTML('beforeend', '<div id="goal" class="card" hidden role="status"></div>'); $('goal').onclick = goalClick;   // playtest fixes: "What next?"
   }
   function setJob(i, job, quiet) {
-    if (Sim.assign(S, i, job, nav)) { snd.sfx('assign'); if (!quiet) toast(`${esc(S.pups[i].name)} ${JOB_GO[job] || JOB_NAMES[job]} ${IC[job]}`, 1600); save(); hintDone();
+    if (Sim.assign(S, i, job, nav)) { jobTouched = true; idleT[i] = 0; snd.sfx('assign'); if (!quiet) toast(`${esc(S.pups[i].name)} ${JOB_GO[job] || JOB_NAMES[job]} ${IC[job]}`, 1600); save(); hintDone();
       if (life && traitOf(i)) life.say(i, Traits.chat(traitOf(i), 'job', (S.time | 0) + i * 7, { j: Traits.JOBW[job] }), 4);   // vibe pass 2 lane B: the pup answers in its own voice
     }
     refreshRoster(true);
@@ -542,12 +580,18 @@
     while (lb.children.length > S.pups.length) lb.lastChild.remove();
     while (lb.children.length < S.pups.length) {
       const i = lb.children.length, l = document.createElement('div'); l.className = 'lbl'; l.dataset.i = i;
-      l.innerHTML = `<span class="ji"></span><span class="nmx"></span>`; l.onclick = () => focusPup(i); lb.appendChild(l);
+      l.innerHTML = `<span class="ji"></span><span class="nmx"></span><span class="mre" hidden></span>`; l.onclick = () => focusPup(i); lb.appendChild(l);
     }
   }
-  let rosterSig = '', rosterFilter = 'all', rowsSig = '';
+  let rosterSig = '', rosterFilter = 'all', rowsSig = '', rosterQ = '';
+  // playtest fixes: roster sort (UI pref `schiffy-elderglow.ui.roster`, its own key: calm.js rewrites `...ui` whole) + search
+  const ROSTER_KEY = 'schiffy-elderglow.ui.roster';
+  const byName = (a, b) => S.pups[a].name.localeCompare(S.pups[b].name);
+  const ROSTER_SORTS = { arr: ['As they came', null], name: ['Name', byName], job: ['Job', (a, b) => Sim.JOBS.indexOf(S.pups[a].job) - Sim.JOBS.indexOf(S.pups[b].job) || byName(a, b)],
+    lv: ['Explorer level', (a, b) => (S.pups[b].xpE || 0) - (S.pups[a].xpE || 0) || byName(a, b)], mood: ['Happiest first', (a, b) => S.pups[b].morale - S.pups[a].morale || byName(a, b)] };
+  let rosterSort = (() => { try { const v = JSON.parse(localStorage.getItem(ROSTER_KEY) || '{}').sort; return ROSTER_SORTS[v] ? v : 'arr'; } catch (e) { return 'arr'; } })();
   function refreshRoster(force) {
-    const sig = S.pups.map(p => p.job + p.phase + p.task + Math.round(p.morale) + p.name + (p.isNew ? 'n' : '') + (p.xpE || 0) + (p.exp ? Math.floor(S.time / 60) : '')).join('|') + pups.selected + rosterFilter + Needs.NEW.map(jobOpen).join() + Math.floor(S.time / 120);
+    const sig = S.pups.map(p => p.job + p.phase + p.task + Math.round(p.morale) + p.name + (p.isNew ? 'n' : '') + (p.xpE || 0) + (p.exp ? Math.floor(S.time / 60) : '')).join('|') + pups.selected + rosterFilter + rosterSort + rosterQ + Needs.NEW.map(jobOpen).join() + Math.floor(S.time / 120);
     if (!force && sig === rosterSig) return; rosterSig = sig;
     // filter chips with counts
     const cnt = { all: S.pups.length }; for (const j of Sim.JOBS) cnt[j] = 0; for (const p of S.pups) cnt[p.job]++;
@@ -560,9 +604,13 @@
       rowsSig = rs;
       ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span>${traitChip(i, true)}<span class="new">new</span><span class="xpc" title="Explorer level (skyboat trips)"></span><span class="mor" title="happiness">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
     }
+    { const tools = $('rosterTools'); if (tools) tools.hidden = S.pups.length < 8 && !rosterQ && rosterSort === 'arr'; }
+    const cmp = ROSTER_SORTS[rosterSort] && ROSTER_SORTS[rosterSort][1], ord = new Map();
+    if (cmp) S.pups.map((p, i) => i).sort(cmp).forEach((i, k) => ord.set(i, k));
     ro.querySelectorAll('.pup').forEach(row => {
       const i = +row.dataset.i, p = S.pups[i]; if (!p) return;
-      row.hidden = rosterFilter !== 'all' && p.job !== rosterFilter;
+      row.hidden = (rosterFilter !== 'all' && p.job !== rosterFilter) || (!!rosterQ && p.name.toLowerCase().indexOf(rosterQ) < 0);
+      row.style.order = cmp ? ord.get(i) : '';
       row.classList.toggle('sel', pups.selected === i); row.classList.toggle('isnew', !!p.isNew);
       row.querySelectorAll('button[data-job]').forEach(b => { const j = b.dataset.job, o = jobOpen(j); b.classList.toggle('on', j === p.job); b.classList.toggle('lockj', !o); b.disabled = !o; if (!o) b.title = lockTip(j); else if (b.title.indexOf('wakes') >= 0) b.title = JOB_NAMES[j]; });
       // friendship hint: hearts = friends; the selected pup shows who (and a puppy its parents)
@@ -631,11 +679,61 @@
   // ---- Round 2 step 2: the tree's voice (ONE unprompted message per session open, the rest wait in the Book), pup diaries
   const session = Story.Session();
   let sayOpen = false, sayT = 0, sayTimer = null;
-  const overlayOpen = () => ['away', 'gift', 'mem', 'haul', 'book', 'diary'].some(id => $(id) && !$(id).hidden) || !!document.querySelector('#pickCard:not([hidden]), #safeCard:not([hidden])');
+  // ---- playtest fixes (2026-11-02): ONE card registry. Every card / panel says what it is in its own markup (index.html, or the
+  // module that makes it): data-card = "big" (centre card with a veil) | "side" (right column / phone sheet) | "menu" (a small
+  // pop-up) | "mode" (a tool bar: place / land / tour / photo). data-over = it opens ON TOP of the card it came from (a memory over
+  // the Book, the haul over the skyboat dock, a lantern note over the lantern card); data-keep = never closed for you (the cloud
+  // choice card). A card closes through [data-close] or its ✕ (button[title=Close]) so its own close code runs; CardFn = the few
+  // without one. Anything new with data-card is known to the toasts, the tree's words, chatter, the card queue, Esc, one card at
+  // a time and the calm view at once.
+  const CardFn = {};
+  let cardsMemo = null, cardsAt = -1;
+  const cardVis = el => !el.hidden && el.getClientRects().length > 0;
+  function openCards(kinds) {
+    const now = performance.now();
+    if (!cardsMemo || now - cardsAt > 40) { cardsMemo = [...document.querySelectorAll('[data-card]')].filter(cardVis); cardsAt = now; }
+    return kinds ? cardsMemo.filter(el => kinds.includes(el.dataset.card)) : cardsMemo;
+  }
+  function closeCard(el) {
+    if (!el || el.dataset.keep !== undefined) return false;
+    if (CardFn[el.id]) CardFn[el.id]();
+    else { const x = el.querySelector('[data-close]') || el.querySelector('button[title="Close"]') || el.querySelector('.pch button[data-x="1"]'); if (x) x.click(); else el.hidden = true; }
+    cardsMemo = null; return true;
+  }
+  const overlayOpen = () => openCards().length > 0;   // ANY card, menu or tool bar
+  const bigOpen = () => openCards(['big']).length > 0;
+  // the topmost closable card: a big one first, then the most recently opened
+  const topCard = () => openCards(['big', 'side', 'menu']).filter(c => c.dataset.keep === undefined).sort((a, b) => (b.dataset.card === 'big') - (a.dataset.card === 'big') || (b._openAt || 0) - (a._openAt || 0))[0] || null;
+  const rectsHit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  // is this element (a toast) under a card? a big card's veil covers the whole screen
+  function underCard(el) { const r = el.getBoundingClientRect(); return openCards(['big', 'side', 'menu']).some(c => c.dataset.card === 'big' || rectsHit(r, c.getBoundingClientRect())); }
+  // one card at a time: a card that opens closes the others (unless it opens on top of them, data-over), and the tree's words
+  // step aside (they wait in the Book)
+  function cardOpened(el) {
+    if (el.dataset.card === 'mode') return;
+    if (sayOpen) closeSay();
+    if (el.dataset.over !== undefined) return;
+    for (const c of openCards(['big', 'side', 'menu'])) if (c !== el && !c.contains(el) && !el.contains(c)) closeCard(c);
+  }
+  new MutationObserver(recs => {
+    cardsMemo = null;
+    for (const r of recs) { const el = r.target; if (!el.dataset || el.dataset.card === undefined || r.oldValue === null || el.hidden) continue; el._openAt = performance.now(); if (booted) cardOpened(el); }
+    document.body.classList.toggle('cardup', overlayOpen());   // pup chatter + whispers hide under a card (CSS)
+  }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden'], attributeOldValue: true });
+  // first launch (playtest fixes): a brand-new island's first ~5 min (sim time) until the first job change: one message at a
+  // time with room to breathe (gift -> the tree's words -> the season note -> the sound chip ...), no pup chatter, no panel folding
+  let jobTouched = false, lastAppear = -1e9, lastInput = -1e9;
+  const NEWBIE = { T: 375, GAP: 6000, BREATH: 3000 };
+  const newbie = () => !VISIT && !!S && !jobTouched && S.time < NEWBIE.T;
+  const beat = () => { lastAppear = performance.now(); };
+  let lastBusy = -1e9;   // last moment a toast / the tree's words were still up (a breath of BREATH ms after one goes)
+  const beatOk = () => { const now = performance.now(); if (TQ.live.length || sayOpen || bigOpen()) { lastBusy = now; return !newbie(); } return !newbie() || (now - lastAppear > NEWBIE.GAP && now - lastBusy > NEWBIE.BREATH); };
+  addEventListener('pointerdown', () => { lastInput = performance.now(); }, true);
+  addEventListener('keydown', () => { lastInput = performance.now(); }, true);
   function trySpeak(force) {
-    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || wardI >= 0 || boatCam || tour || CQ.length || RST.wave || PM || LM))) return null;   // (not while placing a decoration / shaping the land)
+    if (VISIT || sayOpen || !booted || (!force && (performance.now() - bootAt < 5000 || overlayOpen() || !beatOk() || wardI >= 0 || boatCam || tour || CQ.length || RST.wave || PM || LM))) return null;   // (not while placing a decoration / shaping the land)
     const r = session.speak(S); if (!r) return null;
-    showSay(r.w, r.e); save(); return r;
+    showSay(r.w, r.e); beat(); save(); return r;
   }
   function showSay(w, e) {
     sayOpen = true; const el = $('treeSay');
@@ -780,6 +878,7 @@
     const first = S.book.sea === -1;
     // vibe pass 1: on a fresh island the tree speaks first; the season note waits for its words (or ~25 s if it has none)
     if (first && (!booted || (sayOpen && performance.now() - sayT < 20000) || (session.n === 0 && performance.now() - bootAt < 25000))) return;
+    if (first && newbie() && (sayOpen || !beatOk() || overlayOpen())) return;   // playtest fixes: first launch = after the words, one at a time
     S.book.sea = k; const nm = Seasons.NAMES[k];
     toast(`${IC[nm]} ${first ? `<b>${Seasons.TITLE[nm]}</b> on the island: ${SEA_TXT[nm]}` : SEA_HELLO[nm]}`, 6500, () => openBook('mem'));
   }
@@ -809,7 +908,9 @@
   }
   function closeMemory() { $('mem').hidden = true; memOpen = 0; }
   let bookTab = 'mem';
-  const BREED_N = { noodle: 'Noodle', bean: 'Bean', biscuit: 'Biscuit', mochi: 'Mochi', pepper: 'Pepper', pudding: 'Pudding', waffles: 'Waffles' };
+  // playtest fixes (c3): breeds by what they are (the models, Pawty's build_pups.py), never the raw id (which is also a pup's name)
+  const BREED_N = { noodle: 'Chihuahua', bean: 'Terrier', biscuit: 'Corgi', mochi: 'Samoyed', pepper: 'Schnauzer', pudding: 'Shiba', waffles: 'Dachshund' };
+  const breedName = b => BREED_N[b] || String(b).replace(/^./, c => c.toUpperCase());
   function openBook(tab) { closePlot(); closeExp(); closeEvents(); closeNeed(); bookTab = tab || bookTab; $('book').hidden = false; renderBook(); }
   function closeBook() { $('book').hidden = true; }
   function renderBook() {
@@ -998,7 +1099,9 @@
   // build section: decide toggle + queue + what the island is waiting for
   let buildSig = '';
   function refreshBuild(force) {
-    const sig = S.queue.map(pid => { const e = S.plots[pid]; return pid + e.type + Math.floor(e.prog / 30) + e.paid; }).join('|') + S.decide + Math.floor(S.res.wood) + Math.floor(S.res.stone) + S.pups.filter(p => p.task === 'site' && p.phase === 'build').length + S.pups.filter(p => p.job === 'build').length + S.pups.length + Math.floor(S.arrive / 60);
+    // playtest fixes (m5): the first-home hint goes once a home is planned by ANY route (plot card, Build, the pups' own plans)
+    if (hintShown && !$('hint').hidden && Object.keys(S.plots).some(k => S.plots[k].type === 'home')) hintDone();
+    const sig = S.queue.map(pid => { const e = S.plots[pid]; return pid + e.type + Math.floor(e.prog / 30) + e.paid; }).join('|') + S.decide + Math.floor(S.res.wood) + Math.floor(S.res.stone) + '|' + Math.floor(S.res.crystal || 0) + '|' + S.pups.filter(p => p.task === 'site' && p.phase === 'build').length + S.pups.filter(p => p.job === 'build').length + S.pups.length + Math.floor(S.arrive / 60);
     if (!force && sig === buildSig) return; buildSig = sig;
     $('decide').checked = !!S.decide;
     const builders = S.pups.filter(p => p.job === 'build').length;
@@ -1009,7 +1112,7 @@
       const on = S.pups.filter(p => p.tgt === pid && p.phase === 'build').length;
       let st;
       if (!builders) st = 'needs a builder';
-      else if (!e.paid) { const miss = Object.keys(cost).filter(k => have(k) < cost[k]).map(k => `${Math.ceil(cost[k] - have(k))} ${k === 'sap' ? 'glow sap' : k}`); st = miss.length ? 'a little more needed: ' + miss.join(' + ') : 'starting soon'; }
+      else if (!e.paid) { const miss = missing(cost), w = miss.find(x => !FETCH[x.k]); st = miss.length ? 'a little more needed: ' + missTxt(miss, false) + (w ? ` (${RES_N[w.k]}: ${RES_FROM[w.k]})` : '') : 'starting soon'; }
       else st = on ? `${on} pup${on > 1 ? 's' : ''} building &middot; ~${fmtT((work - e.prog) / Math.max(1, on))} to go` : 'builders on the way';
       html += `<div class="qi" data-pid="${pid}">${IC[B_ICON[e.type]]}<div><b>${bName(e.type, q)}</b>${e.auto ? '<span class="auto">pups\' idea</span>' : ''}<div class="bar"><i style="width:${(f * 100).toFixed(1)}%"></i></div><small>${st}</small></div></div>`;
     }
@@ -1027,6 +1130,68 @@
     const qe = $('queue'), h0 = qe.offsetHeight, old = qe.innerHTML;
     qe.innerHTML = html + `<div class="qe arr">${IC.paw} ${why}</div>`;
     if (!force && sideHot() && qe.offsetHeight !== h0) { qe.innerHTML = old; buildSig = ''; }
+  }
+  // ---- playtest fixes: the "What next?" chip + the idle-pup notice. ONE small chip (where the first hint sits: bottom centre on
+  // a PC, under the top buttons on a phone) suggesting the single most useful next step, derived from S only (no save field).
+  // A goal shows only after it held for GOAL.HOLD s, never over a card / a tool mode / the first hint, fades with the calm view;
+  // tap = do it (or open the right card); ✕ = not now (that goal rests GOAL.REST, a UI pref in its own key).
+  const GOAL = { HOLD: 8000, REST: 6 * 3600e3, AFTER: 45000, KEY: 'schiffy-elderglow.ui.goal', IDLE: 45 };
+  const idleT = [];   // seconds each pup has had nothing to do (UI only)
+  let goalCur = null, goalCand = null, goalSince = 0, goalAfter = 0, goalAcc = 0;
+  const goalRest = (() => { try { return JSON.parse(localStorage.getItem(GOAL.KEY) || '{}') || {}; } catch (e) { return {}; } })();
+  const freePlot = type => nav.plots.find(q => q.lv <= S.level && !S.plots[q.pid] && Sim.fits(q, type) && Sim.canBuild(S, q, type));
+  function goBuild(type) { const q = type && freePlot(type), x = q ? null : plots.info.find(x => x.st === 'open' && x.show) || plots.info[0]; openPlot(q ? q.pid : x.q.pid, true); }
+  function nextGoal() {
+    const now = performance.now(), N = S.pups.length, P = k => S.plots[k];
+    const anyHome = Object.keys(S.plots).some(k => P(k).type === 'home');
+    // 1. a need running low with too few pups on it
+    for (const k of Object.keys(Sim.C.NEEDS)) {
+      const r = needRate(k); if (r === null || S.needs[k] >= 45 || r >= 0) continue;
+      return { k: 'need-' + k, ic: k, t: `${NEED_NAMES[k]} ${k === 'nourish' ? 'are' : 'is'} running low: give ${k === 'nourish' ? 'them' : 'it'} another pup`, a: [['Who can help?', () => openNeed(k)]] };
+    }
+    // 2. idle pups (the idle-pup notice): a builder with nothing planned, or one waiting on something no builder can fetch
+    const idle = S.pups.findIndex((p, i) => (idleT[i] || 0) > GOAL.IDLE && !p.exp);
+    if (idle >= 0) {
+      const p = S.pups[idle], nm = esc(p.name), pl = S.queue.length ? planNow() : null, w = pl ? pl.miss.find(x => !FETCH[x.k]) : null;
+      if (!pl) return { k: 'idle-plan', ic: 'build', t: `${nm} has nothing to build`, a: [['Plan a home', () => goBuild('home')], S.decide ? null : ['Let the pups plan', () => { $('decide').checked = true; $('decide').onchange({ target: $('decide') }); }], ['New job', () => focusPup(idle)]].filter(Boolean) };
+      if (w) return { k: 'idle-' + w.k, ic: w.k, t: `${nm} waits for ${w.n} ${RES_N[w.k]} (${RES_FROM[w.k]})`, a: [w.k === 'crystal' && Needs.firstBuilt(S, 'board') !== null ? ['Skyboats', () => openExp()] : ['See the plan', () => openPlot(pl.pid, true)], ['New job', () => focusPup(idle)]] };
+    }
+    // 3. the first home (when the first hint has gone)
+    if (!anyHome && N) return { k: 'home1', ic: 'home', t: 'Plan your first home: a free bed brings a new pup', a: [['Plan it', () => goBuild('home')]] };
+    // 4. a haul waiting at the dock
+    if (S.exp.hauls.length) return { k: 'haul', ic: 'board', t: 'A sack of treasures is waiting at the dock', a: [['Open it', () => openHaul(0)]] };
+    // 5. the skyboat dock once the tree is tall enough
+    if (S.level >= (Sim.C.B.board.lv || 2) && !Object.keys(S.plots).some(k => P(k).type === 'board') && freePlot('board')) return { k: 'dock', ic: 'board', t: 'The isles drift close: build the skyboat dock', a: [['Pick a plot', () => goBuild('board')]] };
+    // 6. a first decoration to craft
+    if (window.Catalog && !Object.keys(S.inv.craft || {}).length && Catalog.LIST.some(e => e.from === 'craft' && Catalog.canCraft(S, e.id).ok)) return { k: 'craft', ic: 'decor', t: 'You have enough to craft a decoration', a: [['Craft', () => openCraft()]] };
+    return null;
+  }
+  function goalTick(dt) {
+    for (let i = 0; i < S.pups.length; i++) { const p = S.pups[i]; idleT[i] = p.job === 'build' && p.task === 'wait' && !p.exp && (!S.queue.length || (planNow() || { miss: [] }).miss.some(x => !FETCH[x.k])) ? (idleT[i] || 0) + dt : 0; }
+    if ((goalAcc += dt) < 1) return; goalAcc = 0;
+    const el = $('goal'), now = performance.now(), wall = Date.now();
+    document.body.classList.toggle('askup', [...document.querySelectorAll('#sndAsk.in, #appAsk.in')].some(e => !e.hidden && e.getClientRects().length > 0));   // (a narrow PC: the chip makes room for the sound / app question)
+    const blocked = VISIT || !booted || overlayOpen() || sayOpen || PM || LM || TPM || PHOTO || tour || newbie() || (!$('hint').hidden) || now < goalAfter ||
+      (document.body.classList.contains('phone') && (TQ.live.length || sayOpen || $('side').classList.contains('open')));
+    let g = blocked ? null : nextGoal();
+    if (g && goalRest[g.k] && wall - goalRest[g.k] < GOAL.REST) g = null;
+    if (!g || !goalCand || g.k !== goalCand.k) { goalCand = g; goalSince = now; }
+    else goalCand = g;   // (same goal: its words may have changed)
+    const show = g && now - goalSince >= GOAL.HOLD ? g : null;
+    if (!show) { if (goalCur) { goalCur = null; el.classList.remove('in'); setTimeout(() => { if (!goalCur) el.hidden = true; }, 400); } return; }
+    const sig = show.k + show.t + show.a.map(a => a[0]).join();
+    if (!goalCur || goalCur.sig !== sig) {
+      el.innerHTML = `<span class="goal-ic">${IC[show.ic] || IC.star}</span><span class="goal-t">${show.t}</span>${show.a.map((a, n) => `<button class="${n ? 'ghost' : 'go'} sm" data-g="${n}">${a[0]}</button>`).join('')}<button class="goal-x" title="Not now" aria-label="Not now">&#10005;</button>`;
+      if (el.hidden) { el.hidden = false; requestAnimationFrame(() => el.classList.add('in')); }
+    }
+    goalCur = Object.assign({ sig }, show);
+  }
+  function goalClick(e) {
+    const g = goalCur; if (!g) return;
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.classList.contains('goal-x')) { goalRest[g.k] = Date.now(); try { localStorage.setItem(GOAL.KEY, JSON.stringify(goalRest)); } catch (er) {} snd.sfx('close'); }
+    else { const a = g.a[+b.dataset.g]; if (a) a[1](); }
+    goalAfter = performance.now() + GOAL.AFTER; goalCur = null; goalCand = null; const el = $('goal'); el.classList.remove('in'); setTimeout(() => { if (!goalCur) el.hidden = true; }, 400);
   }
   let sideTouch = -1e9;
   const sideHot = () => $('side').matches(':hover') || performance.now() - sideTouch < 2000;
@@ -1055,7 +1220,7 @@
   function renderPlot(force) {
     if (curPlot === null) return;
     const q = nav.plotBy[curPlot], e = S.plots[curPlot]; if (!q) return;
-    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid + (e.rot || 0) + (e.col || 0) + (e.piece || '') + q.piece + q.ry : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + S.pups.filter(p => p.job === 'build').length;
+    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid + (e.rot || 0) + (e.col || 0) + (e.piece || '') + q.piece + q.ry : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + '|' + Math.floor(S.res.crystal || 0) + '|' + Math.floor(S.res.food) + S.pups.filter(p => p.job === 'build').length;
     if (!force && sig === plotSig) return; plotSig = sig;
     const builders = Math.max(1, S.pups.filter(p => p.job === 'build').length), nb = S.pups.filter(p => p.job === 'build').length;
     const fType = q.faction ? Object.keys(Sim.C.B).find(t => Sim.C.B[t].piece === q.piece) : null;   // step 5: the hall this plot holds
@@ -1069,15 +1234,18 @@
         if (!Sim.fits(q, type)) continue;   // a faction plot lists only its own hall; house plots never list halls
         const cost = Sim.costOf(type, q), work = Sim.workOf(type, q), B = Sim.C.B[type];
         const why = B.need && Needs.awakeK(S, B.need) < 0 ? `With ${NEED_NAMES[B.need]}` : B.lv && S.level < B.lv ? `Tree level ${B.lv}` : B.one && Object.values(S.plots).some(e => e.type === type) ? 'Built' : '';
-        h += `<div class="bo${why ? ' off' : ''}">${IC[B_ICON[type]]}<div class="bi"><b>${bName(type, q)}</b><small>${gives(type, q)}</small><div class="cs">${costHtml(cost)}<span class="tm">${IC.clock}${fmtT(work / builders)}${nb > 1 ? ` with ${nb}` : ''}</span></div></div>${why ? `<span class="why">${IC.lock}${why}</span>` : `<button class="go" data-act="order" data-type="${type}">Build</button>`}</div>`;
+        const ms = why ? [] : missing(cost).filter(x => !FETCH[x.k]);   // playtest fixes: only what is still missing (wood + stone the builders fetch), and from where
+        h += `<div class="bo${why ? ' off' : ''}">${IC[B_ICON[type]]}<div class="bi"><b>${bName(type, q)}</b><small>${gives(type, q)}</small><div class="cs">${costHtml(cost)}<span class="tm">${IC.clock}${fmtT(work / builders)}${nb > 1 ? ` with ${nb}` : ''}</span></div>${ms.length ? `<small class="miss">Still needed: ${missTxt(ms, true)}</small>` : ''}</div>${why ? `<span class="why">${IC.lock}${why}</span>` : `<button class="go" data-act="order" data-type="${type}">Build</button>`}</div>`;
       }
-      h += `<p class="sub small">Builders pay when they start and fetch any missing wood or stone themselves. Glow sap comes from a happy tree.</p>`;
+      h += `<p class="sub small">Builders pay when they start and fetch any missing wood or stone themselves. Glow sap comes from a happy tree${Object.keys(Sim.C.B).some(t => Sim.fits(q, t) && Sim.costOf(t, q).crystal) ? '; crystals from skyboat trips and happenings' : ''}.</p>`;
     } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}${q.free ? ' on a spot you picked' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the skyboat dock</button>` : ''}` + homeTools(q, e);
     else {
       const work = Sim.workOf(e.type, q), f = e.prog / work, on = S.pups.filter(p => p.tgt === curPlot && p.phase === 'build').length;
-      const stage = !e.paid ? 'Plans (gathering materials)' : f < plots.SCAF ? 'Scaffolding' : f < 0.98 ? 'Framing' : 'Finishing touches';
-      h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage} ${Math.floor(f * 100)}%</span></div>
-        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} to go` : `Waiting for ${costHtml(Sim.costOf(e.type, q))}`}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Roll up the plans${e.paid ? ' (refund)' : ''}</button>`;
+      // playtest fixes (m3 + plot card): the stage names the REAL hold-up, and the card lists only what is still missing + where it comes from
+      const ms = e.paid ? [] : missing(Sim.costOf(e.type, q)), wait = ms.filter(x => !FETCH[x.k]);
+      const stage = !e.paid ? (wait.length ? `Plans · waiting for ${wait.map(x => RES_N[x.k]).join(' + ')}` : ms.length ? (nb ? `Plans · builders fetching ${ms.map(x => RES_N[x.k]).join(' + ')}` : 'Plans · waiting for a builder') : nb ? 'Plans · starting soon' : 'Plans · waiting for a builder') : f < plots.SCAF ? 'Scaffolding' : f < 0.98 ? 'Framing' : 'Finishing touches';
+      h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage}${e.paid ? ' ' + Math.floor(f * 100) + '%' : ''}</span></div>
+        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} to go` : ms.length ? `Still needed:<br>${missTxt(ms, true)}` : nb ? 'Everything is here: the builders start soon.' : 'Everything is here. <b>No pup is a builder yet.</b>'}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Roll up the plans${e.paid ? ' (refund)' : ''}</button>`;
     }
     $('pcBody').innerHTML = h;
   }
@@ -1124,7 +1292,7 @@
     if (h.seeds) a.push({ ic: IC.seed, txt: `+${h.seeds}`, sub: 'seeds' });
     for (const d of h.decor) a.push({ ic: IC.decor, txt: decorName(d), sub: 'treasure' });
     if (h.outfit) a.push({ ic: IC.scarf, txt: outfitName(h.outfit), sub: 'rare outfit!', rare: true });
-    if (h.pup) a.push({ ic: IC.paw, txt: esc(h.pup.name), sub: h.waits ? 'a Noodle pup! (moves in when a bed is free)' : 'a Noodle pup comes home with them!', rare: true });
+    if (h.pup) a.push({ ic: IC.paw, txt: esc(h.pup.name), sub: h.waits ? 'a chihuahua from the isles! (moves in when a bed is free)' : 'a chihuahua from the isles comes home with them!', rare: true });
     return a;
   }
   const haulLine = h => haulItems(h).map(x => `<span class="gl">${x.ic}${x.txt}${/^\+/.test(x.txt) && x.sub !== 'berries' && x.sub !== 'wood' && x.sub !== 'stone' ? ' ' + x.sub.split(' ')[0] : ''}</span>`).join(' ');
@@ -1490,6 +1658,7 @@
     DM = k; $('dmName').textContent = decorName(o.id); $('decMenu').hidden = false; snd.sfx('tap'); placeDecMenu();
   }
   function closeDecMenu() { DM = null; $('decMenu').hidden = true; }
+  CardFn.decMenu = closeDecMenu;
   function placeDecMenu() {
     const o = DM !== null && S.placed.find(y => y.k === DM); if (!o) { closeDecMenu(); return; }
     const v = new THREE.Vector3(o.x, ground(o.x, o.z, nav.TP[1]) + 4 * Math.min(2, Exped.DECOR[o.id].s), o.z).project(camera), el = $('decMenu');
@@ -2025,7 +2194,7 @@
       h += `<li class="hd">${IC.paw}<b>${news.length === 1 ? 'A new pup moved in!' : news.length + ' new pups moved in!'}</b></li>`;
       for (const i of news) {
         const p = S.pups[i];
-        h += `<li class="np" data-i="${i}"><span class="dot" style="background:${p.collar}"></span><div><input data-i="${i}" maxlength="14" value="${esc(p.name)}" aria-label="Name"><small>${p.parents ? `${IC.paw}a puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')} &middot; ` : ''}${p.breed} &middot; ${traitChip(i)} &middot; loves ${IC[p.like] || ''}${JOB_NAMES[p.like]} &middot; dislikes ${IC[p.dislike] || ''}${JOB_NAMES[p.dislike]}</small><div class="jobs">${jobBtns(p)}</div></div></li>`;
+        h += `<li class="np" data-i="${i}"><span class="dot" style="background:${p.collar}"></span><div><input data-i="${i}" maxlength="14" value="${esc(p.name)}" aria-label="Name"><small>${p.parents ? `${IC.paw}a puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')} &middot; ` : ''}${breedName(p.breed)} &middot; ${traitChip(i)} &middot; loves ${IC[p.like] || ''}${JOB_NAMES[p.like]} &middot; dislikes ${IC[p.dislike] || ''}${JOB_NAMES[p.dislike]}</small><div class="jobs">${jobBtns(p)}</div></div></li>`;
       }
     }
     h += sh;
@@ -2058,8 +2227,31 @@
   }
   addEventListener('pointerdown', () => { if (tour) endTour(true); }, true);
   addEventListener('keydown', () => { if (tour) endTour(true); }, true);
+  // ---- playtest fixes: Esc closes the topmost card (a big card first, then the newest), then the tree's words, then lets go of
+  // a followed pup. Place / land / tour-stop / photo modes keep their own Esc (this runs first and steps aside for them); in a
+  // text field Esc only leaves the field.
+  addEventListener('keydown', e => {
+    if (e.code !== 'Escape' || !booted) return;
+    const tg = e.target; if (tg && /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName)) { tg.blur(); return; }
+    if (PM || LM || TPM || PHOTO || tour) return;
+    const c = topCard(); if (c) { closeCard(c); e.preventDefault(); return; }
+    if (sayOpen) { closeSay(); e.preventDefault(); return; }
+    if (!VISIT && (follow >= 0 || pups.selected >= 0)) { focusPup(-1); e.preventDefault(); }
+  }, true);
+  // hotkeys for the top buttons (shown in their tooltips); never while typing, with a modifier, in a tool mode, or on a visit
+  // (WASD walks Schiffy there). G is the grid snap and C "same turn" only inside place mode, which this steps aside for.
+  const HOTKEYS = { KeyG: 'giftBtn', KeyK: 'expBtn', KeyC: 'craftBtn', KeyT: 'evBtn', KeyB: 'bookBtn', KeyV: 'socBtn', KeyL: 'lanBtn', KeyP: 'buildBtn', KeyH: 'camTree' };
+  addEventListener('keydown', e => {
+    if (!booted || VISIT || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || PM || LM || TPM || PHOTO) return;
+    const tg = e.target; if (tg && (/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName) || tg.isContentEditable)) return;
+    const id = HOTKEYS[e.code], b = id && $(id); if (!b || b.hidden || !b.getClientRects().length || b.disabled) return;
+    e.preventDefault(); b.click();
+  });
+  function hotkeyTips() {   // "Craft (C)" in each button's tooltip (the lantern button is made by lantern_ui after boot)
+    for (const [k, id] of Object.entries(HOTKEYS)) { const b = $(id); if (!b || b.dataset.hk) continue; b.dataset.hk = 1; b.title = (b.title || b.textContent.trim()) + ` (${k.slice(3)})`; }
+  }
   let hintShown = false;
-  function hintDone() { if (hintShown) { $('hint').style.opacity = 0; setTimeout(() => $('hint').hidden = true, 700); } }
+  function hintDone() { if (hintShown) { hintShown = false; $('hint').style.opacity = 0; setTimeout(() => $('hint').hidden = true, 700); } }
 
   // ---- camera: orbit the tree, fly to / follow a pup, glance at the tree on level-up
   let follow = -1, tween = null;
@@ -2082,7 +2274,7 @@
   function flyHome() { const h = homeView(); flyTo(h.eye, h.target, 1.4); }
   const fdy = () => wardI >= 0 ? 0.6 : 4;   // the followed pup's aim height (the wardrobe card covers the lower screen: aim below it)
   function focusPup(i, near) {   // near = camera distance (the wardrobe comes close), else 28-55 m
-    if (VISIT) { const p = S.pups[i]; if (p) toast(`<span class="dot" style="background:${p.collar}"></span> <b>${esc(p.name)}</b> &middot; ${p.breed} &middot; ${IC[p.job] || ''}${JOB_NAMES[p.job] || ''}`, 2200); pups.select(i); return; }
+    if (VISIT) { const p = S.pups[i]; if (p) toast(`<span class="dot" style="background:${p.collar}"></span> <b>${esc(p.name)}</b> &middot; ${breedName(p.breed)} &middot; ${IC[p.job] || ''}${JOB_NAMES[p.job] || ''}`, 2200); pups.select(i); return; }
     follow = i; pups.select(i); refreshRoster(true);
     if (i < 0) { closeWard(); return; }
     if (wardI >= 0 && i !== wardI) closeWard();   // another pup picked on the island / roster: the wardrobe was for the old one
@@ -2106,6 +2298,38 @@
       controls.target.add(v3); camera.position.add(v3);
       if (wardI === follow) { const yw = pups.list[follow].yaw + 0.55; v3.set(Math.sin(yw), 0.42, Math.cos(yw)).setLength(WARD_D).add(controls.target); camera.position.lerp(v3, Math.min(1, dt * 1.6)); }   // wardrobe: keep a 3/4 front view while the pup turns
     } else if (drift) drift.update(dt);   // vibe 2 lane C: the idle camera (starts by itself after ~20 s without input)
+    if (!boatCam) keepOutOfTree(dt);
+  }
+  // playtest fixes (M3): the camera never goes inside the trunk or the root flare, at any growth stage. The wood's radius at a
+  // height comes from the GROWN tree (TreeFx params: trunk core CORE 22 m x kT..kB by height, roots out to nav.trunkR at the
+  // foot), + a margin; the camera is eased out along the radius (fast, never a snap). Above the crown top it is free.
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  function trunkKeep(y, x, z) {
+    if (!fx || !nav) return 0;
+    if (fx.woodR && x !== undefined) { const r = fx.woodR(x, y, z); return r ? r + 3 : 0; }   // the grown model's own wood (tree_fx), 3 m clear
+    const s = fx.scale, P = fx.params ? fx.params() : null, TP = nav.TP, yp = (y - TP[1]) / s;
+    const top = fx.size ? fx.size().h / s : 156; if (yp > top * 0.8) return 0;
+    const kTy = P ? P.kB + (P.kT - P.kB) * smooth(6, 34, yp) : 1, core = 22 * kTy * s;
+    return Math.max(core * 1.15, nav.trunkR(s) * (1 - smooth(2, 22, yp))) + 3.5;
+  }
+  // Once the camera would enter, it is taken over in polar coordinates round the trunk axis (angle, radius, height) and eased
+  // toward where it wants to be: a fly that would pass THROUGH the tree swings round it instead (the angle turns at most KEEP.W
+  // rad/s), a follow camera slides along the bark; it lets go once the wanted spot is outside again and it has caught up.
+  const KEEP = { W: 2.4, V: 45, K: 6 };
+  let KO = null, KW = null;   // KW = where a fly wanted to end (it ends while the camera is still swinging round: keep heading there)
+  controls.addEventListener('start', () => { KW = null; });
+  function keepOutOfTree(dt) {
+    const TP = nav.TP, c = camera.position;
+    if (tween) KW = c.clone(); else if (KO && KW && follow < 0) c.copy(KW); else KW = null;
+    const keepAt = (a, y) => trunkKeep(y, TP[0] + Math.cos(a) * 5, TP[2] + Math.sin(a) * 5);
+    const ry = c.y, ra = Math.atan2(c.z - TP[2], c.x - TP[0]), rr = Math.hypot(c.x - TP[0], c.z - TP[2]), Rw = keepAt(ra, c.y), out = !Rw || rr >= Rw;
+    if (!KO) { if (out) { KW = null; return; } KO = { a: ra, r: rr, y: c.y }; }
+    let da = ra - KO.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const k = Math.min(1, Math.min(dt, 0.05) * KEEP.K), w = Math.min(KEEP.W, KEEP.V / Math.max(1, KO.r)) * Math.min(dt, 0.05), ka = Math.max(-w, Math.min(w, da * k));   // (at most V m/s round the trunk; a hitch frame counts as 50 ms)
+    KO.a += ka; KO.y += (ry - KO.y) * k; KO.r += (rr - KO.r) * k;
+    const R = keepAt(KO.a, KO.y); if (R && KO.r < R) KO.r = Math.max(KO.r + (R - KO.r) * Math.min(1, dt * 9), R - 1.5);   // eased out, never more than 1.5 m into the 3 m margin (= never in the wood)
+    c.set(TP[0] + Math.cos(KO.a) * KO.r, KO.y, TP[2] + Math.sin(KO.a) * KO.r);
+    if (out && Math.abs(da - ka) < 0.01 && Math.abs(rr - KO.r) < 0.3 && Math.abs(ry - KO.y) < 0.3) KO = null;
   }
   // vibe 2 lane C: what the idle camera may drift to now ({id, w weight (>= 9 cuts in), r frame radius m, el, hold s, pos()})
   function driftSubjects() {
@@ -2211,6 +2435,9 @@
     if (VISIT) { if (walker) { const gp = walker.pickGround(mx, my, W(), H()); if (gp) walker.walkTo(gp, nav.trunkR(fx.scale)); } return; }   // tap / click = walk there
     const x = plots.pick(mx, my, camera, W(), H(), PHONE ? 44 : 34);
     if (x) openPlot(x.q.pid, false);
+    // playtest fixes: on a PC a click on EMPTY world (nothing above picked it: fruit, lantern, critter, pup, decoration, plot)
+    // closes the open side card / menu. Taps on a phone don't (a sheet covers half the screen; a stray tap would lose it).
+    else if (e.pointerType === 'mouse') for (const c of openCards(['side', 'menu'])) closeCard(c);
   });
 
   // ---- boot
@@ -2266,7 +2493,7 @@
     if (window.LandFx) landFx = LandFx(scene, m, nav, ground, { phone: PHONE, flowerKit: () => wfx && wfx.flowerKit ? wfx.flowerKit() : null });
     // vibe pass 2 lane B: pup life (visual only): moments while pups rest, reactions to critters + lanterns, chatter bubbles
     if (window.PupLife) life = PupLife(scene, nav, ground, { phone: PHONE, map: m, wfx, plots, pups, crFx: () => crFx, lfx: () => lfx, scale: () => fx.scale,
-      quiet: () => !booted || overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || !!tween });
+      quiet: () => !booted || overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || !!tween || newbie() });   // (playtest fixes: no chatter during a brand-new island's first minutes)
     // pathing pass: drawn pups make room for each other + lane A's props (view only, src/steer.js)
     if (window.PupSteer) steer = PupSteer(nav, { wfx });
     // Round 2 step 3: sky critters (the library's elderglow_critters.glb; loads in the background, never blocks the boot)
@@ -2289,7 +2516,7 @@
     if (!VISIT) { awayDream(sum, ld.away); Story.openDay(S, Daily.dayNum(new Date())); }
     dn = DayNight({ scene, renderer, camera, controls, hemi, sun, center: c, lightR: r * 1.2, map: m, nav, ground, plots, phone: PHONE, door: () => nav.door(fx.scale).p });
     if (window.LightFx) lightFx = LightFx(scene, m, nav, ground, { phone: PHONE, water: sndWater, camera });   // vibe 2 lane C: wind, cloud shadows, plaza warmth, god rays, dawn mist
-    if (window.WeatherFx) { wxFx = WeatherFx(scene, m, nav, ground, { phone: PHONE }); wxUI = WeatherFx.chip({ $, toast }); }   // seasons + weather pass
+    if (window.WeatherFx) { wxFx = WeatherFx(scene, m, nav, ground, { phone: PHONE }); wxUI = WeatherFx.chip({ $, toast, busy: () => !beatOk() }); CardFn.wxCard = () => wxUI && wxUI.close(); }   // seasons + weather pass
     growLand(S.level); fx.level = S.level;
     if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree kept ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
     syncPups();
@@ -2339,24 +2566,24 @@
     // vibe pass 1: the calm view (src/calm.js): the panel folds to a pill when idle, the HUD fades after ~9 s without input.
     // Never while something is in use: a card / menu / the tree's words / a selected or followed pup / a text field / the tour.
     if (!VISIT && window.ElderCalm) {
-      const CARDS = ['plotCard', 'expCard', 'evCard', 'needCard', 'socCard', 'critCard', 'sndCard', 'appCard', 'lanCard', 'lanRead', 'placeBar', 'decMenu', 'wardCard', 'craftCard', 'landBar', 'tourBar'];
-      const vis = id => { const el = $(id); return !!el && !el.hidden && el.offsetParent !== null; };
+      // (playtest fixes: every card comes from the one registry, overlayOpen(); a brand-new player's first minutes never fold the panel)
       calm = ElderCalm.make({ side: $('side'), phone: () => document.body.classList.contains('phone'),
-        busy: () => overlayOpen() || sayOpen || !!tour || CQ.length > 0 || pups.selected >= 0 || follow >= 0 || curPlot !== null || CARDS.some(vis) ||
+        busy: () => overlayOpen() || sayOpen || !!tour || CQ.length > 0 || pups.selected >= 0 || follow >= 0 || curPlot !== null || newbie() ||
           (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) });
       if (calm.pinned && document.body.classList.contains('phone')) $('sheetBtn').innerHTML = 'Close &#9660;';
       // vibe 2 lane C: the idle camera drift (after ~20 s without input, once the calm view has faded) + the tree's night whispers
-      const camBusy = () => overlayOpen() || !!tour || !!boatCam || !!tween || CQ.length > 0 || follow >= 0 || pups.selected >= 0 || curPlot !== null || plots.build || CARDS.some(vis) ||
+      const camBusy = () => overlayOpen() || !!tour || !!boatCam || !!tween || CQ.length > 0 || follow >= 0 || pups.selected >= 0 || curPlot !== null || plots.build ||
         (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName));
       if (window.ElderDrift) drift = ElderDrift.make({ camera, controls, nav, ground, scale: () => fx.scale, busy: camBusy, faded: () => calm.faded, subjects: driftSubjects,
         portrait: () => W() < H() * 0.8, maxDist: () => controls.maxDistance * 0.9 });
       if (window.TreeVoice) voice = TreeVoice({ S: () => S, camera, nav, scale: () => fx.scale, W, H, night: () => dn.state.night,
-        blocked: () => overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || CARDS.some(vis) || !!RST.wave });
+        blocked: () => overlayOpen() || sayOpen || !!tour || !!boatCam || CQ.length > 0 || !!RST.wave || !beatOk() });
     }
     { const ld0 = $('loading'); ld0.classList.add('done'); setTimeout(() => ld0.remove(), 800); }   // vibe pass 2: the loading scene fades out
     booted = true; bootAt = performance.now(); m.readyAt = performance.now() - t0;
     ElderMap.uRestC.value.set(nav.TP[0], nav.TP[2], Story.C.Y0, Story.C.YK);
-    sndUI = ElderSound.ui(snd, {});
+    sndUI = ElderSound.ui(snd, { askGate: () => beatOk() && !overlayOpen(), onAsk: beat });   // playtest fixes: the sound chip waits its turn on a first launch
+    hotkeyTips(); setTimeout(hotkeyTips, 3000);
     // vibe 2 lane C: the small sounds of island life (steps, chime, dock water, creaks, yawns + snores, the whale, gathering, dawn theme)
     if (window.Foley) foley = Foley(snd, { S: () => S, pups, nav, camera, target: () => controls.target, crFx: () => crFx, scale: () => fx.scale,
       door: () => nav.door(fx.scale).p,
@@ -2368,6 +2595,9 @@
     giftCheck(true);
     window.__snd = snd;
     window.__game = { snd, get sndUI() { return sndUI; },
+      // playtest fixes (tests): the card registry (openCards(kinds), topCard(), closeCard(el), overlayOpen()), first-launch pacing
+      // (newbie(), beatOk()), the goal chip (goal.GOAL knobs, goal.next(), goal.tick(dt), goal.idleT), the camera keep-out (trunkKeep(y))
+      openCards, topCard, closeCard, overlayOpen, newbie, beatOk, trunkKeep, goal: { GOAL, next: () => nextGoal(), tick: dt => goalTick(dt), idleT, get cur() { return goalCur; } },
       // vibe pass 1 (tests): calm (ElderCalm: faded, folded, pinned, fold(v), setPin(v)), toast(html, ms, onClick) through the queue,
       // TQ (queue + live toasts), queueCard(k, open), CQ, runTour(stops) / endTour, tour (null when none), tourStops(sum, news)
       // vibe pass 2 lane B: life = PupLife (force(kind, i, S, poses), say(i, text), stats(), st), Traits, poses (last frame's drawn poses)
@@ -2534,6 +2764,7 @@
   addEventListener('pagehide', () => { save(); if (booted && CLOUD_ON && cloud) cloud.flush('pagehide'); });
   addEventListener('online', () => { if (booted && CLOUD_ON && cloud) cloud.soon(); });
   addEventListener('resize', () => { setLayout(); camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); });
+  const LBL_STACK = 3;   // playtest fixes: at most 3 job labels stacked over a crowd, the rest = "+N"
   const poses = [], airY = (x, z, y) => y, v3n = new THREE.Vector3();   // pups in a sky boat / hopping: no ground snap
   renderer.setAnimationLoop(() => {
     const now = performance.now(), real = (now - last) / 1000; last = now;
@@ -2620,22 +2851,30 @@
       const i = +l.dataset.i; if (!pups.list[i]) return; pups.head(i, hv); const d = hv.distanceTo(camera.position); hv.project(camera);
       const vis = hv.z < 1 && Math.abs(hv.x) < 1.05 && Math.abs(hv.y) < 1.05 && d < 600;
       l.style.display = vis ? 'flex' : 'none';
-      if (vis) lbls.push({ l, d, x: (hv.x + 1) / 2 * W(), y: (1 - hv.y) / 2 * H(), w: l.offsetWidth || 26, h: l.offsetHeight || 22 });
+      if (vis) lbls.push({ l, i, d, x: (hv.x + 1) / 2 * W(), y: (1 - hv.y) / 2 * H(), w: l.offsetWidth || 26, h: l.offsetHeight || 22 });
     });
-    lbls.sort((a, b) => a.d - b.d);
+    // playtest fixes: a crowd (20 pups at the tree door) stacked a 7-high label tower. Now a stack is at most LBL_STACK high; the
+    // rest fold into a "+N" bubble on the stack's own bottom label (the selected pup always keeps its label, nearest first)
+    lbls.sort((a, b) => (b.i === pups.selected) - (a.i === pups.selected) || a.d - b.d);
+    const more = new Map();
     for (const L of lbls) {
-      let y = L.y;
+      let y = L.y, lv = 0, base = null, hidden = false;
       for (let guard = 0; guard < 8; guard++) {
         const hit = placed.find(p => Math.abs(p.x - L.x) < (p.w + L.w) / 2 + 2 && Math.abs(p.y - y) < (p.h + L.h) / 2 + 1);
-        if (!hit) break; y = hit.y - (hit.h + L.h) / 2 - 2;
+        if (!hit) break;
+        base = base || hit.base || hit; lv = hit.lv + 1;
+        if (lv >= LBL_STACK && L.i !== pups.selected) { hidden = true; break; }
+        y = hit.y - (hit.h + L.h) / 2 - 2;
       }
-      placed.push({ x: L.x, y, w: L.w, h: L.h });
+      if (hidden) { L.l.style.display = 'none'; more.set(base, (more.get(base) || 0) + 1); continue; }
+      const P = { x: L.x, y, w: L.w, h: L.h, lv, base, L }; placed.push(P);
       L.l.style.left = L.x + 'px'; L.l.style.top = y + 'px';
     }
+    for (const P of placed) { const m = P.L.l.querySelector('.mre'), n = more.get(P) || 0, t = n ? '+' + n : ''; if (m && m.textContent !== t) { m.textContent = t; m.hidden = !n; } }
     expLabels();
     if (voice) voice.update(dt);   // vibe 2 lane C: night whispers by the trunk
     if (foley) foley.update(dt, { night: dn.state.night, h: dn.state.h, wind: 0.5 + 0.5 * (1 - dn.state.night), poses, quiet: overlayOpen() || !!boatCam });
-    uiAcc += dt; if (uiAcc > 0.25) { uiAcc = 0; if (session.n === 0) trySpeak(false); if (snd.live) snd.update(sndState()); if (wxUI && wxFx) wxUI.refresh(wxFx.wx, S, now); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
+    uiAcc += dt; if (uiAcc > 0.25) { if (!VISIT) goalTick(uiAcc); uiAcc = 0; if (session.n === 0) trySpeak(false); if (snd.live) snd.update(sndState()); if (wxUI && wxFx) wxUI.refresh(wxFx.wx, S, now); refreshTree(); refreshRoster(false); refreshBuild(false); renderPlot(false); renderExp(false); refreshExpBtn(); renderEvents(false); renderNeed(false); refreshEvBtn(); }
     if (now - lastSave > 5000) save();
     cpu += performance.now() - c0; frames++; pacc += real;
     if (pacc >= 0.5) {

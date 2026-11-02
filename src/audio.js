@@ -692,7 +692,7 @@
   function ui(E, o) {
     o = o || {}; const $ = id => document.getElementById(id), app = $('app') || document.body;
     const btn = document.createElement('button'); btn.id = 'sndBtn'; btn.className = 'card'; btn.title = 'Sound'; app.appendChild(btn);
-    const card = document.createElement('div'); card.id = 'sndCard'; card.className = 'card'; card.hidden = true; app.appendChild(card);
+    const card = document.createElement('div'); card.id = 'sndCard'; card.className = 'card'; card.dataset.card = 'side'; card.hidden = true; app.appendChild(card);
     const row = (k, label) => `<label class="sndr">${ICON[k]}<span>${label}</span><input type="range" min="0" max="100" step="1" data-k="${k}" value="${Math.round(E.prefs[k] * 100)}"></label>`;
     card.innerHTML = `<div class="pch"><span class="disp sndt">${ICON.on}Sound</span><button id="sndClose" title="Close">&#10005;</button></div>
       <label class="tog sndon"><input type="checkbox" id="sndOn"><i></i><b>Sound on</b></label>
@@ -709,7 +709,9 @@
     if (!E.prefs.asked && !o.noAsk) {
       ask = document.createElement('div'); ask.id = 'sndAsk'; ask.className = 'card';
       ask.innerHTML = `${ICON.on}<span>Cozy sounds? <small>lo-fi music + nature</small></span><button class="big" data-a="1">Turn on</button><button class="ghost" data-a="0" title="Keep it quiet">Not now</button>`;
-      app.appendChild(ask); setTimeout(() => ask && ask.classList.add('in'), o.askDelay || 1500);
+      // (o.askGate: the game's first-launch pacing says when there is room for it; o.onAsk when it shows)
+      const show = () => { if (!ask) return; if (o.askGate && !o.askGate()) { setTimeout(show, 1000); return; } ask.classList.add('in'); if (o.onAsk) o.onAsk(); };
+      app.appendChild(ask); setTimeout(show, o.askDelay || 1500);
       ask.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.a === '1') E.setOn(true); else E.setAsked(); ask.remove(); ask = null; refresh(); };
     }
     refresh();

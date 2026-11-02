@@ -177,6 +177,30 @@ vec3 egWood(vec3 p) {
     // the world position of a piece-space point (wood or a canopy point of the cluster at piv), for the current shape
     const _o = [0, 0, 0], _w = new THREE.Vector3();
     function toWorld(local, out) { _w.set(local[0], local[1], local[2]).applyMatrix4(M0); out[0] = TP[0] + (_w.x - TP[0]) * scale; out[1] = TP[1] + (_w.y - TP[1]) * scale; out[2] = TP[2] + (_w.z - TP[2]) * scale; return out; }
+    // playtest fixes (M3): the GROWN wood's world radius from the trunk axis, per 3 m height band x 24 sectors (trunk, root flare
+    // and limbs from the model's own vertices through woodJS; canopy clusters + small parts left out). Made for the growth rounded
+    // UP to 0.1 (never smaller than what is drawn) and the scale, so it is re-made only a few times a level. The game keeps the
+    // follow / fly camera out of it (game.js keepOutOfTree). View only.
+    const woodV = [], WB = 3, WS = 24;
+    if (treeB && treeB.geo && base[0]) { const Pp = treeB.geo.attributes.position.array, SW = treeB.geo.attributes.swayW.array, GA = treeB.geo.attributes.gAnc ? treeB.geo.attributes.gAnc.array : null;
+      for (let i = 0; i < SW.length; i += 3) if (SW[i] <= 0.5 && !(GA && GA[i * 4 + 3] > 0.5)) woodV.push(Pp[i * 3], Pp[i * 3 + 1], Pp[i * 3 + 2]); }
+    let wpKey = '', wp = null;
+    function woodProfile() {
+      const g = Math.min(4, Math.ceil(G * 10 - 1e-6) / 10), key = g.toFixed(1) + ':' + scale.toFixed(3); if (key === wpKey) return wp; wpKey = key;
+      const Pg = paramsOf(g), w = [0, 0, 0], o = [0, 0, 0], bands = new Map(); let top = 0;
+      for (let i = 0; i < woodV.length; i += 3) {
+        woodJS(woodV[i], woodV[i + 1], woodV[i + 2], Pg, w); toWorld(w, o);
+        const dx = o[0] - TP[0], dz = o[2] - TP[2], dy = o[1] - TP[1], r = Math.hypot(dx, dz), b = Math.floor(dy / WB), s = Math.floor((Math.atan2(dz, dx) + Math.PI) / (2 * Math.PI) * WS) % WS;
+        let a = bands.get(b); if (!a) bands.set(b, a = new Float32Array(WS)); if (r > a[s]) a[s] = r; if (dy > top) top = dy;
+      }
+      return (wp = { bands, top });
+    }
+    // the wood's radius near world point (x, y, z): the bands within 3 m above / below and the sectors either side
+    function woodR(x, y, z) {
+      const p = woodProfile(), b = Math.floor((y - TP[1]) / WB), s = Math.floor((Math.atan2(z - TP[2], x - TP[0]) + Math.PI) / (2 * Math.PI) * WS) % WS; let r = 0;
+      for (let bb = b - 1; bb <= b + 1; bb++) { const a = p.bands.get(bb); if (a) for (let ds = -1; ds <= 1; ds++) r = Math.max(r, a[(s + ds + WS) % WS]); }
+      return r;
+    }
 
     // ---- halos over the 10 light orbs (+ the shrine door)
     const GT = glowTex(false), ST = glowTex(true), LT = leafTex();
@@ -334,6 +358,7 @@ vec3 egWood(vec3 p) {
       size(g, s) { const p = g === undefined ? P : paramsOf(g), sc = s === undefined ? scale : s; let y1 = 0, r = 0; const w = [0, 0, 0];
         for (const pv of pivots) { const c = revOf(pv[1], p.G) * p.cK; if (c < 0.25) continue; woodJS(pv[0], pv[1], pv[2], p, w); y1 = Math.max(y1, w[1] + 24 * c); r = Math.max(r, Math.hypot(w[0], w[2]) + 36 * c); }
         return { h: (y1 || 156) * sc, r: (r || 90) * sc }; },
+      woodR, woodProfile,   // playtest fixes (M3): the grown wood's radius by height + direction (camera keep-out)
       fruitAt: k => { fruitPlace(); const f = fruitP[k]; return f ? f.w.slice() : null; },
       // h = smoothed health 0..100, light = smoothed light need 0..100
       update(t, dt, h, light, renderer) {
