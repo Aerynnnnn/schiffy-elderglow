@@ -26,7 +26,7 @@
     { id: 'owl', name: 'Wisp owl', piece: 'EG_Critter_WispOwl', rar: 'uncommon', when: { d: 0, k: 0.35, n: 1, a: 0.2 }, sea: [1, 1, 1, 1], stay: [45, 90],
       gift: { k: 'feather', name: 'a moon feather', sap: 8, pct: 30 }, fav: 'wisp trees', verb: 'perched', col: '#a99ad0',
       note: 'A wisp owl hoots in a voice like a lullaby. It likes to sit high in a wisp tree and watch the lanterns come on.',
-      whenT: 'at night', hint: ['Something soft hoots in the dark...', 'It likes tall trees that glow a little.', 'Place a Wisp tree (sky trips to Mossy Isle).'] },
+      whenT: 'at night', hint: ['Something soft hoots in the dark...', 'It likes tall trees that glow a little.', 'Place a Wisp tree (skyboat trips to Mossy Isle).'] },
     { id: 'fox', name: 'Moss fox', piece: 'EG_Critter_MossFox', rar: 'common', when: { d: 1, k: 0.5, n: 0, a: 0.6 }, sea: [1, 1, 1.2, 0.6], stay: [30, 60],
       gift: { k: 'berries', name: 'a few berries', food: 8, pct: 25 }, fav: 'the woods + a woodshed', verb: 'curled up for a nap', col: '#e58a4a',
       note: 'The moss fox grows a little garden on its back. It naps wherever the wood smells nicest.',
@@ -38,27 +38,27 @@
     { id: 'moth', name: 'Glow moths', piece: 'EG_Critter_GlowMoth', rar: 'common', when: { d: 0, k: 0.6, n: 1, a: 0 }, sea: [1, 1, 1.3, 0.5], stay: [40, 80],
       gift: { k: 'dust', name: 'a pinch of glow dust', sap: 5, pct: 25 }, fav: 'lanterns', verb: 'danced', col: '#ffe59a', swarm: 5,
       note: 'Glow moths drift to warm light like pups to a fire. They dust everything they touch with a little shine.',
-      whenT: 'at night', hint: ['Tiny lights flutter after dark...', 'They love warm lantern light.', 'Build a Lantern path or place a Moon lantern / Firefly jar.'] },
+      whenT: 'at night', hint: ['Tiny lights flutter after dark...', 'They love warm lantern light.', 'Build a Lantern walk or place a Moon lantern / Firefly jar.'] },
     { id: 'frog', name: 'Lily frog spirit', piece: 'EG_Critter_LilyFrog', rar: 'common', when: { d: 0.5, k: 0.8, n: 0.4, a: 1 }, sea: [1.2, 1, 0.8, 0.2], stay: [30, 60], rain: true,
       gift: { k: 'lily', name: 'a lily seed', seeds: 1, pct: 30 }, fav: 'the river in the rain', verb: 'sang', col: '#5cc29e',
       note: 'The lily frog spirit wears its pond as a hat. It sings the rain in, and sometimes it sings it out again.',
       whenT: 'in the rain', hint: ['Something croaks happily by the water...', 'It sings by the river, loudest in the rain.', 'Wait for a rain shower by the river.'] },
     { id: 'jelly', name: 'Sky jellyfish', piece: 'EG_Critter_SkyJelly', rar: 'uncommon', when: { d: 0.1, k: 1, n: 0.8, a: 0.2 }, sea: [0.3, 1.6, 0.4, 0.1], stay: [30, 60],
-      gift: { k: 'drop', name: 'a sky drop', sap: 6, pct: 30 }, fav: 'the expedition dock', verb: 'drifted', col: '#f5b8e0', fly: true,
+      gift: { k: 'drop', name: 'a sky drop', sap: 6, pct: 30 }, fav: 'the skyboat dock', verb: 'drifted', col: '#f5b8e0', fly: true,
       note: 'Sky jellyfish float down from the high isles on warm evenings, glowing like paper lanterns that forgot their strings.',
-      whenT: 'on summer evenings', hint: ['Pink lights drift down on warm evenings...', 'They follow the sky boats home from the isles.', 'Build the Expedition dock; summer evenings are best.'] },
+      whenT: 'on summer evenings', hint: ['Pink lights drift down on warm evenings...', 'They follow the skyboats home from the isles.', 'Build the Skyboat dock; summer evenings are best.'] },
     { id: 'hare', name: 'Snow hare', piece: 'EG_Critter_SnowHare', rar: 'common', when: { d: 1, k: 0.6, n: 0.1, a: 0.8 }, sea: [0, 0, 0.1, 1.4], stay: [30, 60],
-      gift: { k: 'snowberry', name: 'snowberries', food: 6, pct: 25 }, fav: 'cosy cottages', verb: 'hopped about', col: '#dfe6f7',
+      gift: { k: 'snowberry', name: 'snowberries', food: 6, pct: 25 }, fav: 'cosy pup cottages', verb: 'hopped about', col: '#dfe6f7',
       note: 'The snow hare has a little star of frost on its forehead. It visits cosy cottages to warm its paws by the windows.',
-      whenT: 'in winter', hint: ['Small round tracks in the snow...', 'It visits warm cottages when it is cold.', 'Build cottages; it comes in winter.'] },
+      whenT: 'in winter', hint: ['Small round tracks in the snow...', 'It visits warm cottages when it is cold.', 'Build pup cottages; it comes in winter.'] },
     { id: 'sprite', name: 'Petal sprites', piece: 'EG_Critter_PetalSprite', rar: 'common', when: { d: 1, k: 0.4, n: 0, a: 0.6 }, sea: [1.5, 0.4, 0.15, 0], stay: [30, 50], wind: true,
       gift: { k: 'petal', name: 'a petal seed', seeds: 1, pct: 30 }, fav: 'gardens + fairy rings', verb: 'played', col: '#f2a9cf', swarm: 3,
       note: 'Petal sprites are born when a blossom laughs. They play tag in gardens and fall asleep in flowers.',
-      whenT: 'in spring', hint: ['Giggles among the flowers...', 'They play where things bloom and grow.', 'Build a Berry garden or place a Fairy ring; a breezy spring day is best.'] },
+      whenT: 'in spring', hint: ['Giggles among the flowers...', 'They play where things bloom and grow.', 'Build a Berry patch or place a Fairy ring; a breezy spring day is best.'] },
     { id: 'finch', name: 'Song finch', piece: 'EG_Critter_SongFinch', rar: 'uncommon', when: { d: 1, k: 0.3, n: 0, a: 1 }, sea: [1.2, 1, 0.8, 0.6], stay: [25, 45], wind: true,
-      gift: { k: 'note', name: 'a song feather', sap: 6, pct: 30 }, fav: 'music (the stage)', verb: 'sang along', col: '#ffd24a',
+      gift: { k: 'note', name: 'a song feather', sap: 6, pct: 30 }, fav: 'music (the Moonlit stage)', verb: 'sang along', col: '#ffd24a',
       note: 'The song finch never sings its own song. It learns the pups\' tunes and sings them back, a little better.',
-      whenT: 'by day', hint: ['A bright little voice joins in the music...', 'It comes wherever pups play music.', 'Build the Music stage (or let a pup busk). It rides in on the wind.'] },
+      whenT: 'by day', hint: ['A bright little voice joins in the music...', 'It comes wherever pups play music.', 'Build the Moonlit stage (or let a minstrel busk). It rides in on the wind.'] },
     { id: 'snail', name: 'Glow snail', piece: 'EG_Critter_GlowSnail', rar: 'common', when: { d: 0, k: 0.2, n: 1, a: 0.8 }, sea: [1.2, 1, 1.2, 0.3], stay: [60, 120], rain: true,
       gift: { k: 'trail', name: 'a jar of glow trail', sap: 4, pct: 25 }, fav: 'glow shrooms + fairy rings', verb: 'left a glowing trail', col: '#b48cd8',
       note: 'The glow snail is in no hurry at all. It leaves a silver trail that shines until morning.',
@@ -192,8 +192,8 @@
   // where a visit is, in words (the tree's voice, the card)
   function where(s, v, nav) {
     const k = v.k, ch = k[0], n = +k.slice(1);
-    if (ch === 'd') { const x = (s.placed || []).find(y => y.k === n), D = x && X_() && X_().DECOR[x.id]; const nm = D ? D.name.toLowerCase() : 'a decoration'; return (BY[v.c].id === 'owl' ? 'on the ' : 'by the ') + nm; }
-    if (ch === 'p') { const e = s.plots[n], B = e && S_().C.B[e.type]; return e ? (e.type === 'home' ? 'by a cottage' : e.type === 'board' ? 'over the expedition dock' : 'by the ' + (B ? B.name.toLowerCase() : 'buildings')) : 'near the houses'; }
+    if (ch === 'd') { const x = (s.placed || []).find(y => y.k === n), D = x && X_() && X_().DECOR[x.id]; const nm = D ? D.name.toLowerCase() : 'a treasure'; return (BY[v.c].id === 'owl' ? 'on the ' : 'by the ') + nm; }
+    if (ch === 'p') { const e = s.plots[n], B = e && S_().C.B[e.type]; return e ? (e.type === 'home' ? 'by a pup cottage' : e.type === 'board' ? 'over the skyboat dock' : 'by the ' + (B ? B.name.toLowerCase() : 'buildings')) : 'near the houses'; }
     return { w: 'by a crystal ward', r: 'by the river', f: BY[v.c].id === 'owl' ? 'in the old woods' : 'in the woods', t: 'under the Elder Tree', o: 'round the light orbs', e: 'in the meadow', s: 'over the island' }[ch] || 'on the island';
   }
   const article = sp => /s$/.test(sp.name) ? sp.name.toLowerCase() : (/^[aeiou]/i.test(sp.name) ? 'an ' : 'a ') + sp.name.toLowerCase();

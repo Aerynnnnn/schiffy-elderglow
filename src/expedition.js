@@ -29,14 +29,14 @@
     { id: 'lantern', name: 'Lantern Rock', pid: 123, lv: 2, res: { stone: 3, wood: 1 }, roll: { crystal: 3, seeds: 1, res: 2, decor: 1 }, decor: ['rune-boulder', 'crystal-pillar'],
       blurb: 'Rune stones that hum in the wind: stone and crystals.' },
     { id: 'perch', name: 'Cloud Perch', pid: 124, lv: 3, res: { food: 2, stone: 1, wood: 1 }, roll: { decor: 3, crystal: 2, seeds: 1, res: 2 }, decor: ['fairy-ring', 'glow-shrooms', 'crystal-pillar'],
-      blurb: 'High up where the fairies dance: decorations and crystals.' },
+      blurb: 'High up where the fairies dance: treasures and crystals.' },
     { id: 'hollow', name: 'Sunken Hollow', pid: 95, lv: 3, res: { wood: 1, stone: 1, food: 1 }, roll: { seeds: 2, crystal: 2, res: 2, decor: 2 }, rare: 2, decor: ['wisp-tree', 'rune-boulder', 'glow-shrooms'],
       blurb: 'A low, misty isle full of lost things: rare finds twice as often.' },
     // step 5: the far isles open as the tree grows (Young II, Grown I, Grown II)
     { id: 'spires', name: 'Far Spires', pid: 115, lv: 4, res: { stone: 3, wood: 1 }, roll: { crystal: 4, decor: 2, seeds: 1, res: 2 }, decor: ['crystal-pillar', 'rune-boulder-b'],
       blurb: 'Tall crystal shards far out in the clouds: lots of crystals.' },
     { id: 'starfall', name: 'Starfall Isles', pid: 109, lv: 5, res: { food: 1, stone: 1, wood: 1 }, roll: { decor: 4, crystal: 2, seeds: 2, res: 1 }, rare: 2, decor: ['star-shard', 'fairy-ring', 'wisp-tree-b'],
-      blurb: 'Where falling stars come to rest: decorations and rare finds.' },
+      blurb: 'Where falling stars come to rest: treasures and rare finds.' },
     { id: 'ember', name: 'Ember Reach', pid: 120, lv: 6, res: { wood: 2, food: 2 }, roll: { seeds: 3, decor: 2, crystal: 2, res: 2 }, rare: 3, decor: ['spirit-sapling', 'rune-boulder-b', 'wisp-tree-b'],
       blurb: 'The warm isles at the edge of the sky: seeds, spirit saplings, the rarest finds.' },
   ];
@@ -60,7 +60,7 @@
   const OUTFITS = ['cloud-cape', 'feather-cap', 'sky-goggles'];
   // what a pup's liked job helps find: x LIKE_K on that part of the haul (rest-lovers are lucky nappers: rare finds)
   const LIKE = { wood: 'wood', stone: 'stone', food: 'food', light: 'crystal', protect: 'crystal', water: 'seeds', nourish: 'seeds', build: 'decor', spirit: 'decor', rest: 'rare' };
-  const LIKE_TXT = { wood: 'more wood', stone: 'more stone', food: 'more berries', crystal: 'more crystals', seeds: 'more seeds', decor: 'more decorations', rare: 'lucky: rare finds' };
+  const LIKE_TXT = { wood: 'more wood', stone: 'more stone', food: 'more berries', crystal: 'more crystals', seeds: 'more seeds', decor: 'more treasures', rare: 'lucky: rare finds' };
 
   const hash = n => { n = (n ^ 61) ^ (n >>> 16); n = Math.imul(n, 9); n ^= n >>> 4; n = Math.imul(n, 0x27d4eb2d); return (n ^ (n >>> 15)) >>> 0; };
   function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -76,14 +76,14 @@
 
   function canSend(s, nav, di, tier, team) {
     const d = DEST[di], T = TIERS[tier];
-    if (board(s) === null) return { ok: false, why: 'Build the Expedition dock first' };
+    if (board(s) === null) return { ok: false, why: 'The Skyboat dock comes first' };
     if (!d || !T) return { ok: false, why: 'Pick an isle' };
-    if (!unlocked(s, d)) return { ok: false, why: d.locked ? 'Far away: opens in a later update' : `Opens at tree level ${d.lv}` };
-    if (s.exp.trips.length >= maxTrips(s)) return { ok: false, why: s.level >= 6 ? 'All three boats are out' : s.level >= 3 ? 'Both boats are out (a 3rd boat at tree level 6)' : 'The boat is out (a 2nd boat at tree level 3)' };
-    if (!Array.isArray(team) || !team.length) return { ok: false, why: 'Pick 1-4 pups' };
-    if (team.length > C.MAX_TEAM || new Set(team).size !== team.length) return { ok: false, why: 'Up to 4 pups' };
-    for (const i of team) { const p = s.pups[i]; if (!p) return { ok: false, why: 'Pick 1-4 pups' }; if (busy(p)) return { ok: false, why: p.name + (p.exp ? ' is on a trip' : ' is still arriving') }; }
-    const food = T.food * team.length; if (s.res.food < food - 1e-9) return { ok: false, why: `Needs ${food} berries for the trip` };
+    if (!unlocked(s, d)) return { ok: false, why: d.locked ? 'Far out in the sky: out of reach for now' : `Drifts close at tree level ${d.lv}` };
+    if (s.exp.trips.length >= maxTrips(s)) return { ok: false, why: s.level >= 6 ? 'All three skyboats are out' : s.level >= 3 ? 'Both skyboats are out (a 3rd at tree level 6)' : 'The skyboat is out (a 2nd at tree level 3)' };
+    if (!Array.isArray(team) || !team.length) return { ok: false, why: 'Pick a crew of 1-4 pups' };
+    if (team.length > C.MAX_TEAM || new Set(team).size !== team.length) return { ok: false, why: 'A skyboat holds 4 pups' };
+    for (const i of team) { const p = s.pups[i]; if (!p) return { ok: false, why: 'Pick a crew of 1-4 pups' }; if (busy(p)) return { ok: false, why: p.name + (p.exp ? ' is away on a skyboat' : ' is still arriving') }; }
+    const food = T.food * team.length; if (s.res.food < food - 1e-9) return { ok: false, why: `A little more needed: ${food} berries to pack` };
     return { ok: true, food };
   }
   function send(s, nav, di, tier, team) {

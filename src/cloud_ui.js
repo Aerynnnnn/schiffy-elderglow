@@ -22,14 +22,14 @@
   // cozy words for every backend error code (net.js authFail)
   const WHY = {
     rate: 'Our mail pigeon needs a rest: the free email service only sends a few emails per hour for the whole game. Please try again in a little while. (A link you already got still works for an hour.)',
-    badcode: 'That code did not work. It may have a typo or be too old (an hour). Use the link in the newest email, or ask for a new one.',
+    badcode: 'That code didn\'t work. It may have a typo or be too old (an hour). Use the link in the newest email, or ask for a new one.',
     exists: 'That email already has an island. To open that one here, use <b>I already have an island</b> (this device\'s island is kept as a backup).',
-    nouser: 'We could not find an island with that email. Check the spelling, or keep this island safe with it instead.',
-    bademail: 'That does not look like an email address.',
+    nouser: 'No island answers to that email yet. Check the spelling, or keep this island safe with it instead.',
+    bademail: 'That doesn\'t look quite like an email address.',
     offline: 'You seem to be offline. Your island keeps growing here; try again when you are back online.',
-    setup: 'Email sign-in is not switched on yet. Your island is still saved on this device.',
+    setup: 'Email sign-in isn\'t open yet. Your island is still saved on this device.',
   };
-  const why = r => WHY[r && r.code] || ('Something went wrong' + (r && r.why ? ': ' + String(r.why).slice(0, 120) : '') + '. Please try again.');
+  const why = r => WHY[r && r.code] || ('That didn\'t quite work' + (r && r.why ? ': ' + String(r.why).slice(0, 120) : '') + '. Please try again.');
   // email apps (Gmail on iPhone, Outlook, ...) often open links in their own little browser, which has its own storage
   const INAPP = 'Tip: some email apps open links in their own little browser. If your island does not show up, long-press the link and choose <b>Open in Safari</b> / <b>Open in Chrome</b>.';
 
@@ -48,10 +48,10 @@
     // ---------- the cloud status line
     function statusHtml() {
       if (!cloud) return '';
-      if (cloud.off) return `<p class="cst">${IX.cloud}<span>${/patch_2|not switched on/.test(cloud.offWhy) ? 'Cloud save switches on with the next server update. Until then your island is saved on this device.' : esc(cloud.offWhy)}</span></p>`;
-      if (cloud.conflict) return `<p class="cst warn">${IX.cloud}<span>Two islands found: pick one to keep cloud saving. <u id="cuPickAgain">Show</u></span></p>`;
+      if (cloud.off) return `<p class="cst">${IX.cloud}<span>${/patch_2|not switched on/.test(cloud.offWhy) ? 'Cloud saving opens with the next server update. Until then your island is kept on this device.' : esc(cloud.offWhy)}</span></p>`;
+      if (cloud.conflict) return `<p class="cst warn">${IX.cloud}<span>Two islands found: pick one and cloud saving carries on. <u id="cuPickAgain">Show</u></span></p>`;
       if (!cloud.uid) return `<p class="cst">${IX.cloud}<span>Cloud save is off in this test window.</span></p>`;
-      if (cloud.lastErr && cloud.dirty) return `<p class="cst warn">${IX.cloud}<span>Offline for now: new progress waits here and goes to the cloud when you are back online${cloud.lastOk ? ` (last cloud copy ${agoT(cloud.lastOk)})` : ''}.</span></p>`;
+      if (cloud.lastErr && cloud.dirty) return `<p class="cst warn">${IX.cloud}<span>Offline for now: new progress waits here and floats up to the cloud when you are back online${cloud.lastOk ? ` (last cloud copy ${agoT(cloud.lastOk)})` : ''}.</span></p>`;
       return `<p class="cst">${IX.cloud}<span>${cloud.lastOk ? `Cloud copy saved ${agoT(cloud.lastOk)}` : 'Cloud copy: saving soon'}</span></p>`;
     }
     function status() { const el = $('cuStatus'); if (el) el.innerHTML = statusHtml(); const m = $('socCloud'); if (m) m.innerHTML = statusHtml(); }
@@ -98,7 +98,7 @@
       else if (view === 'main' && linked(acct)) {
         h = `<div class="safeok">${IX.shield}<div><b class="disp">Your island is safe!</b><small>Linked to <b>${esc(acct.email)}</b></small></div></div>
           <div id="cuStatus">${statusHtml()}</div>
-          <p class="sub">On your phone or another computer: open the game, tap <b>Explore</b> &rarr; <b>I already have an island</b> and type this email. We email a sign-in link, no password.</p>${line()}
+          <p class="sub">On your phone or another computer: open the game, tap <b>Visit</b> &rarr; <b>I already have an island</b> and type this email. We email a sign-in link, no password.</p>${line()}
           <div class="pf"><small class="sub">Leaving this device?</small><button class="ghost" id="cuOut"${dis}>Sign out here</button></div>${backupsHtml()}`;
       } else if (view === 'main') {
         h = `<p class="sub">Right now your island lives only in this browser. Add your email and it can follow you to your phone or another computer. No password: we email you a link to confirm.</p>
@@ -145,12 +145,12 @@
     }
     async function confirm() {   // the folded "Have a code instead?" path
       const code = (($('cuCode') || {}).value || '').replace(/\s+/g, '');
-      if (!/^\d{6,8}$/.test(code)) { say('The code is the 6 numbers from the email.', true); return; }
+      if (!/^\d{6,8}$/.test(code)) { say('The code is the 6 numbers in the email.', true); return; }
       busy = true; say('Checking...');
       const r = view === 'linkSent' ? await net.verifyLink(email, code) : await net.verifyCode(email, code); busy = false;
       if (!r.ok) { say(why(r), true); return; }
       if (view === 'linkSent') { await refreshAcct(true); if (!linked(acct)) { acct = Object.assign({}, acct || {}, { email, anon: false, pending: null }); view = 'main'; render(); } }
-      else { safe.hidden = true; stopPoll(); toast(`${IX.key} Signed in! Fetching your island...`, 3000); await g.onAccount(r.uid); }
+      else { safe.hidden = true; stopPoll(); toast(`${IX.key} Signed in! Your island is on its way...`, 3000); await g.onAccount(r.uid); }
     }
     safe.addEventListener('click', async e => {
       const t = e.target.closest('button, u'); if (!t) return;

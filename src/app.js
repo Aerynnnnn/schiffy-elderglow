@@ -113,8 +113,8 @@
     clearLocal();
     for (const x of list) {
       const ms = x.due - Date.now(); if (ms > 6 * 3600000 || quietAt(x.due)) continue;
-      if (reg && typeof window.TimestampTrigger === 'function' && 'showTrigger' in Notification.prototype) { showLocal('Your sky boat is home', 'The pups are back with their haul.', 'boat-' + x.key, x.due); continue; }
-      timers.push(setTimeout(() => { if (document.hidden && P.on && P.boat && Notification.permission === 'granted') showLocal('Your sky boat is home', 'The pups are back with their haul.', 'boat-' + x.key); }, ms));
+      if (reg && typeof window.TimestampTrigger === 'function' && 'showTrigger' in Notification.prototype) { showLocal('Your skyboat is home', 'The crew is back with a sack of treasures.', 'boat-' + x.key, x.due); continue; }
+      timers.push(setTimeout(() => { if (document.hidden && P.on && P.boat && Notification.permission === 'granted') showLocal('Your skyboat is home', 'The crew is back with a sack of treasures.', 'boat-' + x.key); }, ms));
     }
   }
   let planned = [];
@@ -155,12 +155,12 @@
   const hourOpts = sel => Array.from({ length: 24 }, (_, h) => `<option value="${h * 60}"${h * 60 === sel ? ' selected' : ''}>${hh(h * 60)}</option>`).join('');
 
   function status() {
-    if (!canNotify()) return { k: 'none', t: 'This browser cannot show notifications.' };
+    if (!canNotify()) return { k: 'none', t: 'This browser can\'t show notifications.' };
     if (iOS && !standalone()) return { k: 'ios', t: 'On iPhone and iPad, notifications only work in the installed island app (iOS 16.4 or newer): add it to your Home Screen first (above), open it from there, then turn this on.' };
     if (P.why === 'blocked' || Notification.permission === 'denied') return { k: 'blocked', t: 'Notifications are blocked for this site. You can allow them in the browser\'s site settings (the icon next to the address), then try again.' };
     if (!P.on) return { k: 'off', t: 'Off. Your browser will ask once when you turn this on.' };
-    if (P.push) return { k: 'push', t: 'On. They arrive even when the app is closed.' };
-    if (P.setup) return { k: 'local', t: 'On, while the app is open in the background. (Notes when it is closed start once the island server is set up.)' };
+    if (P.push) return { k: 'push', t: 'On. Notes find you even when the app is closed.' };
+    if (P.setup) return { k: 'local', t: 'On, while the app is open in the background. (Notes while it is closed begin once the island server is ready.)' };
     return { k: 'local', t: 'On, while the app is open in the background' + (P.why && P.why !== 'no server' ? ` (${P.why})` : '') + '.' };
   }
 
@@ -170,9 +170,9 @@
     // the worker comes after the map is loaded (it can then copy everything from the HTTP cache)
     setTimeout(() => ensureReg(false), 1500);
     if (G.mode !== 'home') return { render() {} };
-    const btn = document.createElement('button'); btn.id = 'appBtn'; btn.className = 'card'; btn.title = 'Island app: install + gentle notifications'; app.appendChild(btn);
+    const btn = document.createElement('button'); btn.id = 'appBtn'; btn.className = 'card'; btn.title = 'The island app: install + gentle notes'; app.appendChild(btn);
     const card = document.createElement('div'); card.id = 'appCard'; card.className = 'card'; card.hidden = true; app.appendChild(card);
-    card.innerHTML = `<div class="pch"><span class="disp appt">${IX.phone}Island app</span><button id="appClose" title="Close">&#10005;</button></div><div id="appBody"></div>`;
+    card.innerHTML = `<div class="pch"><span class="disp appt">${IX.phone}The island app</span><button id="appClose" title="Close">&#10005;</button></div><div id="appBody"></div>`;
     const open = () => { if (G.closeOthers) G.closeOthers(); const s = $('sndCard'); if (s) s.hidden = true; card.hidden = false; render(); if (ask) { ask.remove(); ask = null; ls.set(AK, String(Date.now())); } };
     btn.onclick = () => { if (card.hidden) open(); else card.hidden = true; };
     $('appClose').onclick = () => { card.hidden = true; };
@@ -180,7 +180,7 @@
       btn.innerHTML = P.on ? IX.bell : IX.bellOff; btn.classList.toggle('on', !!P.on);
       if (card.hidden) return;
       let inst;
-      if (standalone()) inst = `<p class="ok">${IX.ok}<span>You are playing in the island app.</span></p>`;
+      if (standalone()) inst = `<p class="ok">${IX.ok}<span>You're playing in the island app. Welcome home!</span></p>`;
       else if (deferred) inst = `<p>Put Elderglow on your home screen: it opens full screen like an app, works offline for your own island, and can send gentle notes.</p><button class="big" id="appInstall">${IX.plus} Install the island app</button>`;
       else if (iOS) inst = `<p>Put Elderglow on your Home Screen (Safari):</p><ol class="steps"><li>${IX.share}<span>Tap <b>Share</b> in Safari's toolbar</span></li><li>${IX.plus}<span>Choose <b>Add to Home Screen</b>, then <b>Add</b></span></li><li>${IX.phone}<span>Open <b>Elderglow</b> from your Home Screen</span></li></ol>`;
       else inst = `<p>Your browser can install it from its menu: <b>Install app</b> or <b>Add to Home screen</b> (Chrome / Edge / Samsung Internet). It then opens full screen and works offline for your own island.</p>`;
@@ -188,9 +188,9 @@
       const sw = (k, ic, label) => `<label class="tog sm">${ic}<input type="checkbox" data-p="${k}"${P[k] ? ' checked' : ''}><i></i><span>${label}</span></label>`;
       card.querySelector('#appBody').innerHTML = `<h4>Install</h4>${inst}
         <h4>Gentle notifications</h4>
-        <label class="tog"><input type="checkbox" id="appNtf"${P.on ? ' checked' : ''}${dis ? ' disabled' : ''}><i></i><b>Notify me, gently</b></label>
+        <label class="tog"><input type="checkbox" id="appNtf"${P.on ? ' checked' : ''}${dis ? ' disabled' : ''}><i></i><b>Send me gentle notes</b></label>
         <p class="sub st-${st.k}">${esc(st.t)}</p>
-        <div class="kinds"${P.on ? '' : ' hidden'}>${sw('boat', IX.boat, 'A sky boat is home')}${sw('water', IX.water, 'A friend watered your tree')}${sw('lantern', IX.lantern, 'A lantern drifted in')}
+        <div class="kinds"${P.on ? '' : ' hidden'}>${sw('boat', IX.boat, 'A skyboat is home')}${sw('water', IX.water, 'A friend watered your tree')}${sw('lantern', IX.lantern, 'A lantern drifted in')}
           <div class="qh">${sw('quiet', IX.moon, 'Quiet hours')}<span${P.quiet ? '' : ' hidden'}><select data-q="qf">${hourOpts(P.qf)}</select> to <select data-q="qt">${hourOpts(P.qt)}</select></span></div></div>
         <p class="sub">Only these three, never to hurry you: at most a few a day, nothing in quiet hours (it waits until morning), and one note when several things happened.${iOS ? '' : ' On iPhone / iPad they need the installed app (iOS 16.4+).'}</p>`;
       const ib = $('appInstall'); if (ib) ib.onclick = async () => { const d = deferred; deferred = null; try { d.prompt(); await d.userChoice; } catch (e) {} render(); };
@@ -207,7 +207,7 @@
       if (standalone() || ls.get(AK) || !(deferred || iOS || G.phone)) return;
       if (!card.hidden || document.querySelector('#sndAsk.in') || (G.busy && G.busy())) { setTimeout(askLater, 30000); return; }
       ask = document.createElement('div'); ask.id = 'appAsk'; ask.className = 'card';
-      ask.innerHTML = `${IX.phone}<span>Take your island along? <small>install the island app</small></span><button class="big" data-a="1">Show me</button><button class="ghost" data-a="0" title="Not now">Not now</button>`;
+      ask.innerHTML = `${IX.phone}<span>Take your island along? <small>put it on your home screen</small></span><button class="big" data-a="1">Show me</button><button class="ghost" data-a="0" title="Not now">Not now</button>`;
       app.appendChild(ask); setTimeout(() => ask && ask.classList.add('in'), 50);
       ask.onclick = e => { const b = e.target.closest('button'); if (!b) return; ls.set(AK, String(Date.now())); ask.remove(); ask = null; if (b.dataset.a === '1') open(); };
     };

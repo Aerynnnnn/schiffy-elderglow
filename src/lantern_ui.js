@@ -60,7 +60,7 @@
           news = news ? { got: news.got.concat(nw.got), found: news.found.concat(nw.found), warm: news.warm.concat(nw.warm), miles: news.miles.concat(nw.miles) } : nw;
           if (boot && g.awayOpen && g.awayOpen()) g.showAway();   // re-draw the away card with the lantern lines
           else {
-            if (nw.got.length) { sfx('lantern_find'); toast(`${lanIc(L.C.COLS[nw.got[0].c])} ${nw.got.length === 1 ? 'A lantern drifted into your sky' : nw.got.length + ' lanterns drifted into your sky'}. Tap it to read`, 9000, () => openRead(nw.got[0].id, true)); }
+            if (nw.got.length) { sfx('lantern_find'); toast(`${lanIc(L.C.COLS[nw.got[0].c])} ${nw.got.length === 1 ? 'A lantern drifted into your sky' : nw.got.length + ' lanterns drifted into your sky'}. Tap to read`, 9000, () => openRead(nw.got[0].id, true)); }
             if (nw.warm.length) { sfx('warmth'); toast(`${IX.warm} Someone sent warmth back for your lantern`, 6000, () => open('send')); }
             else if (nw.found.length) toast(`${IX.lantern} Your lantern found someone`, 5000, () => open('send'));
             if (nw.miles.length) { sfx('sting_petals'); toast(`${IX.bloom} The World Bloom opened! A gift for everyone is waiting. <u>See</u>`, 12000, () => open('bloom')); }
@@ -86,7 +86,7 @@
         });
         if (news.miles.length) h += `<li class="good">${IX.bloom}<div>The World Bloom opened ${news.miles.length > 1 ? news.miles.length + ' petal rings' : 'a new ring of petals'}: a gift for everyone.<br><button class="go sm" data-lanbloom="1">See the Bloom</button></div></li>`;
       }
-      if (pet) h += `<li>${IX.bloom}Your tree's care earned <b>${pet}</b> petal${pet > 1 ? 's' : ''} for the World Bloom</li>`;
+      if (pet) h += `<li>${IX.bloom}<div>Your tree's care earned <b>${pet}</b> petal${pet > 1 ? 's' : ''} for the World Bloom</div></li>`;
       return h;
     }
     function awayDone() { news = null; }
@@ -100,22 +100,22 @@
       $('lanTitle').innerHTML = `${IX.lantern} Lanterns`;
       const unread = L.sky(s).length, gifts = status ? L.open(s, status).length : 0;
       let h = `<div class="stabs">${[['send', IX.send, 'Release'], ['got', IX.sky, 'Received' + (unread ? ` (${unread})` : '')], ['bloom', IX.bloom, 'World Bloom' + (gifts ? ` (${gifts})` : '')]].map(([k, ic, t]) => `<button data-lt="${k}" class="${tab === k ? 'on' : ''}">${ic}${t}</button>`).join('')}</div>`;
-      if (off) h += `<p class="sub lanoff">${IX.sky} The sky post is not open yet: lanterns and the World Bloom start soon. Your tree's petals are saved until then.</p>`;
+      if (off) h += `<p class="sub lanoff">${IX.sky} The sky post isn't open yet: lanterns and the World Bloom begin soon. Your tree's petals are kept safe until then.</p>`;
       if (tab === 'send') h += sendHtml(); else if (tab === 'got') h += gotHtml(); else h += bloomHtml();
       b.innerHTML = h;
       const ta = $('lanText'); if (ta) { ta.value = draftB; count(); }
     }
     function sendHtml() {
       const s = S(), left = L.left(s, Date.now()), q = s.lan.q, nt = nightNow(), prof = g.prof && g.prof();
-      let h = `<p class="sub">Write something kind. Your lantern drifts into a random player's night sky; you will only ever know that it found someone.</p>`;
-      if (q) h += `<div class="lanq">${lanIc(L.C.COLS[q.c])}<div>Waiting for dusk: "${esc(q.b)}"<small>It rises by itself when night falls on your island.</small></div><button class="ghost" data-lanunq="1">Cancel</button></div>`;
+      let h = `<p class="sub">Write something kind. Your lantern drifts into a stranger's night sky; all you will ever know is that it found someone.</p>`;
+      if (q) h += `<div class="lanq">${lanIc(L.C.COLS[q.c])}<div>Waiting for dusk: "${esc(q.b)}"<small>It rises by itself when night falls on your island.</small></div><button class="ghost" data-lanunq="1">Take it back</button></div>`;
       h += `<div class="lanprompts">${L.C.PROMPTS.map((p, i) => `<button data-lanp="${i}">${esc(p)}</button>`).join('')}</div>
         <div class="lanta"><textarea id="lanText" maxlength="${L.C.NOTE_MAX}" rows="3" placeholder="Write something kind..."></textarea><small id="lanCnt">0 / ${L.C.NOTE_MAX}</small></div>
         <div class="lancols">${Object.keys(L.C.COLS).map(k => `<button data-lanc="${k}" class="${draftC === k ? 'on' : ''}" title="${k}" style="background:${L.C.COLS[k]}"></button>`).join('')}</div>
         <p id="lanWhy" class="why2"></p>
         <div class="pf"><small class="sub">${left} of ${L.C.PER_DAY} left today &middot; ${nt ? `${IC.moon} night: the sky is ready` : `${IC.sun} lanterns rise after dusk`}</small>
         <button class="go" id="lanGo"${left <= 0 || off || !prof ? ' disabled' : ''}>${IX.lantern}${nt ? 'Release' : 'Release at dusk'}</button></div>`;
-      if (!prof) h += `<p class="sub small">Give your island a name first (<u data-lanexp="1">Explore</u>): lanterns carry your island's name.</p>`;
+      if (!prof) h += `<p class="sub small">Give your island a name first (<u data-lanexp="1">Visit</u>): lanterns carry your island's name.</p>`;
       const sent = s.lan.sent.slice().reverse();
       if (sent.length) h += `<h4>${IX.send} Sent</h4>` + sent.slice(0, 12).map(x => `<div class="lanrow">${lanIc(L.C.COLS[x.c])}<div>"${esc(x.b)}"<small>${ago(x.at)} &middot; ${x.w ? `${IX.warm}<b>warmth came back</b>` : x.f ? 'found someone' : 'still drifting...'}</small></div></div>`).join('');
       return h;
@@ -123,7 +123,7 @@
     function gotHtml() {
       const s = S(), got = s.lan.got.slice().reverse();
       if (!got.length) return `<p class="sub">No lanterns yet. When someone's lantern drifts into your sky it glows past the tree (brightest at night): tap it to read.</p>`;
-      return `<p class="sub">Lanterns from other islands. Tap one to read it again.</p>` + got.map(x => `<button class="lanrow lanbtn${x.sky ? ' new' : ''}" data-lanread="${esc(x.id)}">${lanIc(L.C.COLS[x.c])}<div>${x.sky ? '<b>A new lantern: tap to read</b>' : `"${esc(x.b)}"`}<small>from ${esc(x.f)} &middot; ${ago(x.at)}${x.w ? ` &middot; ${IX.warm}warmth sent` : ''}</small></div></button>`).join('');
+      return `<p class="sub">Lanterns from faraway isles. Tap one to read it again.</p>` + got.map(x => `<button class="lanrow lanbtn${x.sky ? ' new' : ''}" data-lanread="${esc(x.id)}">${lanIc(L.C.COLS[x.c])}<div>${x.sky ? '<b>A new lantern: tap to read</b>' : `"${esc(x.b)}"`}<small>from ${esc(x.f)} &middot; ${ago(x.at)}${x.w ? ` &middot; ${IX.warm}warmth sent` : ''}</small></div></button>`).join('');
     }
     function bloomHtml() {
       const s = S(), st = status || (s.lan.bl.last ? Object.assign({ ok: true }, s.lan.bl.last) : null), k = kindNow();
@@ -149,7 +149,7 @@
     async function release() {
       const s = S(), t = $('lanText'), nc = window.Social.noteCheck(t ? t.value : draftB), why = $('lanWhy');
       if (!nc.ok) { if (why) why.textContent = nc.why; return; }
-      if (!(g.prof && g.prof())) { if (why) why.textContent = 'Give your island a name first (Explore)'; return; }
+      if (!(g.prof && g.prof())) { if (why) why.textContent = 'Give your island a name first (Visit)'; return; }
       if (L.left(s, Date.now()) <= 0) { if (why) why.textContent = 'Three lanterns a day: the sky needs a rest'; return; }
       if (!nightNow()) { L.queue(s, nc.v, draftC); draftB = ''; g.save(); toast(`${lanIc(L.C.COLS[draftC])} Your lantern will rise by itself when dusk falls on your island`, 5000); render(); return; }
       const r = await send(nc.v, draftC); if (!r.ok && why) why.textContent = r.why;
@@ -163,11 +163,11 @@
       sfx('lantern_rise'); sfx('rustle'); toast(`${lanIc(L.C.COLS[c])} Your lantern drifts off over the water to find someone`, 6000);
       return { ok: true };
     }
-    const kindWhy = w => ({ 'three lanterns a day': 'Three lanterns a day: the sky needs a rest', 'no one new to find yet: try again later': 'No one new to find right now: try again later' }[w] || w || 'Could not release it');
+    const kindWhy = w => ({ 'three lanterns a day': 'Three lanterns a day: the sky needs a rest', 'no one new to find yet: try again later': 'No one new to find right now: try again later' }[w] || w || 'The lantern stayed on the ground: try again');
     // a lantern written by day rises at dusk (called every few seconds by the game while it is open)
     async function tick() {
       const s = S(); if (!s || g.mode !== 'home' || off || busy || !s.lan.q || !nightNow() || (g.busyUI && g.busyUI())) return;
-      busy = true; try { const q = s.lan.q, r = await send(q.b, q.c); if (!r.ok) { s.lan.q = null; g.save(); toast(`${IX.lantern} Your waiting lantern could not rise: ${esc(r.why)}`, 6000); } } finally { busy = false; }
+      busy = true; try { const q = s.lan.q, r = await send(q.b, q.c); if (!r.ok) { s.lan.q = null; g.save(); toast(`${IX.lantern} Your waiting lantern stayed on the ground: ${esc(r.why)}`, 6000); } } finally { busy = false; }
     }
 
     // ---------------- reading card
@@ -188,13 +188,13 @@
     async function warmth() {
       const s = S(), id = reading, r = await net.lanternAct(id, 'warmth');
       if (r.ok || r.why === 'already sent') { L.warm(s, id); g.save(); if (g.touch) g.touch(); sfx('warmth'); toast(`${IX.warm} Warmth sent back. They will feel it`, 3600); drawRead(); if (g.floatHeart) g.floatHeart(); }
-      else toast('Could not send warmth: ' + esc(r.why), 3000);
+      else toast('The warmth didn\'t go yet: ' + esc(r.why), 3000);
     }
     async function report() {
       if (!repArm) { repArm = true; drawRead(); return; }
       const s = S(), id = reading, r = await net.lanternAct(id, 'report');
-      if (r.ok) { L.drop(s, id); g.save(); $('lanRead').hidden = true; skyRefresh(); toast('Thanks. That lantern is gone and will not show again', 3600); if (!$('lanCard').hidden) render(); }
-      else toast('Could not report: ' + esc(r.why), 3000);
+      if (r.ok) { L.drop(s, id); g.save(); $('lanRead').hidden = true; skyRefresh(); toast('Thank you. That lantern is gone and won\'t come back', 3600); if (!$('lanCard').hidden) render(); }
+      else toast('Not reported yet: ' + esc(r.why), 3000);
     }
 
     // ---------------- World Bloom gifts
@@ -222,7 +222,7 @@
       const card = document.createElement('div'); card.id = 'lanCard'; card.className = 'card'; card.hidden = true;
       card.innerHTML = `<div class="pch"><span id="lanTitle" class="disp"></span><button id="lanClose" title="Close">&#10005;</button></div><div id="lanBody"></div>`; $('app').appendChild(card);
       const rd = document.createElement('div'); rd.id = 'lanRead'; rd.className = 'card'; rd.hidden = true; rd.innerHTML = `<button id="lrClose" title="Close">&#10005;</button><div id="lrBody"></div>`; $('app').appendChild(rd);
-      const btn = document.createElement('button'); btn.id = 'lanBtn'; btn.title = 'Lanterns: kind notes for other islands + the World Bloom'; btn.innerHTML = lanIc() + '<span>Lanterns</span>';
+      const btn = document.createElement('button'); btn.id = 'lanBtn'; btn.title = 'Lanterns: kind notes for faraway isles + the World Bloom'; btn.innerHTML = lanIc() + '<span>Lanterns</span>';
       const top = $('topBtns'), sb = $('socBtn'); top.insertBefore(btn, sb ? sb.nextSibling : null);
       btn.onclick = () => { if ($('lanCard').hidden) open(); else close(); };
       $('lanClose').onclick = close; $('lrClose').onclick = () => { $('lanRead').hidden = true; };

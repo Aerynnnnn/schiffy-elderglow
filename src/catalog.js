@@ -12,19 +12,19 @@
   const X_ = () => window.Exped, D_ = () => window.Decor;
   // ---- the sets (order = the Craft card's tabs)
   const SETS = [
-    { id: 'path', name: 'Garden path' }, { id: 'fence', name: 'Fences + hedges' }, { id: 'light', name: 'Lights' }, { id: 'seat', name: 'Benches + nooks' },
-    { id: 'flower', name: 'Flower beds' }, { id: 'water', name: 'Water' }, { id: 'pup', name: 'Pup things' }, { id: 'sign', name: 'Signs' },
-    { id: 'shrine', name: 'Shrines + charms' }, { id: 'woods', name: 'Woods' }, { id: 'sky', name: 'Sky rares' },
+    { id: 'path', name: 'Garden paths' }, { id: 'fence', name: 'Fences + hedges' }, { id: 'light', name: 'Lanterns' }, { id: 'seat', name: 'Benches + nooks' },
+    { id: 'flower', name: 'Flower beds' }, { id: 'water', name: 'Ponds' }, { id: 'pup', name: 'Pup things' }, { id: 'sign', name: 'Signposts' },
+    { id: 'shrine', name: 'Shrines + charms' }, { id: 'woods', name: 'Little woods' }, { id: 'sky', name: 'Sky treasures' },
   ];
   // ---- effects (fx): R = how close to what it helps (m), k = per piece, cap = the most all pieces of that kind add together
   const FX = {
-    light: { k: 0.03, cap: 0.25, R: 8, ic: 'light', txt: 'Lights the keepers\' way: lantern keepers bring a little more light (near a path)' },
-    garden: { k: 0.08, cap: 0.25, R: 14, ic: 'nourish', txt: 'Waters the gardens: gardeners + berry gardens nearby grow more' },
-    bloom: { k: 0.04, cap: 0.25, R: 14, ic: 'nourish', txt: 'Bees + blossoms: gardeners + berry gardens nearby grow a little more', as: 'garden' },
-    rest: { k: 1, cap: 4, R: 16, ic: 'heart', txt: 'A cozy seat: every pup\'s mood +1 (near the plaza or a home)' },
-    spirit: { k: 0.5, cap: 2, R: 30, ic: 'spirit', txt: 'A happy spot: Spirit +0.5 an hour (near the plaza or the stage)' },
-    protect: { k: 0.1, cap: 0.3, R: 25, ic: 'protect', txt: 'A warding stone: blight nearby grows slower' },
-    gather: { k: 0.05, cap: 0.25, R: 14, ic: 'wood', txt: 'A tidy work yard: gatherers bring more (by a woodshed, stone pile or berry garden)' },
+    light: { k: 0.03, cap: 0.25, R: 8, ic: 'light', txt: 'Lamplit way: lamplighters bring a little more light (near a path)' },
+    garden: { k: 0.08, cap: 0.25, R: 14, ic: 'nourish', txt: 'Garden spring: root gardeners + berry patches nearby grow more' },
+    bloom: { k: 0.04, cap: 0.25, R: 14, ic: 'nourish', txt: 'Bees + blossoms: root gardeners + berry patches nearby grow a little more', as: 'garden' },
+    rest: { k: 1, cap: 4, R: 16, ic: 'heart', txt: 'Cozy seat: every pup +1 happiness (near the plaza or a home)' },
+    spirit: { k: 0.5, cap: 2, R: 30, ic: 'spirit', txt: 'Happy spot: Song +0.5 an hour (near the plaza or the stage)' },
+    protect: { k: 0.1, cap: 0.3, R: 25, ic: 'protect', txt: 'Warding stone: blight nearby grows slower' },
+    gather: { k: 0.05, cap: 0.25, R: 14, ic: 'wood', txt: 'Tidy yard: gatherers bring more (near a woodshed, stone yard or berry patch)' },
   };
   // critter sets: 3 pieces that species loves within CLUSTER m of each other = it comes x1.3 more often
   const CLUSTER = 30, CRIT_K = 1.3;

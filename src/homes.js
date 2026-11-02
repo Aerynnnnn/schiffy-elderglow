@@ -36,7 +36,7 @@
     EG_Treehouse_Cottage: 't4', EG_Treehouse_Totem: 't4' };
   const PIECES = Object.keys(CLASS);   // index = the snapshot's piece number
   // what the "Place a home" card offers (piece = the first look; Change roof cycles its class afterwards)
-  const KINDS = [{ k: 'cottage', name: 'Cottage', piece: 'EG_House_A' }, { k: 'big', name: 'Big cottage', piece: 'EG_House_C' }, { k: 'tree', name: 'Treehouse', piece: 'EG_Treehouse_Cottage', lv: C.TREE_LV }];
+  const KINDS = [{ k: 'cottage', name: 'Pup cottage', piece: 'EG_House_A' }, { k: 'big', name: 'Big pup cottage', piece: 'EG_House_C' }, { k: 'tree', name: 'Treehouse', piece: 'EG_Treehouse_Cottage', lv: C.TREE_LV }];
   const S_ = () => window.Sim, D_ = () => window.Decor, N_ = () => window.Nav;
   const FREE0 = 900000, QT = Math.PI / 2;
   const r1 = v => Math.round(v * 10) / 10, r3 = v => Math.round(v * 1000) / 1000;

@@ -56,7 +56,7 @@
   // the notice board at the dock: pinned isle cards
   const BOARD = canvasTex(256, 192, (g, w, h) => {
     g.fillStyle = '#c98a4b'; rr(g, 6, 6, w - 12, h - 12, 18); g.fill(); g.lineWidth = 9; g.strokeStyle = '#2a2442'; g.stroke();
-    g.fillStyle = '#2a2442'; g.font = 'bold 30px Lilita One, Fredoka, sans-serif'; g.textAlign = 'center'; g.fillText('SKY TRIPS', w / 2, 46);
+    g.fillStyle = '#2a2442'; g.font = 'bold 30px Lilita One, Fredoka, sans-serif'; g.textAlign = 'center'; g.fillText('SKYBOATS', w / 2, 46);
     const cards = [['#7fd36a', 24, 64], ['#aab3c2', 98, 72], ['#ff9fd0', 172, 62], ['#9fe8ff', 60, 122], ['#ffd36a', 140, 124]];
     for (const [c, x, y] of cards) { g.save(); g.translate(x + 30, y + 26); g.rotate((x % 7 - 3) * 0.05); g.fillStyle = '#fff6dc'; rr(g, -30, -26, 60, 52, 6); g.fill(); g.lineWidth = 4; g.stroke(); g.fillStyle = c; g.beginPath(); g.ellipse(0, 4, 18, 9, 0, 0, Math.PI * 2); g.fill(); g.stroke(); g.fillStyle = '#ff5f8f'; g.beginPath(); g.arc(0, -20, 5, 0, Math.PI * 2); g.fill(); g.restore(); }
   });

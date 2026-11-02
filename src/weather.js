@@ -97,16 +97,16 @@
     if (a.wet > 0.2) return 'wet';
     return a.w > 0.2 ? 'breezy' : 'clear';
   }
-  const TITLE = { clear: 'Clear', breezy: 'Breezy', windy: 'Windy', drizzle: 'Drizzle', rain: 'Rain', snow: 'Snowfall', wet: 'After the rain' };
+  const TITLE = { clear: 'Clear skies', breezy: 'Breezy', windy: 'Windy', drizzle: 'Soft drizzle', rain: 'Rain', snow: 'Snowfall', wet: 'After the rain' };
   function effects(s, a) {
     a = a || at(s); const out = [];
     if (!a.on) return out;
-    if (a.r > 0.05) out.push({ ic: 'water', t: `Water +${Math.max(1, Math.round(a.r * (a.snow ? C.SNOW_K : 1) * C.WATER))}/h` });
-    if (!a.snow && a.wet > 0.05) out.push({ ic: 'garden', t: `Gardens +${Math.max(1, Math.round(C.GARDEN * a.wet * 100))}%` });
+    if (a.r > 0.05) out.push({ ic: 'water', t: `Water +${Math.max(1, Math.round(a.r * (a.snow ? C.SNOW_K : 1) * C.WATER))} an hour` });
+    if (!a.snow && a.wet > 0.05) out.push({ ic: 'garden', t: `Root gardens +${Math.max(1, Math.round(C.GARDEN * a.wet * 100))}%` });
     if (a.windy > 0.05) {
       out.push({ ic: 'wood', t: `Woodcutters +${Math.max(1, Math.round(C.WOOD * a.windy * 100))}%` });
-      out.push({ ic: 'boat', t: `Sky boats ${Math.max(1, Math.round(C.TAIL * a.windy * 100))}% faster` });
-      if (a.wet > 0.05 && !a.snow && a.r < 0.05) out.push({ ic: 'dry', t: 'Drying fast' });
+      out.push({ ic: 'boat', t: `Skyboats ${Math.max(1, Math.round(C.TAIL * a.windy * 100))}% faster` });
+      if (a.wet > 0.05 && !a.snow && a.r < 0.05) out.push({ ic: 'dry', t: 'Drying in the wind' });
     }
     return out;
   }
@@ -114,7 +114,7 @@
     rain: ['Rain on my leaves. I am drinking slowly, all the way down to the roots.', 'Listen: every leaf is a little drum. The gardens will be glad of this.', 'The pups think they hide from the rain under me. I lift my branches a little higher.'],
     drizzle: ['A soft rain. Just enough to wake the moss.', 'Drizzle. The river is humming to itself.'],
     snow: ['Snow is falling. It settles on my branches like a quiet blanket.', 'Every flake that melts is a sip for my roots.'],
-    windy: ['The wind is up. It shakes dry branches loose for the woodcutters.', 'Feel that wind! The sky boats will ride it home.', 'Hold on to your hats, little ones. The wind is playing.'],
+    windy: ['The wind is up. It shakes dry branches loose for the woodcutters.', 'Feel that wind! The skyboats will ride it home.', 'Hold on to your hats, little ones. The wind is playing.'],
     breezy: ['A little breeze. It tickles.', 'The breeze carries the smell of the meadows up to me.'],
     wet: ['The ground is soft and wet. The gardens are drinking it all up.', 'Puddles everywhere. I can hear pups splashing.'],
   };

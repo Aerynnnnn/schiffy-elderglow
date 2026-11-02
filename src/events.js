@@ -148,7 +148,7 @@
   }
   function canTrade(s, id, j) {
     const e = s.events.active.find(x => x.id === id && x.type === 'trader'); if (!e || !Number.isInteger(j) || j < 0 || j >= e.offers.length || e.done.includes(j)) return { ok: false, why: 'Gone' };
-    const o = OFFERS[e.offers[j]]; for (const k in o.give) if (have(s, k) < o.give[k] - 1e-9) return { ok: false, why: 'Not enough', o, e };
+    const o = OFFERS[e.offers[j]]; for (const k in o.give) if (have(s, k) < o.give[k] - 1e-9) return { ok: false, why: 'A little more needed', o, e };
     return { ok: true, o, e };
   }
   function trade(s, id, j) {

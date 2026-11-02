@@ -52,17 +52,17 @@
     // buildings: cost + builder-seconds of work (one pup at morale x1), what it gives
     HOME_BEDS: { EG_House_A: 2, EG_House_B: 2, EG_House_C: 3, EG_House_D: 2, EG_House_E: 2, EG_House_F: 3, EG_House_G: 2, EG_House_H: 3, EG_Treehouse_Cottage: 4, EG_Treehouse_Totem: 4 },
     B: {
-      home: { name: 'Cottage', cost: b => ({ wood: 20 * b, stone: 8 * b }), work: b => 1800 * b },
-      garden: { name: 'Berry garden', cost: () => ({ wood: 25 }), work: () => 1800, food: 14 },
+      home: { name: 'Pup cottage', cost: b => ({ wood: 20 * b, stone: 8 * b }), work: b => 1800 * b },
+      garden: { name: 'Berry patch', cost: () => ({ wood: 25 }), work: () => 1800, food: 14 },
       woodshed: { name: 'Woodshed', cost: () => ({ wood: 20, stone: 10 }), work: () => 2400, wood: 5, boost: 0.25 },
-      quarry: { name: 'Stone pile', cost: () => ({ wood: 30 }), work: () => 2400, stone: 4, boost: 0.25 },
-      lantern: { name: 'Lantern path', cost: () => ({ wood: 15, stone: 20, sap: 25 }), work: () => 1800, light: 5 },
+      quarry: { name: 'Stone yard', cost: () => ({ wood: 30 }), work: () => 2400, stone: 4, boost: 0.25 },
+      lantern: { name: 'Lantern walk', cost: () => ({ wood: 15, stone: 20, sap: 25 }), work: () => 1800, light: 5 },
       // step 3: one per island, from tree level 2: the dock the sky boats leave from (src/expedition.js)
-      board: { name: 'Expedition dock', cost: () => ({ wood: 40, stone: 15 }), work: () => 1500, lv: 2, one: true },
+      board: { name: 'Skyboat dock', cost: () => ({ wood: 40, stone: 15 }), work: () => 1500, lv: 2, one: true },
       // step 4: a little music stage (performers play there at full joy, busking on the plaza gives 70 %) and a
       // Greenhold-style conservatory (gardeners +30 %, +2 glow-sprout beds, +3 nourish/h by itself), one each
-      stage: { name: 'Music stage', cost: () => ({ wood: 30, stone: 12 }), work: () => 1800, lv: 2, one: true, need: 'spirit' },
-      conserv: { name: 'Conservatory', cost: () => ({ wood: 45, stone: 25, sap: 30 }), work: () => 2700, lv: 3, one: true, need: 'nourish' },
+      stage: { name: 'Moonlit stage', cost: () => ({ wood: 30, stone: 12 }), work: () => 1800, lv: 2, one: true, need: 'spirit' },
+      conserv: { name: 'Glasshouse', cost: () => ({ wood: 45, stone: 25, sap: 30 }), work: () => 2700, lv: 3, one: true, need: 'nourish' },
       // step 5: faction buildings + the market, each only on its own plot (`piece` = the layout piece of that plot); the
       // layout's own model rises out of the ground like a cottage. Crystals / sap / berries are waited for, wood + stone fetched.
       hush: { name: 'Hush Hall', piece: 'EG_HushHall', cost: () => ({ wood: 90, stone: 70, crystal: 6 }), work: () => 3 * H, lv: 4, one: true, need: 'protect' },
@@ -74,7 +74,7 @@
       // vibe pass 2: a small cozy corner (log benches, planters, a little lantern, a pup bed). No sim effect: the pups make
       // these themselves on a grown island ("let the pups decide", COZY below) so an idle island looks lived in.
       // APPENDED last: diaries store indices into Object.keys(B)
-      nook: { name: 'Pup corner', cost: () => ({ wood: 18, stone: 6 }), work: () => 1200, lv: 3 },
+      nook: { name: 'Cozy corner', cost: () => ({ wood: 18, stone: 6 }), work: () => 1200, lv: 3 },
     },
     // vibe pass 2: "let the pups decide" also fills a grown island with small things over time (after beds / berries /
     // sheds): from tree level LV, one order at most every GAP s of island time, only from a surplus (wood >= WOOD, stone >=

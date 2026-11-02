@@ -17,12 +17,12 @@
   const stageOf = lv => { let k = 0; for (let i = 0; i < STAGES.length; i++) if (lv >= STAGES[i].from) k = i; return k; };
   // what each level opens (UI text; icon keys are game.js IC names)
   const UNLOCKS = {
-    1: [['home', 'Cottages, gardens, woodsheds, stone piles, lantern paths'], ['paw', 'Strays cross the bridges when there are free beds']],
-    2: [['board', 'Expedition dock'], ['stage', 'Music stage'], ['isle', 'Sky trips: Mossy Isle + Lantern Rock'], ['home', 'The second ring of land (to 250 m)']],
-    3: [['conserv', 'Conservatory'], ['home', 'Treehouses'], ['board', 'A second sky boat'], ['isle', 'Cloud Perch + Sunken Hollow']],
-    4: [['protect', 'Hush Hall (guardian hall)'], ['sprout', 'Sprout House (school)'], ['cart', 'Market square'], ['isle', 'Far Spires'], ['wood', 'The outer woods grow back']],
-    5: [['nourish', 'Greenhold (the great conservatory)'], ['spirit', 'Circus'], ['isle', 'Starfall Isles'], ['home', 'The outer ring of land (past 260 m)']],
-    6: [['build', 'Gale Forge (tools + crafting)'], ['isle', 'Ember Reach'], ['board', 'A third sky boat'], ['wood', 'The middle woods grow back']],
+    1: [['home', 'Pup cottages, berry patches, woodsheds, stone yards, lantern walks'], ['paw', 'Wanderers cross the bridges when a bed is free']],
+    2: [['board', 'The Skyboat dock'], ['stage', 'The Moonlit stage'], ['isle', 'Skyboat trips: Mossy Isle + Lantern Rock'], ['home', 'The second ring of land (to 250 m)']],
+    3: [['conserv', 'The Glasshouse'], ['home', 'Treehouses'], ['board', 'A second skyboat'], ['isle', 'Cloud Perch + Sunken Hollow']],
+    4: [['protect', 'Hush Hall (the wardens\' hall)'], ['sprout', 'Sprout House (a little school)'], ['cart', 'Market square'], ['isle', 'Far Spires'], ['wood', 'The outer woods grow back']],
+    5: [['nourish', 'Greenhold (the great glasshouse)'], ['spirit', 'Circus'], ['isle', 'Starfall Isles'], ['home', 'The outer ring of land (past 260 m)']],
+    6: [['build', 'Gale Forge (tools + crafting)'], ['isle', 'Ember Reach'], ['board', 'A third skyboat'], ['wood', 'The middle woods grow back']],
     7: [['fruit', 'Glowing fruit falls twice as often'], ['orb', 'Glow motes rise from the canopy'], ['star', 'Spreading roots + the first hanging lanterns']],
     8: [['sap', 'Elder glow: +25 % glow sap'], ['star', 'The full-size Elder Tree, taller than ever, hung with lanterns']],
   };

@@ -265,7 +265,7 @@
   const FXI = { water: '#7fc4f0', garden: '#7fd36a', wood: '#c78b55', boat: '#b8a4f2', dry: '#ffd34d' };
   WeatherFx.chip = function (o) {
     const $ = o.$, bar = $('resbar'); if (!bar) return null;
-    bar.insertAdjacentHTML('beforeend', '<div id="wxChip" title="Weather"><span id="wxI"></span><span id="wxT"></span></div>');
+    bar.insertAdjacentHTML('beforeend', '<div id="wxChip" title="The sky today"><span id="wxI"></span><span id="wxT"></span></div>');
     const card = document.createElement('div'); card.id = 'wxCard'; card.className = 'card'; card.hidden = true; ($('app') || document.body).appendChild(card);
     const chip = $('wxChip'); let kind = '', open = false, lastFx = '', said = {}, held = { k: '', t: 0 }, lineN = 0;
     chip.onclick = e => { e.stopPropagation(); open = !open; card.hidden = !open; lastFx = ''; };
@@ -274,15 +274,15 @@
       refresh(wx, S, now) {
         const W = window.Weather; if (!W) return;
         const k = wx.on || wx.r > 0.05 ? wx.kind : 'clear';
-        if (k !== kind) { kind = k; $('wxI').innerHTML = WXI[k] || WXI.clear; $('wxT').textContent = W.TITLE[k] || 'Clear'; chip.className = 'wx-' + k; }
+        if (k !== kind) { kind = k; $('wxI').innerHTML = WXI[k] || WXI.clear; $('wxT').textContent = W.TITLE[k] || 'Clear skies'; chip.className = 'wx-' + k; }
         const a = Object.assign({}, wx.raw || W.at(S), { r: wx.r, windy: wx.windy, wet: wx.wet, snow: wx.snow, on: true }), fx = W.effects(S, a);
         const sig = k + ':' + fx.map(f => f.t).join('|');
-        chip.title = (W.TITLE[k] || 'Clear') + (fx.length ? ': ' + fx.map(f => f.t).join(', ') : ': nothing special. Rain fills the Water need, wind helps woodcutters + sky boats.');
+        chip.title = (W.TITLE[k] || 'Clear skies') + (fx.length ? ': ' + fx.map(f => f.t).join(', ') : ': a quiet sky. Rain fills the Water bar, wind helps woodcutters + skyboats.');
         chip.classList.toggle('busy', fx.length > 0);
         if (open && sig !== lastFx) {
           lastFx = sig; const ln = W.line(k, lineN);
-          card.innerHTML = `<div class="wxh">${WXI[k] || WXI.clear}<b class="disp">${W.TITLE[k] || 'Clear'}</b></div>` +
-            (fx.length ? '<ul>' + fx.map(f => `<li><i style="background:${FXI[f.ic] || '#ddd'}"></i>${f.t}</li>`).join('') + '</ul>' : '<p class="sub">A quiet sky. Rain fills the Water need and helps the gardens; a wind helps the woodcutters and blows the sky boats home sooner.</p>') +
+          card.innerHTML = `<div class="wxh">${WXI[k] || WXI.clear}<b class="disp">${W.TITLE[k] || 'Clear skies'}</b></div>` +
+            (fx.length ? '<ul>' + fx.map(f => `<li><i style="background:${FXI[f.ic] || '#ddd'}"></i>${f.t}</li>`).join('') + '</ul>' : '<p class="sub">A quiet sky. Rain fills the Water bar and helps the gardens; a wind helps the woodcutters and blows the skyboats home sooner.</p>') +
             (ln ? `<p class="wxl">&ldquo;${ln}&rdquo;</p>` : '');
         }
         // the tree says something when rain / snow / a wind settles in (held 45 s), once per kind per 90 min of real time

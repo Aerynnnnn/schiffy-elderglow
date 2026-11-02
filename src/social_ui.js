@@ -45,7 +45,7 @@
 
     async function ensureSignIn() {
       if (signed) return true;
-      const r = await net.signIn(); if (!r.ok) { toast(`${IX.globe} Could not reach the island server (${esc(r.why)})`, 4000); return false; }
+      const r = await net.signIn(); if (!r.ok) { toast(`${IX.globe} The neighbour isles are out of reach right now (${esc(r.why)})`, 4000); return false; }
       signed = true; prof = await net.profile(); return true;
     }
     // ---------- publishing (home only)
@@ -82,7 +82,7 @@
         const who = [...new Set(nn.visits.map(v => v.from).concat(got.map(x => x.from)).filter(Boolean))];
         if (who.length && g.onVisitors) g.onVisitors(who);   // Round 2 step 2: the tree's words remember a friend's visit
         g.save(); g.refresh();
-        if (showCard) g.showAway(g.lastSum && g.lastSum()); else toast(`${IX.globe} Visitors came by! <u>See</u>`, 8000, () => g.showAway(null));
+        if (showCard) g.showAway(g.lastSum && g.lastSum()); else toast(`${IX.globe} Visitors dropped by! <u>See who</u>`, 8000, () => g.showAway(null));
       }
       if (got.length) refreshTree();
       await publish(false);
@@ -94,9 +94,9 @@
       const n = news; let h = `<li class="hd">${IX.globe}<b>Visitors while you were away</b></li>`;
       const waters = n.got.filter(x => x.kind === 'water'), gifts = n.got.filter(x => x.kind !== 'water');
       const names = [...new Set(n.visits.map(v => v.from).concat(n.got.map(x => x.from)).filter(Boolean))];
-      if (names.length) h += `<li class="good">${IC.paw}<div>${names.slice(0, 6).map(x => `<b>${esc(x)}</b>`).join(', ')}${names.length > 6 ? ` and ${names.length - 6} more` : ''} visited your island</div></li>`;
-      if (waters.length) h += `<li class="good">${IC.water}<div>${waters.length} watered your tree: ${IC.water}+${waters.length * window.Social.C.W_HOST.water} ${IC.sap}+${waters.length * window.Social.C.W_HOST.sap}</div></li>`;
-      for (const x of gifts.slice(0, 6)) h += `<li class="good">${IC.gift}<div><b>${esc(x.from || 'A visitor')}</b> left a gift: ${x.kind === 'decor' ? IC.decor + esc(window.Exped.DECOR[x.item].name) : (IC[x.item === 'seeds' ? 'seed' : x.item] || '') + '+' + x.n}</div></li>`;
+      if (names.length) h += `<li class="good">${IC.paw}<div>${names.slice(0, 6).map(x => `<b>${esc(x)}</b>`).join(', ')}${names.length > 6 ? ` and ${names.length - 6} more` : ''} came to visit</div></li>`;
+      if (waters.length) h += `<li class="good">${IC.water}<div>${waters.length === 1 ? 'A friend' : waters.length + ' friends'} gave your tree a drink: ${IC.water}+${waters.length * window.Social.C.W_HOST.water} ${IC.sap}+${waters.length * window.Social.C.W_HOST.sap}</div></li>`;
+      for (const x of gifts.slice(0, 6)) h += `<li class="good">${IC.gift}<div><b>${esc(x.from || 'A visitor')}</b> left a little gift: ${x.kind === 'decor' ? IC.decor + esc(window.Exped.DECOR[x.item].name) : (IC[x.item === 'seeds' ? 'seed' : x.item] || '') + '+' + x.n}</div></li>`;
       if (n.likesNew) h += `<li>${IC.heart}+${n.likesNew} like${n.likesNew > 1 ? 's' : ''} (${n.likes} in all)</li>`;
       if (n.starsNew) h += `<li class="good">${IX.star}<div>${n.starsNew === 1 ? 'A visitor' : n.starsNew + ' visitors'} found your island beautiful${n.stars > n.starsNew ? ` (${n.stars} in all)` : ''}</div></li>`;
       for (const x of n.notes.slice(0, 4)) h += `<li class="evl">${IX.note}<div>"${esc(x.text)}"<small>${esc(x.from)} &middot; ${ago(x.at)}</small></div></li>`;
@@ -109,18 +109,18 @@
     function close() { $('socCard').hidden = true; }
     const setupForm = (why) => {
       const s = S(), isl = (prof && prof.island) || (s && s.social.island) || '', host = (prof && prof.host) || (s && s.social.host) || 'Schiffy';
-      return `<p class="sub">${why || 'Give your island a name to share it. Other players can visit, water your tree, leave gifts and kind notes. Nothing a visitor does can take anything away.'}</p>
+      return `<p class="sub">${why || 'Give your island a name to share it with the neighbour isles. Visitors can water your tree, leave gifts and kind notes. Nothing a visitor does can take anything away.'}</p>
         <label class="fl">Island name<input id="socIsl" maxlength="24" value="${esc(isl)}" placeholder="e.g. Mossy Hollow"></label>
         <label class="fl">Your pup name (shown as the host)<input id="socHost" maxlength="14" value="${esc(host)}" placeholder="e.g. Schiffy"></label>
         <p id="socWhy" class="why2"></p>
-        <label class="tog"><input type="checkbox" id="socPub0" ${!s || s.social.pub ? 'checked' : ''}><i></i>Public island (anyone can visit)</label>
-        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Offline test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : 'Share my island'}</button></div>
+        <label class="tog"><input type="checkbox" id="socPub0" ${!s || s.social.pub ? 'checked' : ''}><i></i>Open to visitors (anyone can drop by)</label>
+        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Pretend test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : 'Share my island'}</button></div>
         ${g.mode === 'home' && g.openSafe && !prof ? `<div class="acctrow"><button class="ghost" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>` : ''}`;
     };
     function render() {
       const b = $('socBody'); if (!b) return;
-      $('socTitle').innerHTML = `${IX.globe} ${g.mode === 'visit' ? 'Islands' : 'Explore islands'}`;
-      if (!signed) { b.innerHTML = '<p class="sub">Connecting...</p>'; return; }
+      $('socTitle').innerHTML = `${IX.globe} Neighbour isles`;
+      if (!signed) { b.innerHTML = '<p class="sub">Looking across the sky...</p>'; return; }
       if (!prof || (g.mode === 'home' && !S().social.acct)) { b.innerHTML = setupForm(); return; }
       const tabs = [['recent', IC.clock, 'Recent'], ['liked', IC.heart, 'Most liked'], ['random', IX.dice, 'Random'], ['search', IX.search, 'Search']].concat(g.mode === 'home' ? [['mine', IX.home, 'My island']] : []);
       let h = `<div class="stabs">${tabs.map(([k, ic, t]) => `<button data-st="${k}" class="${tab === k ? 'on' : ''}">${ic}${t}</button>`).join('')}</div>`;
@@ -129,7 +129,7 @@
         if (tab !== 'search') h += shelfHtml();   // piece 5: Island of the week + Featured, right under the tabs
         if (tab === 'search') h += `<div class="srch"><input id="socQ" maxlength="24" placeholder="Island name" value="${esc(query)}"><button class="go sm" id="socGo">${IX.search}</button></div>`;
         if (!list) h += '<p class="sub">Looking for islands...</p>';
-        else if (!list.length) h += `<p class="sub">${tab === 'search' ? 'No island with that name yet.' : 'No public islands yet. Be the first!'}</p>`;
+        else if (!list.length) h += `<p class="sub">${tab === 'search' ? 'No island by that name yet.' : 'No isles open to visitors yet. Yours could be the first!'}</p>`;
         else h += `<div class="icards">${list.map(cardHtml).join('')}</div>`;
       }
       b.innerHTML = h;
@@ -147,43 +147,43 @@
       const col = c => /^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a';
       const w = shelf.week || shelf.last, own = c => c.mine || (mine && mine.id === c.id);
       let h = '<div class="shelf">';
-      if (w) h += `<button class="wkcard" data-isl="${esc(w.id)}"${own(w) ? ' disabled' : ''}><span class="isw" style="background:${col(w)}">${IC.sprout}</span><span><span class="wkl">${IX.crown} ${shelf.week ? 'Island of the week' : "Last week's island"}</span><b class="disp">${esc(w.name)}</b>
+      if (w) h += `<button class="wkcard" data-isl="${esc(w.id)}"${own(w) ? ' disabled' : ''}><span class="isw" style="background:${col(w)}">${IC.sprout}</span><span><span class="wkl">${IX.crown} ${shelf.week ? 'Isle of the week' : "Last week's isle"}</span><b class="disp">${esc(w.name)}</b>
         <small>${esc(w.host)}'s island &middot; Lv ${w.lv | 0}</small><small class="stc">${IX.star}${shelf.week ? `${w.week | 0} visitor${w.week === 1 ? '' : 's'} found it beautiful this week` : `${w.stars | 0} in all`}${own(w) ? ' &middot; <i>yours!</i>' : ''}</small></span></button>`;
       const F = shelf.featured || [];
-      if (F.length) h += `<h4>${IX.star} Featured</h4><div class="feat">${F.map(c => `<button class="fcard" data-isl="${esc(c.id)}"${own(c) ? ' disabled' : ''}>${c.new ? '<span class="nw">new</span>' : ''}<span class="isw" style="background:${col(c)}">${IC.sprout}</span><b>${esc(c.name)}</b><small>${esc(c.host)} &middot; Lv ${c.lv | 0}</small><small class="stc">${IX.star}${c.stars | 0}${c.week ? ` &middot; ${c.week} this week` : ''}</small></button>`).join('')}</div>`;
+      if (F.length) h += `<h4>${IX.star} Much admired</h4><div class="feat">${F.map(c => `<button class="fcard" data-isl="${esc(c.id)}"${own(c) ? ' disabled' : ''}>${c.new ? '<span class="nw">new</span>' : ''}<span class="isw" style="background:${col(c)}">${IC.sprout}</span><b>${esc(c.name)}</b><small>${esc(c.host)} &middot; Lv ${c.lv | 0}</small><small class="stc">${IX.star}${c.stars | 0}${c.week ? ` &middot; ${c.week} this week` : ''}</small></button>`).join('')}</div>`;
       return h + '</div>';
     }
     function cardHtml(c) {
       const stage = window.Growth.stageName(Math.max(1, Math.min(8, c.lv || 1)));
-      return `<button class="icard${c.mine ? ' mine' : ''}" data-isl="${esc(c.id)}"${c.mine ? ' disabled' : ''}><span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a'}">${IC.sprout}</span><span class="ici"><b>${esc(c.name)}</b><small>${esc(c.host)}'s island &middot; ${esc(stage)} (Lv ${c.lv | 0})</small><small>${IC.heart}${c.likes | 0}${stc(c.id)} &middot; ${c.sample ? 'sample island' : 'updated ' + ago(c.updated)}${c.mine ? ' &middot; <i>yours</i>' : ''}</small></span></button>`;
+      return `<button class="icard${c.mine ? ' mine' : ''}" data-isl="${esc(c.id)}"${c.mine ? ' disabled' : ''}><span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(c.col || '') ? c.col : '#9fd88a'}">${IC.sprout}</span><span class="ici"><b>${esc(c.name)}</b><small>${esc(c.host)}'s island &middot; ${esc(stage)} (Lv ${c.lv | 0})</small><small>${IC.heart}${c.likes | 0}${stc(c.id)} &middot; ${c.sample ? 'a sample isle' : 'updated ' + ago(c.updated)}${c.mine ? ' &middot; <i>yours</i>' : ''}</small></span></button>`;
     }
     function mineHtml() {
       const s = S(), so = s.social;
       let h = `<div class="myisl"><span class="isw lg" style="background:${window.Social.colOf(s.health, seasonNow())}">${IC.sprout}</span><div><b class="disp">${esc(prof.island)}</b><small>host ${esc(prof.host)} &middot; ${IC.heart}${mine ? mine.likes : so.tot.likes} likes<span id="socMyStars">${mine && P5 && SN[mine.id] !== undefined ? ` &middot; <span class="stc">${IX.star}${SN[mine.id]}</span> found it beautiful` : ''}</span> &middot; ${so.pubAt ? 'shared ' + ago(so.pubAt) : 'not shared yet'}</small></div></div>
-        <label class="tog"><input type="checkbox" id="socPub" ${so.pub ? 'checked' : ''}><i></i>${so.pub ? 'Public: anyone can visit' : 'Private: hidden from Explore'}</label>
+        <label class="tog"><input type="checkbox" id="socPub" ${so.pub ? 'checked' : ''}><i></i>${so.pub ? 'Open: anyone can drop by' : 'Private: hidden from the neighbour isles'}</label>
         <p class="sub small">Your island is shared every 10 minutes while you play and when you leave (layout, pups, tree; never your resources).</p>
         <div class="pf"><button class="ghost" id="socEdit">Change names</button><button class="go sm" id="socPubNow">Share now</button></div>
         ${tourHtml()}
         <h4>${IX.note} Your guestbook</h4><div id="socGb"><p class="sub">...</p></div>
         <h4>${IX.lock} Keep my island safe</h4><div id="socCloud">${g.cloudStatus ? g.cloudStatus() : ''}</div>
-        <p class="sub small">Add your email to open this island on your phone or another computer (no password, a 6-digit code).</p>
+        <p class="sub small">Add your email to open this island on your phone or another computer (no password: a link in your inbox).</p>
         <div class="acctrow"><button class="go sm" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>`;
       setTimeout(loadGb, 0); return h;
     }
     // piece 5: the host's guided tour (up to 6 stops; marked in the world through g.tourPick, notes through the guestbook filter)
     function tourHtml() {
       const T = window.Tour, L = T.stops(S(), nav), n = L.length, M = T.C.MAX;
-      let h = `<h4>${IX.tour} Guided tour <small class="sub">(${n} / ${M} stops)</small></h4><p class="sub small">Visitors tap <b>Tour</b> and Schiffy walks your stops in order, reading your notes. Kind words only (no links), ${T.C.NOTE} letters a note.</p><div id="socTour">`;
+      let h = `<h4>${IX.tour} Island tour <small class="sub">(${n} / ${M} stops)</small></h4><p class="sub small">Visitors tap <b>Tour</b> and Schiffy trots to your stops in order, reading your notes. Kind words only (no links), ${T.C.NOTE} letters a note.</p><div id="socTour">`;
       h += L.map((st, i) => `<div class="trow"><b>${i + 1}</b><span class="tn"><small>${esc(g.stopName ? g.stopName(st) : st.t)}</small><input data-tn="${i}" maxlength="${T.C.NOTE}" value="${esc(st.note)}" placeholder="A note (optional)"></span>
-        <button class="ghost" data-tsave="${i}" title="Save the note">Save</button>${i ? `<button class="ghost" data-tup="${i}" title="Earlier in the tour">&#9650;</button>` : ''}<button class="ghost" data-tdel="${i}" title="Remove this stop">&#10005;</button></div>`).join('');
-      h += `</div><p id="socTourWhy" class="why2"></p><div class="pf">${n ? `<button class="ghost" id="socTourShow">Show the stops</button>` : '<small class="sub">No stops yet: visitors see no Tour button.</small>'}${n < M && g.tourPick ? `<button class="go sm" id="socTourAdd">${IX.tour} Add a stop</button>` : ''}</div>`;
+        <button class="ghost" data-tsave="${i}" title="Save the note">Save</button>${i ? `<button class="ghost" data-tup="${i}" title="Earlier in the tour">&#9650;</button>` : ''}<button class="ghost" data-tdel="${i}" title="Take this stop out">&#10005;</button></div>`).join('');
+      h += `</div><p id="socTourWhy" class="why2"></p><div class="pf">${n ? `<button class="ghost" id="socTourShow">Show the stops</button>` : '<small class="sub">No stops yet: visitors won\'t see a Tour button.</small>'}${n < M && g.tourPick ? `<button class="go sm" id="socTourAdd">${IX.tour} Add a stop</button>` : ''}</div>`;
       return h;
     }
     async function loadGb() {
       const el = $('socGb'); if (!el) return; if (!mine) mine = await net.myIsland();
       if (mine && P5 !== false) { await starsFor([mine.id]); const ms = $('socMyStars'); if (ms && P5 && SN[mine.id] !== undefined) ms.innerHTML = ` &middot; <span class="stc">${IX.star}${SN[mine.id]}</span> found it beautiful`; }
       const L = mine ? await net.guestbook(mine.id) : [];
-      el.innerHTML = Array.isArray(L) && L.length ? L.map(n => `<div class="gbn">${IX.note}<div>"${esc(n.text)}"<small>${esc(n.from)} &middot; ${ago(n.at)}</small></div><button class="rp" data-rep="${esc(n.id)}" title="Report this note">${IX.flag}</button></div>`).join('') : '<p class="sub">No notes yet.</p>';
+      el.innerHTML = Array.isArray(L) && L.length ? L.map(n => `<div class="gbn">${IX.note}<div>"${esc(n.text)}"<small>${esc(n.from)} &middot; ${ago(n.at)}</small></div><button class="rp" data-rep="${esc(n.id)}" title="Report this note">${IX.flag}</button></div>`).join('') : '<p class="sub">No notes yet. Visitors can sign it.</p>';
     }
     async function load() {
       busy = true;
@@ -199,8 +199,8 @@
       prof = { island: a.v, host: b.v };
       if (g.mode === 'home') {
         const s = S(); s.social.acct = net.uid; s.social.island = a.v; s.social.host = b.v; s.social.pub = $('socPub0') ? $('socPub0').checked : s.social.pub; g.save();
-        const p = await publish(true); toast(`${IX.globe} <b>${esc(a.v)}</b> is ${s.social.pub ? 'shared! Others can visit it now' : 'set up (private)'}`, 3600);
-        if (p && !p.ok) toast('Could not share yet: ' + esc(p.why), 4000);
+        const p = await publish(true); toast(`${IX.globe} <b>${esc(a.v)}</b> is ${s.social.pub ? 'shared! Neighbours can drop by now' : 'named (and private)'}`, 3600);
+        if (p && !p.ok) toast('Not shared yet: ' + esc(p.why), 4000);
       } else toast(`${IX.globe} Hello, <b>${esc(b.v)}</b>!`, 2400);
       list = null; render(); if (fromVisit) visitHud();
     }
@@ -219,16 +219,16 @@
         const t = e.target.closest('button'); if (!t) return;
         if (t.dataset.st) { tab = t.dataset.st; list = null; render(); return; }
         if (t.dataset.isl) { goVisit(t.dataset.isl); return; }
-        if (t.dataset.rep) { const r = await net.report('note', t.dataset.rep, 'reported by the island owner'); toast(r.ok ? 'Thanks, the note was reported' : 'Could not report: ' + esc(r.why), 2600); return; }
+        if (t.dataset.rep) { const r = await net.report('note', t.dataset.rep, 'reported by the island owner'); toast(r.ok ? 'Thank you: that note is reported' : 'Not reported yet: ' + esc(r.why), 2600); return; }
         if (t.id === 'socMake') { makeAccount(g.mode === 'visit'); return; }
         if (t.id === 'socGo') { query = ($('socQ').value || '').trim(); list = null; render(); return; }
         if (t.id === 'socEdit') { prof = Object.assign({}, prof); $('socBody').innerHTML = setupForm('Change your island or host name.'); return; }
-        if (t.id === 'socPubNow') { const r = await publish(true); toast(r && r.ok ? `${IX.globe} Island shared` : 'Could not share: ' + esc(r ? r.why : 'no account'), 2600); render(); return; }
+        if (t.id === 'socPubNow') { const r = await publish(true); toast(r && r.ok ? `${IX.globe} Island shared with the neighbour isles` : 'Not shared yet: ' + esc(r ? r.why : 'no account'), 2600); render(); return; }
         // piece 5: the tour editor (My island)
         if (t.dataset.tsave !== undefined || t.dataset.tup !== undefined || t.dataset.tdel !== undefined) {
           const s = S(), T = window.Tour, why = $('socTourWhy');
           if (t.dataset.tsave !== undefined) { const i = +t.dataset.tsave, inp = $('socBody').querySelector(`input[data-tn="${i}"]`), res = {};
-            if (!T.edit(s, i, inp ? inp.value : '', res)) { if (why) why.textContent = 'Note: ' + res.why; return; } toast(`${IX.tour} Note saved`, 1600); }
+            if (!T.edit(s, i, inp ? inp.value : '', res)) { if (why) why.textContent = 'Note: ' + res.why; return; } toast(`${IX.tour} Note tucked in`, 1600); }
           else if (t.dataset.tup !== undefined) T.move(s, +t.dataset.tup, -1);
           else T.remove(s, +t.dataset.tdel);
           g.save(); pubSoon(); render(); return;
@@ -264,36 +264,36 @@
       $('visBan').innerHTML = `<span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(isl.col || '') ? isl.col : '#9fd88a'}">${IC.sprout}</span><div><small>Visiting</small><b class="disp">${esc(isl.name)}</b><small>${esc(isl.host)}'s island &middot; ${esc(c)} (Lv ${isl.lv | 0}) &middot; ${IC.heart}<span id="visLikes">${isl.likes | 0}</span>${P5 ? ` &middot; <span class="stc" title="visitors who found it beautiful">${IX.star}<span id="visStars">${SN[isl.id] | 0}</span></span>` : ''}</small></div><button class="go sm" id="visHome">${IX.home}Home</button>`;
       $('visBan').hidden = false; $('visBar').hidden = false;
       const box = readBox(SLOT), canW = !V.own || window.Social.waterOk(V.own, isl.id, today(), box);
-      $('visBar').innerHTML = `<button id="vWater" class="${canW ? '' : 'done'}" title="Water their tree (once a day): a little boost for both trees">${IC.water}<span>${canW ? 'Water' : 'Watered'}</span></button>
+      $('visBar').innerHTML = `<button id="vWater" class="${canW ? '' : 'done'}" title="Give their tree a drink (once a day): a little boost for both trees">${IC.water}<span>${canW ? 'Water' : 'Watered'}</span></button>
         <button id="vGift" title="Leave a gift from your own island">${IC.gift}<span>Gift</span></button>
         <button id="vLike" class="${V.liked ? 'done' : ''}" title="Like this island">${IC.heart}<span>${V.liked ? 'Liked' : 'Like'}</span></button>
         ${P5 ? `<button id="vStar" class="star${STARRED.has(isl.id) ? ' done' : ''}" title="Found it beautiful? Tell the host (once)">${IX.star}<span>${STARRED.has(isl.id) ? 'Beautiful!' : 'Beautiful'}</span></button>` : ''}
         ${V.tour && g.startGuide ? `<button id="vTour" class="tour" title="Take the host's guided tour">${IX.tour}<span>Tour</span></button>` : ''}
         <button id="vNote" title="Guestbook">${IX.note}<span>Notes</span></button>
-        <button id="vMore" title="Other islands">${IX.globe}<span>Islands</span></button>`;
+        <button id="vMore" title="The neighbour isles">${IX.globe}<span>Isles</span></button>`;
       $('visHome').onclick = () => { location.href = homeUrl(); };
       $('vWater').onclick = water; $('vGift').onclick = () => panel('gift'); $('vLike').onclick = like; $('vNote').onclick = () => panel('note'); $('vMore').onclick = () => open();
       if ($('vStar')) $('vStar').onclick = star;
       if ($('vTour')) $('vTour').onclick = () => { $('visPanel').hidden = true; g.startGuide(); };
-      if (document.body.classList.contains('phone')) $('visHint').innerHTML = 'Tap the ground to walk there. Drag to look around.';
+      if (document.body.classList.contains('phone')) $('visHint').innerHTML = 'Tap the ground to trot there. Drag to look around.';
       $('visHint').hidden = false; setTimeout(() => { const h = $('visHint'); if (h) h.style.opacity = 0; }, 9000);
     }
-    const needProfile = () => { if (prof) return false; open(); $('socBody').innerHTML = setupForm('To water, gift, like or write a note, pick a name first (no email needed).'); return true; };
+    const needProfile = () => { if (prof) return false; open(); $('socBody').innerHTML = setupForm('To water, gift, like or sign the guestbook, pick a name first (no email needed).'); return true; };
     async function water() {
       if (needProfile()) return;
       const box = readBox(SLOT), d = today();
-      if (V.own && !window.Social.waterOk(V.own, V.island.id, d, box)) { toast(`${IC.water} You already watered this tree today. Come back tomorrow!`, 2600); return; }
+      if (V.own && !window.Social.waterOk(V.own, V.island.id, d, box)) { toast(`${IC.water} This tree already had a drink from you today. Come back tomorrow!`, 2600); return; }
       const r = await net.water(V.island.id);
-      if (!r.ok) { toast(`${IC.water} ${esc(r.why === 'already watered today' ? 'You already watered this tree today. Come back tomorrow!' : 'Could not water: ' + r.why)}`, 2800); return; }
+      if (!r.ok) { toast(`${IC.water} ${esc(r.why === 'already watered today' ? 'This tree already had a drink from you today. Come back tomorrow!' : 'The water didn\'t reach it: ' + r.why)}`, 2800); return; }
       box.push({ id: 'o' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), kind: 'water', island: V.island.id, day: d }); writeBox(SLOT, box);
-      g.onWater(); toast(`${IC.water} You watered <b>${esc(V.island.name)}</b>'s tree! Your own tree gets ${IC.water}+${window.Social.C.W_SELF.water} too`, 3600);
+      g.onWater(); toast(`${IC.water} You gave <b>${esc(V.island.name)}</b>'s tree a drink! Your own tree gets ${IC.water}+${window.Social.C.W_SELF.water} too`, 3600);
       $('vWater').classList.add('done'); $('vWater').querySelector('span').textContent = 'Watered';
     }
     async function like() {
-      if (needProfile()) return; if (V.liked) { toast(`${IC.heart} You already like this island`, 1800); return; }
+      if (needProfile()) return; if (V.liked) { toast(`${IC.heart} You already like this isle`, 1800); return; }
       const r = await net.like(V.island.id);
       if (r.ok || r.why === 'liked') { V.liked = true; $('vLike').classList.add('done'); $('vLike').querySelector('span').textContent = 'Liked'; if (r.ok) { $('visLikes').textContent = (+$('visLikes').textContent + 1); g.onLike(); toast(`${IC.heart} You liked <b>${esc(V.island.name)}</b>`, 2000); } }
-      else toast('Could not like: ' + esc(r.why), 2400);
+      else toast('The like didn\'t land: ' + esc(r.why), 2400);
     }
     // piece 5: "beautiful" = once per visitor per island, no undo (positive-only; the server keeps the same rules)
     async function star() {
@@ -308,7 +308,7 @@
         else toast(`${IX.star} You already found <b>${esc(isl.name)}</b> beautiful`, 2000);
         return;
       }
-      toast(`${IX.star} ${r.why === 'rate' ? 'So many beautiful islands today! Try again a little later' : 'Could not mark it: ' + esc(r.why)}`, 2600);
+      toast(`${IX.star} ${r.why === 'rate' ? 'So many beautiful islands today! Try again a little later' : 'Not marked yet: ' + esc(r.why)}`, 2600);
     }
     async function panel(kind) {
       if (needProfile()) return;
@@ -316,9 +316,9 @@
       if (kind === 'gift') {
         const sp = V.own ? window.Social.spare(V.own, readBox(SLOT)) : { res: {}, decor: [] }, M = window.Social.C.GIFT_MAX;
         const opts = [['wood', 10], ['wood', 30], ['stone', 10], ['stone', 30], ['food', 10], ['food', 30], ['crystal', 1], ['seeds', 1]].filter(([k, n]) => n <= M[k]);
-        el.innerHTML = `<div class="pch"><span class="disp">${IC.gift} Leave a gift</span><button data-x="1">&#10005;</button></div><p class="sub">From your own island (${window.Social.C.GIFTS_PER_DAY} gifts per island a day). It reaches ${esc(V.island.host)} next time they come home.</p>
+        el.innerHTML = `<div class="pch"><span class="disp">${IC.gift} Leave a gift</span><button data-x="1">&#10005;</button></div><p class="sub">From your own island (${window.Social.C.GIFTS_PER_DAY} gifts per island a day). It reaches ${esc(V.island.host)} the next time they come home.</p>
           <div class="gopts">${opts.map(([k, n]) => `<button data-gk="${k}" data-gn="${n}"${(sp.res[k] || 0) < n ? ' disabled' : ''}>${IC[k === 'seeds' ? 'seed' : k]}+${n}<small>you have ${Math.floor(sp.res[k] || 0)}</small></button>`).join('')}
-          ${sp.decor.map(d => `<button data-gd="${esc(d.id)}">${IC.decor}${esc(window.Exped.DECOR[d.id].name)}<small>you have ${d.n}</small></button>`).join('')}</div>${V.own ? '' : '<p class="sub">You have no island in this browser yet, so there is nothing to give.</p>'}`;
+          ${sp.decor.map(d => `<button data-gd="${esc(d.id)}">${IC.decor}${esc(window.Exped.DECOR[d.id].name)}<small>you have ${d.n}</small></button>`).join('')}</div>${V.own ? '' : '<p class="sub">You have no island in this browser yet, so there is nothing to give just now.</p>'}`;
       } else {
         el.innerHTML = `<div class="pch"><span class="disp">${IX.note} ${esc(V.island.name)}'s guestbook</span><button data-x="1">&#10005;</button></div>
           <div class="srch"><input id="vNoteT" maxlength="${window.Social.C.NOTE_MAX}" placeholder="Write something kind..."><button class="go sm" id="vNoteGo">Sign</button></div><p id="vNoteWhy" class="why2"></p><div id="vGb"><p class="sub">...</p></div>
@@ -328,7 +328,7 @@
     }
     async function loadVisitGb() {
       const L = await net.guestbook(V.island.id), el = $('vGb'); if (!el) return;
-      el.innerHTML = Array.isArray(L) && L.length ? L.map(n => `<div class="gbn">${IX.note}<div>"${esc(n.text)}"<small>${esc(n.from)} &middot; ${ago(n.at)}</small></div>${n.mine ? '' : `<button class="rp" data-rep="${esc(n.id)}" title="Report this note">${IX.flag}</button>`}</div>`).join('') : '<p class="sub">No notes yet: be the first!</p>';
+      el.innerHTML = Array.isArray(L) && L.length ? L.map(n => `<div class="gbn">${IX.note}<div>"${esc(n.text)}"<small>${esc(n.from)} &middot; ${ago(n.at)}</small></div>${n.mine ? '' : `<button class="rp" data-rep="${esc(n.id)}" title="Report this note">${IX.flag}</button>`}</div>`).join('') : '<p class="sub">No notes yet: be the first to sign!</p>';
     }
     function bindVisit() {
       $('visPanel').addEventListener('click', async e => {
@@ -337,7 +337,7 @@
         if (t.dataset.gk || t.dataset.gd) {
           const g0 = t.dataset.gd ? { kind: 'decor', item: t.dataset.gd, n: 1 } : { kind: 'res', item: t.dataset.gk, n: +t.dataset.gn };
           const r = await net.gift(V.island.id, g0);
-          if (!r.ok) { toast('Could not give: ' + esc(r.why), 2800); return; }
+          if (!r.ok) { toast('The gift didn\'t go: ' + esc(r.why), 2800); return; }
           const box = readBox(SLOT); box.push(Object.assign({ id: 'o' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), island: V.island.id }, g0)); writeBox(SLOT, box);
           g.onGift(); toast(`${IC.gift} Gift left for <b>${esc(V.island.host)}</b>!`, 2600); panel('gift'); return;
         }
@@ -346,8 +346,8 @@
           const r = await net.note(V.island.id, c.v); if (!r.ok) { $('vNoteWhy').textContent = r.why; return; }
           $('vNoteT').value = ''; $('vNoteWhy').textContent = ''; toast(`${IX.note} You signed the guestbook`, 2000); if (window.__snd) window.__snd.sfx('note'); loadVisitGb(); return;
         }
-        if (t.dataset.rep) { const r = await net.report('note', t.dataset.rep, 'unkind note'); toast(r.ok ? 'Thanks, the note was reported' : 'Could not report', 2400); return; }
-        if (t.id === 'vRepIsl') { const r = await net.report('island', V.island.id, 'reported from a visit'); toast(r.ok ? 'Thanks, the island was reported' : 'Could not report', 2400); return; }
+        if (t.dataset.rep) { const r = await net.report('note', t.dataset.rep, 'unkind note'); toast(r.ok ? 'Thank you: that note is reported' : 'Not reported yet: try again', 2400); return; }
+        if (t.id === 'vRepIsl') { const r = await net.report('island', V.island.id, 'reported from a visit'); toast(r.ok ? 'Thank you: that island is reported' : 'Not reported yet: try again', 2400); return; }
       });
       $('visPanel').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'vNoteT') $('vNoteGo').click(); });
     }

@@ -17,7 +17,7 @@
     'sky-goggles': { name: 'Sky goggles', slot: 'face', from: 'trip', look: { kind: 'goggles', col: 0xb8743a, col2: 0x9fe8ff } },
   };
   const IDS = Object.keys(DEFS);
-  const FROM = { gift: 'a daily-gift outfit', trip: 'a rare sky-trip find', voyage: 'a far-sky voyage find', ring: 'an Elder ring gift' };
+  const FROM = { gift: 'a gift-basket outfit', trip: 'a rare skyboat find', voyage: 'a far-sky voyage find', ring: 'an Elder ring gift' };
 
   const owns = (s, id) => !!DEFS[id] && s.inv.outfits.includes(id);
   const wearer = (s, id) => s.pups.findIndex(p => p.fit === id);

@@ -160,38 +160,44 @@
   const traitOf = i => window.Traits && S && S.pups[i] ? Traits.of(S, i) : null;
   // a small chip: icon (+ the name unless short); the tooltip says what the trait means
   function traitChip(i, short) { const t = traitOf(i); if (!t) return ''; const I = Traits.INFO[t]; return `<span class="trt t-${t}" title="${I.name}: ${I.what}">${TRAIT_IC[t] || ''}${short ? '' : I.name}</span>`; }
-  const NEED_NAMES = { water: 'Water', light: 'Light', nourish: 'Nourish', protect: 'Protect', spirit: 'Spirit' };
-  const JOB_NAMES = { water: 'Water', light: 'Light', wood: 'Wood', stone: 'Stone', food: 'Berries', build: 'Build', rest: 'Rest', nourish: 'Garden', protect: 'Guard', spirit: 'Music' };
-  const JOB_WHO = { nourish: 'Gardeners', protect: 'Guardians', spirit: 'Performers' };
+  // UI voice pass: display names only (keys = the sim's ids, never change them). One name = one thing everywhere.
+  const NEED_NAMES = { water: 'Water', light: 'Light', nourish: 'Roots', protect: 'Ward', spirit: 'Song' };
+  const NEED_TIP = { water: 'Water: fed by spring carriers (and rain)', light: 'Light: fed by lamplighters and lantern walks', nourish: 'Roots: fed by root gardeners and berry patches',
+    protect: 'Ward: kept by wardens and crystal wards', spirit: 'Song: fed by minstrels' };
+  const JOB_NAMES = { water: 'Spring carrier', light: 'Lamplighter', wood: 'Woodcutter', stone: 'Stonemason', food: 'Berry picker', build: 'Builder', rest: 'Napping', nourish: 'Root gardener', protect: 'Warden', spirit: 'Minstrel' };
+  const JOB_WHO = { nourish: 'Root gardeners', protect: 'Wardens', spirit: 'Minstrels' };
+  // the assign toast: "Pudding heads for the spring"
+  const JOB_GO = { water: 'heads for the spring', light: 'goes to light the lamps', wood: 'heads into the woods', stone: 'heads for the rocks', food: 'goes berry picking',
+    build: 'picks up a hammer', rest: 'curls up for a nap', nourish: 'goes to tend the roots', protect: 'stands watch', spirit: 'tunes up for a song' };
   const B_ICON = { home: 'home', garden: 'garden', woodshed: 'woodshed', quarry: 'quarry', lantern: 'lantern', board: 'board', stage: 'stage', conserv: 'conserv',
     hush: 'hall', sprout: 'school', market: 'cart', greenhold: 'conserv', circus: 'circus', forge: 'anvil', nook: 'decor' };
   const STATUS = {
-    water: { idle: 'getting ready', go: 'off to the river', fill: 'filling the bucket', carry: 'carrying water', pour: 'watering the tree' },
-    light: { idle: 'getting ready', go: 'to the shrine', light: 'lighting the lantern', carry: 'off to an orb', tend: 'tending an orb' },
-    rest: { idle: 'yawning', go: 'off for a nap', rest: 'napping' },
-    wood: { idle: 'getting ready', go: 'off to the woods', work: 'chopping wood', carry: 'carrying logs', drop: 'stacking logs' },
-    stone: { idle: 'getting ready', go: 'off to the rocks', work: 'chipping stone', carry: 'hauling stone', drop: 'piling stone' },
-    food: { idle: 'getting ready', go: 'off berry picking', work: 'picking berries', carry: 'bringing berries', drop: 'filling the pantry' },
+    water: { idle: 'stretching', go: 'off to the spring', fill: 'filling a bucket', carry: 'carrying a full bucket', pour: 'giving the tree a drink' },
+    light: { idle: 'stretching', go: 'off to the lamp shrine', light: 'lighting a lantern', carry: 'carrying light to an orb', tend: 'tending a glow orb' },
+    rest: { idle: 'yawning', go: 'off to find a cozy spot', rest: 'napping' },
+    wood: { idle: 'stretching', go: 'off to the woods', work: 'chopping wood', carry: 'carrying logs', drop: 'stacking logs' },
+    stone: { idle: 'stretching', go: 'off to the rocks', work: 'chipping stone', carry: 'hauling stone', drop: 'piling stone' },
+    food: { idle: 'stretching', go: 'off berry picking', work: 'picking berries', carry: 'bringing berries', drop: 'filling the pantry' },
   };
   function statusOf(p) {
     if (p.exp) {
-      const tr = S.exp.trips.find(x => x.id === p.exp), d = tr && Exped.DEST[tr.dest]; if (!tr) return 'on a sky trip';
-      if (p.phase === 'go') return 'off to the dock';
-      if (p.phase === 'board') return 'aboard, waiting for the team';
-      return `exploring ${d.name} (${fmtT(Math.max(0, tr.dep + tr.dur - S.time))} left)`;
+      const tr = S.exp.trips.find(x => x.id === p.exp), d = tr && Exped.DEST[tr.dest]; if (!tr) return 'away on a skyboat';
+      if (p.phase === 'go') return 'off to the skyboat dock';
+      if (p.phase === 'board') return 'aboard, waiting for the crew';
+      return `exploring ${d.name}, home in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}`;
     }
-    if (p.phase === 'arrive') return p.parents ? 'a brand-new puppy!' : 'crossing the bridge';
-    if (p.task === 'garden') return { go: p.tgt >= 0 ? 'off to the garden' : 'off to the root beds', plant: S.inv.seeds > 0 ? 'planting a seed' : 'tending the beds', carry: S.garden.sprouts.length ? 'bringing glow fruit' : 'bringing compost', feed: 'feeding the tree' }[p.phase] || 'gardening';
+    if (p.phase === 'arrive') return p.parents ? 'a brand-new puppy!' : 'crossing the bridge to a new home';
+    if (p.task === 'garden') return { go: p.tgt >= 0 ? 'off to the garden' : 'off to the root beds', plant: S.inv.seeds > 0 ? 'planting a seed' : 'tending the beds', carry: S.garden.sprouts.length ? 'bringing glow fruit' : 'bringing compost', feed: 'feeding the roots' }[p.phase] || 'tending the roots';
     if (p.task === 'blight') return p.phase === 'clear' ? 'sweeping away blight' : 'off to a blight patch';
-    if (p.task === 'patrol') return p.phase === 'watch' ? 'keeping watch' : 'on patrol';
-    if (p.task === 'stage' || p.task === 'busk') return p.phase === 'play' ? (p.task === 'stage' ? 'playing on the stage' : 'busking on the plaza') : p.task === 'stage' ? 'off to the stage' : 'off to play music';
-    if (p.phase === 'nap') return 'sleepy night nap';
+    if (p.task === 'patrol') return p.phase === 'watch' ? 'keeping watch' : 'walking the rounds';
+    if (p.task === 'stage' || p.task === 'busk') return p.phase === 'play' ? (p.task === 'stage' ? 'playing on the moonlit stage' : 'busking on the plaza') : p.task === 'stage' ? 'off to the stage' : 'off to play music';
+    if (p.phase === 'nap') return 'a sleepy night nap';
     if (p.job === 'rest' && p.task === null && Needs.firstBuilt(S, 'stage') !== null && S.pups.some(q => q.job === 'spirit' && !q.exp)) return p.phase === 'rest' ? (S.pups.some(q => q.phase === 'play' && q.task === 'stage') ? 'dancing at the show' : 'waiting for the music') : 'off to the show';
     if (p.task === 'nap') return 'yawning, off for a nap';
     if (p.job === 'build') {
-      if (p.task === 'site') return p.phase === 'build' ? 'building' : 'to the building site';
+      if (p.task === 'site') return p.phase === 'build' ? 'building' : 'off to the building site';
       if (p.task === 'wood' || p.task === 'stone') return (STATUS[p.task][p.phase] || 'fetching ' + p.task) + ' for a build';
-      if (p.task === 'wait') return S.queue.length ? 'waiting for glow sap' : 'waiting for a blueprint';
+      if (p.task === 'wait') return S.queue.length ? 'waiting for glow sap' : 'waiting for plans';
       return 'getting ready';
     }
     return (STATUS[p.job] || {})[p.phase] || '';
@@ -353,14 +359,14 @@
     if (soc && soc.accountChanged) soc.accountChanged();
     if (!cloud || !CLOUD_ON) return;
     const r = await cloud.accountChanged(id);
-    if (r && r.d === 'upload') toast(`${cloudUI.IX.cloud} Signed in! This island is now saved to your account.`, 4200);
+    if (r && r.d === 'upload') toast(`${cloudUI.IX.cloud} Signed in! This island now lives safely in your account.`, 4200);
     else if (r && r.d === 'same') toast(`${cloudUI.IX.cloud} Signed in!`, 2400);
   }
   async function cloudSignOut() {
     if (!cloud || !CLOUD_ON) { await NET.signOut(); toast('Signed out (test window: the island stays)', 3000); if (cloudUI) cloudUI.closeSafe(); return; }
     save(); if (cloud.dirty) await cloud.flush('sign-out');
     noSaves = true; await cloud.signOut();
-    reloadClean('Signed out. A fresh island is waking up here...', 'Signed out. Your island is safe in the cloud: Explore > I already have an island brings it back.');
+    reloadClean('Signed out. A fresh little island stirs here...', 'Signed out. Your island sleeps safe in the cloud: Visit > I already have an island brings it back.');
   }
 
   // ---- UI helpers
@@ -400,49 +406,49 @@
     else tb.style.top = '';
   }
   setInterval(pumpToasts, 250);
-  const healthWord = h => h >= 80 ? 'Thriving' : h >= 60 ? 'Healthy' : h >= 40 ? 'Struggling' : h >= 20 ? 'Wilting' : 'Withering';
+  const healthWord = h => h >= 80 ? 'Glowing' : h >= 60 ? 'Thriving' : h >= 40 ? 'Drooping' : h >= 20 ? 'Wilting' : 'Fading';
   const healthCol = h => h >= 80 ? 'linear-gradient(90deg,#5fe0c8,#ffd36a)' : h >= 60 ? 'linear-gradient(90deg,#7fd36a,#b8e86a)' : h >= 40 ? 'linear-gradient(90deg,#ffc53d,#ffa04a)' : 'linear-gradient(90deg,#ff7a59,#c9605a)';
-  const bName = (type, q) => type === 'home' ? (Sim.bedsFor(q) >= 4 ? 'Treehouse' : Sim.bedsFor(q) >= 3 ? 'Big cottage' : 'Cottage') : Sim.C.B[type].name;
+  const bName = (type, q) => type === 'home' ? (Sim.bedsFor(q) >= 4 ? 'Treehouse' : Sim.bedsFor(q) >= 3 ? 'Big pup cottage' : 'Pup cottage') : Sim.C.B[type].name;
   function gives(type, q) {
     const b = Sim.C.B[type];
     if (type === 'home') return `${IC.bed} +${Sim.bedsFor(q)} beds`;
-    if (type === 'garden') return `${IC.food} +${b.food} berries/h`;
-    if (type === 'woodshed') return `${IC.wood} +${b.wood}/h, wood pups +${b.boost * 100}%`;
-    if (type === 'quarry') return `${IC.stone} +${b.stone}/h, stone pups +${b.boost * 100}%`;
-    if (type === 'lantern') return `${IC.light} tree light +${b.light}/h`;
-    if (type === 'board') return `${IC.isle} sky trips to the floating isles`;
-    if (type === 'stage') return `${IC.spirit} performers play at full joy, a light show at night`;
-    if (type === 'conserv') return `${IC.nourish} gardeners +30 %, +2 sprout beds, +3 nourish/h`;
+    if (type === 'garden') return `${IC.food} +${b.food} berries an hour`;
+    if (type === 'woodshed') return `${IC.wood} +${b.wood} wood an hour, woodcutters +${b.boost * 100}%`;
+    if (type === 'quarry') return `${IC.stone} +${b.stone} stone an hour, stonemasons +${b.boost * 100}%`;
+    if (type === 'lantern') return `${IC.light} the tree's light +${b.light} an hour`;
+    if (type === 'board') return `${IC.isle} skyboat trips to the floating isles`;
+    if (type === 'stage') return `${IC.spirit} minstrels play their very best, and a light show at night`;
+    if (type === 'conserv') return `${IC.nourish} root gardeners +30 %, +2 sprout beds, +3 roots an hour`;
     // step 5: faction halls + the market
-    if (type === 'hush') return `${IC.protect} guardians +40 % and 30 % faster, blight creeps in 30 % less`;
-    if (type === 'sprout') return `${IC.sprout} school: friendships + explorer xp x1.5, puppies grow up in 3 h, newcomers start happy`;
-    if (type === 'market') return `${IC.cart} the wandering trader comes twice as often`;
-    if (type === 'greenhold') return `${IC.nourish} gardeners +30 % more, +2 sprout beds, +3 nourish/h`;
-    if (type === 'circus') return `${IC.spirit} performers +30 %, music lifts morale more, +3 spirit/h`;
+    if (type === 'hush') return `${IC.protect} wardens +40 % and 30 % quicker, blight creeps in 30 % less`;
+    if (type === 'sprout') return `${IC.sprout} a little school: friendships + explorer xp x1.5, puppies grow up in 3 h, newcomers arrive happy`;
+    if (type === 'market') return `${IC.cart} the wandering trader visits twice as often`;
+    if (type === 'greenhold') return `${IC.nourish} root gardeners +30 % more, +2 sprout beds, +3 roots an hour`;
+    if (type === 'circus') return `${IC.spirit} minstrels +30 %, music lifts happiness more, +3 song an hour`;
     if (type === 'forge') return `${IC.build} better tools: gathering + building +25 %`;
     if (type === 'nook') return `${IC.decor} a cozy corner: log benches, planters, a little lantern (just for joy)`;
     return '';
   }
   const have = k => k === 'sap' ? S.sap : S.res[k];
   const costHtml = cost => Object.keys(cost).map(k => `<span class="cost${have(k) + 1e-9 < cost[k] ? ' short' : ''}">${IC[k]}${cost[k]}</span>`).join('');
-  const plotName = q => q.faction ? q.faction.name : q.free ? 'Your own spot' : `Plot ${q.i + 1}`;
+  const plotName = q => q.faction ? q.faction.name : q.free ? 'A spot of your own' : `Plot ${q.i + 1}`;
 
   // ---- UI build
   function buildUI() {
     const nd = $('needs');
     for (const k of Object.keys(Sim.C.NEEDS)) {
-      nd.insertAdjacentHTML('beforeend', `<div class="need" data-k="${k}" title="Tap for details">${IC[k]}<span>${NEED_NAMES[k]}</span><div class="bar"><i style="background:var(--${k})"></i></div><span class="tr"></span></div>`);
+      nd.insertAdjacentHTML('beforeend', `<div class="need" data-k="${k}" title="${NEED_TIP[k]} · tap for more">${IC[k]}<span>${NEED_NAMES[k]}</span><div class="bar"><i style="background:var(--${k})"></i></div><span class="tr"></span></div>`);
     }
     nd.addEventListener('click', e => { const r = e.target.closest('.need'); if (r) openNeed(r.dataset.k); });
-    $('resbar').innerHTML = [['rB', 'water', 'Buckets of water poured on the tree'], ['rS', 'sap', 'Glow sap from a healthy tree'], ['rW', 'wood', 'Wood'], ['rT', 'stone', 'Stone'],
-      ['rF', 'food', 'Berries (pups eat ' + Sim.C.EAT + '/h each)'], ['rCr', 'crystal', 'Crystals (expeditions; set them as wards against blight)'], ['rSd', 'seed', 'Seeds (gardeners plant them: glow sprouts)'], ['rBd', 'bed', 'Beds used / total']].map(([id, ic, t]) => `<div title="${t}">${IC[ic]}<span id="${id}">0</span></div>`).join('') +
-      `<div id="clockChip" title="Island time: it follows your own clock. At night the pups nap more and the tree drinks less."><span id="rCi">${IC.sun}</span><span id="rC">--:--</span></div>` +
+    $('resbar').innerHTML = [['rB', 'water', 'Buckets poured for the Elder Tree'], ['rS', 'sap', 'Glow sap: a happy tree makes it'], ['rW', 'wood', 'Wood, from the woodcutters'], ['rT', 'stone', 'Stone, from the stonemasons'],
+      ['rF', 'food', 'Berries (each pup eats ' + Sim.C.EAT + ' an hour)'], ['rCr', 'crystal', 'Crystals (from skyboat trips; set them as wards against blight)'], ['rSd', 'seed', 'Seeds (root gardeners plant them as glow sprouts)'], ['rBd', 'bed', 'Beds: pups / beds']].map(([id, ic, t]) => `<div title="${t}">${IC[ic]}<span id="${id}">0</span></div>`).join('') +
+      `<div id="clockChip" title="Island time follows your own clock. At night the pups nap more and the tree drinks less."><span id="rCi">${IC.sun}</span><span id="rC">--:--</span></div>` +
       `<div id="seaChip"><span id="rSeaI"></span><span id="rSea"></span></div>`;
     $('giftBtn').onclick = () => openGift();
     $('seaChip').onclick = () => openBook('mem');
     $('gClose').onclick = closeGift;
     $('gClaim').onclick = claimGift;
-    $('decide').onchange = e => { S.decide = e.target.checked; toast(S.decide ? `${IC.paw} The pups will pick plots themselves` : 'You pick the plots again', 2200); save(); refreshBuild(true); };
+    $('decide').onchange = e => { S.decide = e.target.checked; toast(S.decide ? `${IC.paw} The pups will plan the village themselves` : 'You plan the village again', 2200); save(); refreshBuild(true); };
     $('queue').addEventListener('click', e => { const r = e.target.closest('[data-pid]'); if (r) openPlot(+r.dataset.pid, true); });
     // roster
     $('side').addEventListener('touchstart', () => { sideTouch = performance.now(); }, { passive: true });
@@ -469,8 +475,9 @@
     $('gGot').addEventListener('click', e => { if (e.target.closest('[data-dress]')) { closeGift(); openWard(wardWho()); } });
     $('dyClose').onclick = closeDiary; $('diary').addEventListener('click', e => { if (e.target.id === 'diary') closeDiary(); });
     $('bkClose').onclick = closeBook; $('bkIc').innerHTML = IC.book;
-    if (document.body.classList.contains('phone')) $('camTree').textContent = 'Tree';   // room for the Book button on a phone
-    for (const [t, ic] of [['mem', 'memory'], ['pups', 'paw'], ['decor', 'decor'], ['outfits', 'scarf'], ['crit', 'critter'], ['lan', 'lantern'], ['words', 'tree']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + b.textContent; }
+    if (document.body.classList.contains('phone')) $('camTree').textContent = 'Home';   // room for the Book button on a phone
+    // UI voice pass: the Book's tab names come from here (one name everywhere)
+    for (const [t, ic, nm] of [['mem', 'memory', 'Tree memories'], ['pups', 'paw', 'Our pups'], ['decor', 'decor', 'Treasures'], ['outfits', 'scarf', 'Wardrobe'], ['crit', 'critter', 'Sky critters'], ['lan', 'lantern', 'Lanterns'], ['words', 'tree', 'Whispers']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + nm; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
     $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem);
       const wf = e.target.closest('[data-bfit]'); if (wf) { const w = Wardrobe.wearer(S, wf.dataset.bfit); openWard(w >= 0 ? w : wardWho()); return; }
@@ -488,10 +495,10 @@
       if (b.dataset.act === 'order') {
         if (Sim.order(S, curPlot, b.dataset.type, nav)) {
           const builders = S.pups.filter(p => p.job === 'build').length;
-          toast(`${IC[B_ICON[b.dataset.type]]} Blueprint: ${bName(b.dataset.type, q)}${builders ? '' : ' &middot; give a pup the Build job'}`, 3000); save();
+          toast(`${IC[B_ICON[b.dataset.type]]} Plans drawn: ${bName(b.dataset.type, q)}${builders ? '' : ' &middot; a pup needs the Builder job'}`, 3000); save();
         }
       } else if (b.dataset.act === 'exp') { closePlot(); openExp(); return; }
-      else if (b.dataset.act === 'cancel') { const fr = q && q.free; if (Sim.cancel(S, curPlot, nav)) { toast('Blueprint cancelled, materials back in the pile', 2400); save(); if (fr) { closePlot(); refreshBuild(true); return; } } }
+      else if (b.dataset.act === 'cancel') { const fr = q && q.free; if (Sim.cancel(S, curPlot, nav)) { toast('Plans rolled up, materials back in the pile', 2400); save(); if (fr) { closePlot(); refreshBuild(true); return; } } }
       else if (['col', 'roof', 'turn', 'hmove', 'hdown'].includes(b.dataset.act)) { homeAct(b.dataset.act, b); if (curPlot === null) { refreshBuild(true); return; } }
       renderPlot(true); refreshBuild(true);
     });
@@ -499,7 +506,7 @@
     const awayClose = goTour => { $('away').hidden = true; if (soc) soc.awayDone(); if (lan) lan.awayDone(); for (const p of S.pups) delete p.isNew; save(); refreshRoster(true); const st = awayStops; awayStops = null; if (st && st.length) { if (goTour === 'later') queueCard('tour', () => runTour(st), true); else if (goTour) runTour(st); } };
     $('awayOk').onclick = () => awayClose(true);
     $('awayList').addEventListener('click', e => {
-      const db = e.target.closest('button[data-awdet]'); if (db) { const u = $('awayList').querySelector('.awdet'); if (u) { u.hidden = !u.hidden; db.classList.toggle('on', !u.hidden); db.innerHTML = (u.hidden ? 'Details &#9662;' : 'Hide details &#9652;'); } return; }
+      const db = e.target.closest('button[data-awdet]'); if (db) { const u = $('awayList').querySelector('.awdet'); if (u) { u.hidden = !u.hidden; db.classList.toggle('on', !u.hidden); db.innerHTML = (u.hidden ? 'The numbers &#9662;' : 'Hide the numbers &#9652;'); } return; }
       const hb = e.target.closest('button[data-haul]'); if (hb) { awayClose(false); openHaul(+hb.dataset.haul); return; }
       const mb = e.target.closest('button[data-memaway]'); if (mb) { awayClose('later'); queueCard('mem' + mb.dataset.memaway, () => showMemory(+mb.dataset.memaway), true); return; }
       const cb = e.target.closest('button[data-crit]'); if (cb) { awayClose(false); meetCritter(+cb.dataset.crit, true); return; }
@@ -510,20 +517,20 @@
     $('side').hidden = false; $('topBtns').hidden = false; $('resbar').hidden = false;
   }
   function setJob(i, job, quiet) {
-    if (Sim.assign(S, i, job, nav)) { snd.sfx('assign'); if (!quiet) toast(`${esc(S.pups[i].name)}: ${IC[job]} ${JOB_NAMES[job]}`, 1600); save(); hintDone();
+    if (Sim.assign(S, i, job, nav)) { snd.sfx('assign'); if (!quiet) toast(`${esc(S.pups[i].name)} ${JOB_GO[job] || JOB_NAMES[job]} ${IC[job]}`, 1600); save(); hintDone();
       if (life && traitOf(i)) life.say(i, Traits.chat(traitOf(i), 'job', (S.time | 0) + i * 7, { j: Traits.JOBW[job] }), 4);   // vibe pass 2 lane B: the pup answers in its own voice
     }
     refreshRoster(true);
   }
   const jobOpen = j => Needs.jobOpen(S, j);
-  const lockTip = j => `${JOB_NAMES[j]}: wakes ${S.wake.t === null ? 'after your first sky trip lands' : 'soon (' + fmtT(Math.max(0, Needs.wakeAt(S, j) - S.time)) + ')'}`;
-  const jobBtns = p => Sim.JOBS.map(j => `<button data-job="${j}" class="${p.job === j ? 'on' : ''}${p.like === j ? ' lk' : ''}${p.dislike === j ? ' dk' : ''}${jobOpen(j) ? '' : ' lockj'}" title="${jobOpen(j) ? JOB_NAMES[j] + (p.like === j ? ' (loves it)' : p.dislike === j ? ' (dislikes it)' : '') : lockTip(j)}"${jobOpen(j) ? '' : ' disabled'}>${IC[j]}</button>`).join('');
+  const lockTip = j => `${JOB_NAMES[j]}: wakes ${S.wake.t === null ? 'when your first skyboat comes home' : 'soon (' + fmtT(Math.max(0, Needs.wakeAt(S, j) - S.time)) + ')'}`;   // ('wakes' is looked for in refreshRoster)
+  const jobBtns = p => Sim.JOBS.map(j => `<button data-job="${j}" class="${p.job === j ? 'on' : ''}${p.like === j ? ' lk' : ''}${p.dislike === j ? ' dk' : ''}${jobOpen(j) ? '' : ' lockj'}" title="${jobOpen(j) ? JOB_NAMES[j] + (p.like === j ? ' (loves it)' : p.dislike === j ? ' (would rather not)' : '') : lockTip(j)}"${jobOpen(j) ? '' : ' disabled'}>${IC[j]}</button>`).join('');
   // friendship line for a pup: best friends first; puppies name their parents
   function friendLine(i, long) {
     const p = S.pups[i], f = Needs.friendsOf(S, i);
     let h = '';
     if (p.parents) h += `${IC.paw}puppy of ${p.parents.map(k => esc(S.pups[k] ? S.pups[k].name : '?')).join(' &amp; ')}${f.length ? ' &middot; ' : ''}`;
-    if (!f.length) return h || (long ? `${IC.friends}<i>no friends yet: pups who share a job become friends</i>` : '');
+    if (!f.length) return h || (long ? `${IC.friends}<i>no friends yet: pups who share a job grow close</i>` : '');
     const by = [3, 2, 1].map(l => f.filter(x => x.lv === l)).filter(a => a.length);
     h += IC.friends + by.map(a => `${Needs.FR_NAMES[a[0].lv]} with ${a.slice(0, long ? 9 : 2).map(x => esc(S.pups[x.i].name)).join(', ')}${!long && a.length > 2 ? ' +' + (a.length - 2) : ''}`).join(' &middot; ');
     return h;
@@ -544,14 +551,14 @@
     if (!force && sig === rosterSig) return; rosterSig = sig;
     // filter chips with counts
     const cnt = { all: S.pups.length }; for (const j of Sim.JOBS) cnt[j] = 0; for (const p of S.pups) cnt[p.job]++;
-    $('filter').innerHTML = ['all'].concat(Sim.JOBS.filter(jobOpen)).map(f => `<button data-f="${f}" class="${rosterFilter === f ? 'on' : ''}" title="${f === 'all' ? 'All pups' : JOB_NAMES[f]}">${f === 'all' ? 'All' : IC[f]}<b>${cnt[f]}</b></button>`).join('');
+    $('filter').innerHTML = ['all'].concat(Sim.JOBS.filter(jobOpen)).map(f => `<button data-f="${f}" class="${rosterFilter === f ? 'on' : ''}" title="${f === 'all' ? 'Every pup' : JOB_NAMES[f]}">${f === 'all' ? 'All' : IC[f]}<b>${cnt[f]}</b></button>`).join('');
     $('pupCount').textContent = S.pups.length;
     // rows: rebuilt when the pup list / names change, otherwise patched
     const rs = S.pups.map(p => p.id + p.name + p.like + p.dislike).join('|');
     const ro = $('roster');
     if (rs !== rowsSig) {
       rowsSig = rs;
-      ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span>${traitChip(i, true)}<span class="new">new</span><span class="xpc" title="Explorer level (sky trips)"></span><span class="mor" title="morale">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
+      ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span>${traitChip(i, true)}<span class="new">new</span><span class="xpc" title="Explorer level (skyboat trips)"></span><span class="mor" title="happiness">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
     }
     ro.querySelectorAll('.pup').forEach(row => {
       const i = +row.dataset.i, p = S.pups[i]; if (!p) return;
@@ -561,7 +568,7 @@
       // friendship hint: hearts = friends; the selected pup shows who (and a puppy its parents)
       const fl = Needs.friendsOf(S, i), fc = row.querySelector('.frc'), best = fl.length ? fl[0].lv : 0;
       fc.innerHTML = fl.length ? `${IC.friends}<b>${fl.length}</b>` : ''; fc.className = 'frc' + (best >= 3 ? ' close' : ''); fc.title = fl.length ? friendLine(i, true).replace(/<[^>]+>/g, '') : '';
-      const fv = row.querySelector('.frl'); if (pups.selected === i) { const tr = traitOf(i), h = (tr ? `<span class="trtl">${traitChip(i)} <i>${esc(Traits.INFO[tr].what)}</i></span>` : '') + friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} %)</small>` : '') + (VISIT ? '' : `<button class="dybtn" data-diary="${i}" title="${esc(p.name)}'s diary">${IC.diary}Diary</button><button class="dybtn wdbtn" data-ward="${i}" title="Dress ${esc(p.name)}">${IC.scarf}Wardrobe</button>`); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
+      const fv = row.querySelector('.frl'); if (pups.selected === i) { const tr = traitOf(i), h = (tr ? `<span class="trtl">${traitChip(i)} <i>${esc(Traits.INFO[tr].what)}</i></span>` : '') + friendLine(i, true) + (fl.length ? ` <small>(friends on the same job work up to +${Math.round(Needs.C.FR_K * 3 * 100)} % better)</small>` : '') + (VISIT ? '' : `<button class="dybtn" data-diary="${i}" title="${esc(p.name)}'s diary">${IC.diary}Diary</button><button class="dybtn wdbtn" data-ward="${i}" title="Dress ${esc(p.name)} up">${IC.scarf}Wardrobe</button>`); if (fv.dataset.h !== h) { fv.innerHTML = h; fv.dataset.h = h; } fv.hidden = false; } else fv.hidden = true;
       row.querySelector('.mor b').textContent = Math.round(p.morale);
       row.querySelector('.st').textContent = statusOf(p);
       const xc = row.querySelector('.xpc'), xl = expLv(p); xc.textContent = p.xpE > 0 ? 'Explorer ' + xl : ''; xc.hidden = !(p.xpE > 0);
@@ -585,19 +592,19 @@
   function refreshTree() {
     const h = S.health; $('lv').textContent = S.level;
     $('hfill').style.width = h.toFixed(1) + '%'; $('hfill').style.background = healthCol(h);
-    { const hm = $('hmini'); hm.style.setProperty('--h', h.toFixed(0) + '%'); hm.style.setProperty('--hc', healthCol(h)); hm.querySelector('b').textContent = Math.round(h) + '%'; hm.title = `Tree health: ${healthWord(h)}`;
+    { const hm = $('hmini'); hm.style.setProperty('--h', h.toFixed(0) + '%'); hm.style.setProperty('--hc', healthCol(h)); hm.querySelector('b').textContent = Math.round(h) + '%'; hm.title = `The Elder Tree: ${healthWord(h)}`;
       const pm = `${IC.paw}${S.pups.length}`; if ($('pmini').dataset.h !== pm) { $('pmini').innerHTML = pm; $('pmini').dataset.h = pm; } }   // vibe pass 1: the folded pill
     $('hlabel').textContent = `${healthWord(h)} ${Math.round(h)}%`;
     const lo = Sim.C.LV_XP[S.level - 1] || 0, hi = Sim.C.LV_XP[S.level];
     $('stg').textContent = Growth.stageName(S.level);
-    if (hi === undefined) { $('xfill').style.width = '100%'; $('xlabel').textContent = `Fully grown: the Elder Tree (XP ${fmtN(S.xp)})`; }
-    else { $('xfill').style.width = ((S.xp - lo) / (hi - lo) * 100).toFixed(1) + '%'; $('xlabel').textContent = `Growth ${Math.floor(S.xp)} / ${hi}  (+${Math.round(Sim.C.XP_PER_H(h))}/h)`; }
+    if (hi === undefined) { $('xfill').style.width = '100%'; $('xlabel').textContent = `Fully grown, the great Elder Tree · ${fmtN(S.xp)} growth`; }
+    else { $('xfill').style.width = ((S.xp - lo) / (hi - lo) * 100).toFixed(1) + '%'; $('xlabel').textContent = `Growing ${Math.floor(S.xp).toLocaleString()} / ${hi.toLocaleString()} · +${Math.round(Sim.C.XP_PER_H(h))} an hour`; }
     document.querySelectorAll('#needs .need').forEach(r => {
       const k = r.dataset.k, v = S.needs[k]; r.querySelector('i').style.width = v.toFixed(1) + '%';
       const rate = needRate(k), tr = r.querySelector('.tr');
       r.classList.toggle('soon', rate === null);
-      if (rate === null) { tr.textContent = 'asleep'; tr.style.color = ''; r.title = `${NEED_NAMES[k]} is asleep: the island keeps it near ${Sim.C.NEEDS[k].floor}. It wakes ${S.wake.t === null ? 'after your first sky trip lands' : 'in ' + fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}.`; return; }
-      r.title = 'Tap for details';
+      if (rate === null) { tr.textContent = 'asleep'; tr.style.color = ''; r.title = `${NEED_NAMES[k]} is still asleep: the island keeps it near ${Sim.C.NEEDS[k].floor}. It wakes ${S.wake.t === null ? 'when your first skyboat comes home' : 'in ' + fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}.`; return; }
+      r.title = `${NEED_TIP[k]} · tap for more`;
       tr.textContent = (rate >= 0 ? '+' : '') + rate.toFixed(0) + '/h'; tr.style.color = rate >= 0 ? '#2c8a4a' : '#c0392b';
       if (k === 'protect') r.classList.toggle('alert', S.blight.list.length > 0 && !S.pups.some(p => p.job === 'protect'));
     });
@@ -617,7 +624,7 @@
     if (sk !== null) {
       const nm = Seasons.NAMES[sk], a = Seasons.at(S.ep0 + S.time);
       if ($('seaChip').dataset.k !== nm) { $('seaChip').dataset.k = nm; $('rSeaI').innerHTML = IC[nm]; $('rSea').textContent = Seasons.TITLE[nm]; $('seaChip').className = 'sea-' + nm; }
-      $('seaChip').title = `${Seasons.TITLE[nm]} on the island: ${SEA_TXT[nm]}. ${Seasons.fix !== null ? '(fixed for testing)' : `Changes to ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} in ${fmtDays(a.left)}.`} One season per week.`;
+      $('seaChip').title = `${Seasons.TITLE[nm]} on the island: ${SEA_TXT[nm]}. ${Seasons.fix !== null ? '(fixed for testing)' : `${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]]} arrives in ${fmtDays(a.left)}.`} Each season lasts a week.`;
     }
     $('bookBtn').classList.toggle('ready', S.book.read < S.level || (!VISIT && Story.unread(S) > 0));
   }
@@ -652,8 +659,8 @@
   }
   function closeSay() { const el = $('treeSay'); el.classList.remove('in'); sayOpen = false; if (fx) fx.speak = false; clearInterval(sayTimer); setTimeout(() => { if (!sayOpen) el.hidden = true; }, 900); }
   function renderWords() {
-    const L = S.story.log; let h = `<p class="bsub">The Elder Tree speaks softly: a chapter of its story on the days you come by, a few words when something lovely happens, and its dreams while you are away. <b>${S.story.ch} / ${Story.CH.length}</b> chapters so far.</p><div class="wlist">`;
-    if (!L.length) h += `<div class="wtile"><p>The tree is still finding its words.</p></div>`;
+    const L = S.story.log; let h = `<p class="bsub">Everything the tree has said: a chapter of its story on each day you visit, a few words when something lovely happens, and its dreams while you are away. <b>${S.story.ch} / ${Story.CH.length}</b> chapters so far.</p><div class="wlist">`;
+    if (!L.length) h += `<div class="wtile"><p>The tree is still finding its first words.</p></div>`;
     for (let i = L.length - 1; i >= 0; i--) {
       const e = L[i], w = Story.words(e); if (!w) continue;
       const lab = w.kind === 'chapter' ? `${IC.tree}Chapter ${w.n}` : w.kind === 'dream' ? `${IC.moon}A dream` : `${IC.star}A moment`;
@@ -666,8 +673,8 @@
     $('dyDot').style.background = p.collar; $('dyTitle').textContent = `${p.name}'s diary`;
     const L = Story.diary(S, i);
     const tr = traitOf(i);
-    $('dyBody').innerHTML = (tr ? `<p class="dsub">${traitChip(i)} <i>${esc(p.name)} ${esc(Traits.INFO[tr].what)}.</i></p>` : '') + `<p class="dsub">${esc(p.name)} writes a line on the days something happens. Island day ${S.story.dn}.</p>` +
-      (L.length ? L.map(x => `<div class="dyl${x.today ? ' today' : ''}"><b>${x.today ? 'Today' : 'Day ' + x.dn}</b><span>${esc(x.text)}</span></div>`).join('') : `<div class="dyl"><span>Nothing written yet. Tomorrow, maybe!</span></div>`);
+    $('dyBody').innerHTML = (tr ? `<p class="dsub">${traitChip(i)} <i>${esc(p.name)} ${esc(Traits.INFO[tr].what)}.</i></p>` : '') + `<p class="dsub">${esc(p.name)} writes a line on the days something happens. Today is island day ${S.story.dn}.</p>` +
+      (L.length ? L.map(x => `<div class="dyl${x.today ? ' today' : ''}"><b>${x.today ? 'Today' : 'Day ' + x.dn}</b><span>${esc(x.text)}</span></div>`).join('') : `<div class="dyl"><span>The pages are still blank. Tomorrow, maybe!</span></div>`);
     $('diary').hidden = false; snd.sfx('open');
   }
   function closeDiary() { $('diary').hidden = true; snd.sfx('close'); }
@@ -685,11 +692,11 @@
     const p = S.pups[wardI]; if (!p) { closeWard(); return; }
     $('wdDot').style.background = p.collar; $('wdName').textContent = p.name;
     const own = new Set(S.inv.outfits);
-    $('wdNow').innerHTML = p.fit ? `${esc(p.name)} wears the <b>${esc(Wardrobe.name(p.fit))}</b>.` : own.size ? `${esc(p.name)} wears nothing yet: tap an outfit.` : 'No outfits yet: they come from the daily gift (day 7) and rare sky-trip finds.';
+    $('wdNow').innerHTML = p.fit ? `${esc(p.name)} wears the <b>${esc(Wardrobe.name(p.fit))}</b>.` : own.size ? `${esc(p.name)} isn't dressed up yet: tap an outfit.` : 'The wardrobe is empty for now: outfits come in the gift basket (day 7) and as rare skyboat finds.';
     $('wdGrid').innerHTML = Wardrobe.IDS.map(id => {
       const D = Wardrobe.DEFS[id], w = Wardrobe.wearer(S, id);
       if (!own.has(id)) return `<div class="wt lock"><i class="wsw">${IC.lock}</i><b>???</b><small>${Wardrobe.where(id)}</small></div>`;
-      return `<button class="wt${p.fit === id ? ' on' : ''}" data-fit="${id}"><i class="wsw" style="--c:${hex(D.look.col)};--c2:${hex(D.look.col2)}">${IC.scarf}</i><b>${esc(D.name)}</b><small>${w === wardI ? 'wearing it' : w >= 0 ? 'on ' + esc(S.pups[w].name) : 'free'}</small></button>`;
+      return `<button class="wt${p.fit === id ? ' on' : ''}" data-fit="${id}"><i class="wsw" style="--c:${hex(D.look.col)};--c2:${hex(D.look.col2)}">${IC.scarf}</i><b>${esc(D.name)}</b><small>${w === wardI ? 'wearing it' : w >= 0 ? 'on ' + esc(S.pups[w].name) : 'on the hook'}</small></button>`;
     }).join('');
     $('wdOff').disabled = !p.fit;
   }
@@ -701,7 +708,7 @@
     const P = pups.list[wardI]; if (P) floater([P.holder.position.x, P.holder.position.y + 9, P.holder.position.z], IC.heart);
     toast(`${IC.scarf}<b>${esc(p.name)}</b> puts on the ${esc(Wardrobe.name(id))}${r.from >= 0 ? ` (${esc(S.pups[r.from].name)} takes it off)` : ''}`, 2600);
   }
-  function wardOff() { const p = S.pups[wardI]; if (p && Wardrobe.off(S, wardI)) { save(); renderWard(); snd.sfx('assign'); toast(`${IC.scarf}${esc(p.name)} takes the outfit off`, 1800); } }
+  function wardOff() { const p = S.pups[wardI]; if (p && Wardrobe.off(S, wardI)) { save(); renderWard(); snd.sfx('assign'); toast(`${IC.scarf}${esc(p.name)} hangs the outfit back up`, 1800); } }
   function wardStep(d) { const n = S.pups.length; if (!n) return; wardI = ((wardI + d) % n + n) % n; focusPup(wardI, WARD_D); renderWard(); }
   // "Dress a pup" from a gift / haul: the selected pup, else the first one not wearing anything, else the first
   const wardWho = () => pups.selected >= 0 && S.pups[pups.selected] ? pups.selected : Math.max(0, S.pups.findIndex(p => !p.fit));
@@ -738,7 +745,7 @@
     // a new ring: the tree glows, a sting, a toast; the camera rises to watch if it is free (not following a pup / a boat)
     snd.sfx('theme_wave'); fx.burst();   // vibe 2 lane C: the Elderglow theme plays at each colour wave (was sting_bloom)
     const ring = Story.C.RINGS[rTo];
-    toast(`${IC.tree} Colour returns to <b>${ring.name}</b>${rTo === Story.C.RINGS.length - 1 ? ': the whole island is awake!' : ''}`, 6500, () => openBook('words'));
+    toast(`${IC.tree} Colour flows back into <b>${ring.name}</b>${rTo === Story.C.RINGS.length - 1 ? ': the whole island is awake!' : ''}`, 6500, () => openBook('words'));
     if (follow < 0 && !tween) {
       const back = { e: camera.position.clone(), t: controls.target.clone() }, TP = nav.TP, see = Math.min(640, to);
       const tg = new THREE.Vector3(TP[0], TP[1] + 20, TP[2]), eye = tg.clone().add(camera.position.clone().sub(controls.target).setY(0).setLength(see * 1.15 + 120)).setY(TP[1] + see * 0.7 + 90);
@@ -752,8 +759,8 @@
     if (snd && snd.sfx3) snd.sfx3('shimmer', c.x, c.y + 2, c.z);
     wokeList.push(wfx.NAMES[c.kind]); if (wokeT) return;
     wokeT = setTimeout(() => { const L = [...new Set(wokeList)]; wokeList = []; wokeT = null; if (!L.length || VISIT) return;
-      const S3 = L.length > 3 ? [...L.slice(0, 2), `${L.length - 2} more sleeping things`] : L;
-      toast(`${IC.sparkle || IC.tree} The colour woke ${S3.length > 1 ? S3.slice(0, -1).join(', ') + ' and ' + S3[S3.length - 1] : S3[0]}`, 6000); }, 4500);
+      const S3 = L.length > 3 ? [...L.slice(0, 2), `${L.length - 2} more sleepers`] : L;
+      toast(`${IC.sparkle || IC.tree} The colour reached ${S3.length > 1 ? S3.slice(0, -1).join(', ') + ' and ' + S3[S3.length - 1] : S3[0]}. ${L.length > 1 ? "They're" : "It's"} waking up!`, 6000); }, 4500);
   }
   // puddles: up while a shower falls, drying over ~40 min of island time after it
   // the ground's wetness for the view: a sudden shower (events) or a weather rain (src/weather.js, smoothed by weather_fx)
@@ -765,16 +772,16 @@
     const since = S.time - (last + Events.C.DUR.shower); return since < 0 ? 0 : Math.max(0, 1 - since / 2400);
   }
   // ---- step 5: seasons, growth stages, tree memories, the Book
-  const SEA_TXT = { spring: 'blossoms everywhere, gardeners +20 %', summer: 'long sunny days, the tree is thirstier, +10 % glow sap', autumn: 'harvest time: gathering + gardens +25 %, lanterns by the plaza', winter: 'snow, short days: light matters most (lantern paths +50 %), the tree drinks less' };
+  const SEA_TXT = { spring: 'blossoms everywhere, root gardeners +20 %', summer: 'long sunny days, a thirstier tree, +10 % glow sap', autumn: 'harvest time: gathering + gardens +25 %, lanterns round the plaza', winter: 'snow and short days: light matters most (lantern walks +50 %), the tree drinks less' };
   const fmtDays = sec => { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600); return d ? `${d} day${d > 1 ? 's' : ''}${h ? ' ' + h + ' h' : ''}` : fmtT(sec); };
-  const SEA_HELLO = { spring: 'Spring came to the island: blossoms and petals everywhere!', summer: 'Summer! Long sunny days (the tree is a bit thirstier)', autumn: 'Autumn: harvest time, and lanterns by the plaza', winter: 'Winter came: snow on the roofs. Light matters most now!' };
+  const SEA_HELLO = { spring: 'Spring drifts in: blossoms and petals everywhere!', summer: 'Summer is here! Long sunny days (the tree gets a little thirstier)', autumn: 'Autumn arrives: harvest time, and lanterns round the plaza', winter: 'Winter tiptoes in: snow on the roofs. Light matters most now!' };
   function seasonCheck() {
     const k = Seasons.of(S); if (k === null || k === S.book.sea || VISIT) return;
     const first = S.book.sea === -1;
     // vibe pass 1: on a fresh island the tree speaks first; the season note waits for its words (or ~25 s if it has none)
     if (first && (!booted || (sayOpen && performance.now() - sayT < 20000) || (session.n === 0 && performance.now() - bootAt < 25000))) return;
     S.book.sea = k; const nm = Seasons.NAMES[k];
-    toast(`${IC[nm]} ${first ? `It is <b>${Seasons.TITLE[nm]}</b> on the island: ${SEA_TXT[nm]}` : SEA_HELLO[nm]}`, 6500, () => openBook('mem'));
+    toast(`${IC[nm]} ${first ? `<b>${Seasons.TITLE[nm]}</b> on the island: ${SEA_TXT[nm]}` : SEA_HELLO[nm]}`, 6500, () => openBook('mem'));
   }
   // built cottages: a lantern by each door in autumn
   let doorSig = '', doors = [];
@@ -797,7 +804,7 @@
   function showMemory(lv) {
     const m = Growth.MEMORIES[lv]; if (!m) return; memOpen = lv;
     const un = (Growth.UNLOCKS[lv] || []).map(([ic, t]) => `<li>${IC[ic] || IC.star}<span>${t}</span></li>`).join('');
-    $('memBody').innerHTML = `<div class="mstage disp">${IC.memory} Level ${lv} &middot; ${Growth.stageName(lv)}</div><h2 class="disp">${m.title}</h2><p class="mtext">${m.text}</p>${lv > 1 ? `<h4>${IC.star} The tree's growth opened</h4><ul class="munl">${un}</ul>` : `<ul class="munl">${un}</ul>`}`;
+    $('memBody').innerHTML = `<div class="mstage disp">${IC.memory} Level ${lv} &middot; ${Growth.stageName(lv)}</div><h2 class="disp">${m.title}</h2><p class="mtext">${m.text}</p>${lv > 1 ? `<h4>${IC.star} Growing taller opened</h4><ul class="munl">${un}</ul>` : `<ul class="munl">${un}</ul>`}`;
     $('mem').hidden = false; if (S.book.read < lv) { S.book.read = lv; save(); }
   }
   function closeMemory() { $('mem').hidden = true; memOpen = 0; }
@@ -812,28 +819,28 @@
     let h = '';
     if (bookTab === 'mem') {
       const sk = Seasons.of(S);
-      if (sk !== null) { const nm = Seasons.NAMES[sk], a = Seasons.at(S.ep0 + S.time); h += `<div class="bseason sea-${nm}">${IC[nm]}<div><b>${Seasons.TITLE[nm]}</b><small>${SEA_TXT[nm]} &middot; ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} in ${fmtDays(a.left)}</small></div></div>`; }
-      h += `<p class="bsub">The Elder Tree remembers each time it grew. <b>${Growth.stageName(S.level)}</b> stage, level ${S.level} of 8.</p><div class="mgrid">`;
+      if (sk !== null) { const nm = Seasons.NAMES[sk], a = Seasons.at(S.ep0 + S.time); h += `<div class="bseason sea-${nm}">${IC[nm]}<div><b>${Seasons.TITLE[nm]}</b><small>${SEA_TXT[nm]} &middot; ${Seasons.TITLE[Seasons.NAMES[(sk + 1) % 4]].toLowerCase()} arrives in ${fmtDays(a.left)}</small></div></div>`; }
+      h += `<p class="bsub">Each time the Elder Tree grows, it keeps a memory. <b>${Growth.stageName(S.level)}</b> stage, level ${S.level} of 8.</p><div class="mgrid">`;
       for (let lv = 1; lv <= 8; lv++) {
         const m = Growth.MEMORIES[lv], got = lv <= S.level, nw = got && lv > S.book.read;
         h += got ? `<button class="mtile${nw ? ' new' : ''}" data-mem="${lv}"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b class="disp">${m.title}</b><small>${m.text.slice(0, 64)}...</small>${nw ? '<em>new</em>' : ''}</button>`
-          : `<div class="mtile lock"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b>${IC.lock} A memory not yet grown</b><small>${Growth.UNLOCKS[lv].map(u => u[1]).slice(0, 2).join(', ')}...</small></div>`;
+          : `<div class="mtile lock"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b>${IC.lock} A memory still sleeping in the bark</b><small>${Growth.UNLOCKS[lv].map(u => u[1]).slice(0, 2).join(', ')}...</small></div>`;
       }
       h += '</div>';
     } else if (bookTab === 'pups') {
       const by = {}; S.pups.forEach(p => { (by[p.breed] = by[p.breed] || []).push(p); });
       const met = Sim.BREEDS.filter(b => by[b]).length;
-      h += `<p class="bsub">Breeds met: <b>${met} / ${Sim.BREEDS.length}</b> &middot; ${S.pups.length} pups live on the island.</p><div class="pgrid">`;
+      h += `<p class="bsub">Breeds met: <b>${met} / ${Sim.BREEDS.length}</b> &middot; ${S.pups.length} pups call the island home.</p><div class="pgrid">`;
       for (const b of Sim.BREEDS) {
         const L = by[b] || [], c = L[0] ? L[0].collar : '#bbb';
-        h += `<div class="ptile${L.length ? '' : ' lock'}"><i class="pface" style="--c:${c}">${IC.paw}</i><b class="disp">${BREED_N[b] || b}</b><small>${L.length ? `${L.length} on the island: ${L.slice(0, 4).map(p => esc(p.name)).join(', ')}${L.length > 4 ? ' +' + (L.length - 4) : ''}` : b === 'noodle' ? 'not met yet: they live on the floating isles' : 'not met yet'}</small></div>`;
+        h += `<div class="ptile${L.length ? '' : ' lock'}"><i class="pface" style="--c:${c}">${IC.paw}</i><b class="disp">${BREED_N[b] || b}</b><small>${L.length ? `${L.length} on the island: ${L.slice(0, 4).map(p => esc(p.name)).join(', ')}${L.length > 4 ? ' +' + (L.length - 4) : ''}` : b === 'noodle' ? 'not met yet: they live out on the floating isles' : 'not met yet'}</small></div>`;
       }
-      const sp = [['Lumen', S.inv.lumen || S.pups.some(p => p.special), 'the glowing pup of the daily gift (day 14)']].concat(Exped.ISLE_PUPS.map(p => [p.name, S.pups.some(q => q.id === p.id), 'a rare find on a sky trip']));
-      h += `</div><h4>${IC.star} Special pups</h4><div class="pgrid sm">` + sp.map(([n, got, w]) => `<div class="ptile${got ? '' : ' lock'}"><i class="pface" style="--c:${got ? '#9fe8ff' : '#bbb'}">${IC.paw}</i><b class="disp">${got ? n : '???'}</b><small>${got ? 'lives here!' : w}</small></div>`).join('') + '</div>';
+      const sp = [['Lumen', S.inv.lumen || S.pups.some(p => p.special), 'the glowing pup in the gift basket (day 14)']].concat(Exped.ISLE_PUPS.map(p => [p.name, S.pups.some(q => q.id === p.id), 'a rare find on a skyboat trip']));
+      h += `</div><h4>${IC.star} Rare pups</h4><div class="pgrid sm">` + sp.map(([n, got, w]) => `<div class="ptile${got ? '' : ' lock'}"><i class="pface" style="--c:${got ? '#9fe8ff' : '#bbb'}">${IC.paw}</i><b class="disp">${got ? n : '???'}</b><small>${got ? 'lives here now!' : w}</small></div>`).join('') + '</div>';
     } else if (bookTab === 'decor') {
       const have = {}; for (const d of S.inv.decor) have[d] = (have[d] || 0) + 1; for (const x of S.placed) have[x.id] = (have[x.id] || 0) + 1;
       const ids = Object.keys(Exped.DECOR), n = ids.filter(d => have[d]).length;
-      h += `<p class="bsub">Decorations found: <b>${n} / ${ids.length}</b> (sky trips, the trader, the daily gift).</p><div class="pgrid">`;
+      h += `<p class="bsub">Treasures found: <b>${n} / ${ids.length}</b> (skyboat trips, the trader, the gift basket, the crafting nook).</p><div class="pgrid">`;
       for (const d of ids) h += `<div class="ptile${have[d] ? '' : ' lock'}"><i class="dface">${have[d] ? IC.decor : IC.lock}</i><b class="disp">${have[d] ? decorName(d) : '???'}</b><small>${have[d] ? `${have[d]} found &middot; ${S.placed.filter(x => x.id === d).length} placed` : findWhere(d)}</small></div>`;
       h += '</div>';
     } else if (bookTab === 'words') {
@@ -841,12 +848,12 @@
     } else if (bookTab === 'crit') {
       h += renderCritters();
     } else if (bookTab === 'lan') {   // Round 2 step 4: lanterns received + sent
-      h += lan ? lan.bookHtml() : '<p class="bsub">Lanterns live on your own island.</p>';
+      h += lan ? lan.bookHtml() : '<p class="bsub">Lanterns only float over your own island.</p>';
     } else {
       const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
-      h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>.${VISIT ? '' : ' Tap one to dress a pup.'}</p><div class="pgrid">`;
+      h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>.${VISIT ? '' : ' Tap one to dress a pup up.'}</p><div class="pgrid">`;
       for (const o of all) { const w = Wardrobe.wearer(S, o), tag = own.has(o) && !VISIT ? 'button' : 'div';
-        h += `<${tag} class="ptile${own.has(o) ? ' fitt' : ' lock'}"${tag === 'button' ? ` data-bfit="${o}"` : ''}><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? (w >= 0 ? 'worn by ' + esc(S.pups[w].name) : 'in the wardrobe') : Wardrobe.where(o)}</small></${tag}>`; }
+        h += `<${tag} class="ptile${own.has(o) ? ' fitt' : ' lock'}"${tag === 'button' ? ` data-bfit="${o}"` : ''}><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? (w >= 0 ? 'worn by ' + esc(S.pups[w].name) : 'on its hook') : Wardrobe.where(o)}</small></${tag}>`; }
       h += '</div>';
     }
     $('bookBody').innerHTML = h;
@@ -859,13 +866,13 @@
   const cface = (sp, st) => { const T = cthumb(), u = T && T[sp.id]; return u ? `<img class="cpic${st === 'unknown' ? ' sil' : st === 'glimpsed' ? ' glim' : ''}" src="${u}" alt="">` : `<i class="cface${st === 'unknown' ? ' sil' : st === 'glimpsed' ? ' glim' : ''}" style="--c:${sp.col}"></i>`; };
   function renderCritters() {
     const ring = Story.ringOf(Story.bloom(S)), here = S.crit.vis.filter(v => Critters.BY[v.c]);
-    let h = `<p class="bsub">Critters seen: <b>${Critters.seenN(S)} / ${Critters.SP.length}</b>. Wild sky creatures visit when the island has what they love: place decorations, build, and look out for them. Tap a visitor to meet it.</p>`;
-    if (here.length) h += `<div class="chere"><span style="font:600 13px Fredoka,sans-serif;align-self:center">Here now:</span>${here.map(v => { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); return `<button data-crit="${v.id}"><i class="cdot" style="--c:${sp.col}"></i>${st === 'unknown' ? 'Someone new!' : esc(sp.name)}</button>`; }).join('')}</div>`;
+    let h = `<p class="bsub">Sky critters met: <b>${Critters.seenN(S)} / ${Critters.SP.length}</b>. Wild sky creatures drop by when the island has what they love: place treasures, build, and keep an eye out. Tap a visitor to say hello.</p>`;
+    if (here.length) h += `<div class="chere"><span style="font:600 13px Fredoka,sans-serif;align-self:center">Visiting now:</span>${here.map(v => { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); return `<button data-crit="${v.id}"><i class="cdot" style="--c:${sp.col}"></i>${st === 'unknown' ? 'Someone new!' : esc(sp.name)}</button>`; }).join('')}</div>`;
     h += '<div class="pgrid">';
     for (const sp of Critters.SP) {
       const st = Critters.status(S, sp.id), e = S.crit.al[sp.id] || { v: 0, s: 0, g: 0 }, hn = Critters.hint(S, sp.id, ring);
       if (st === 'seen') h += `<div class="ptile ctile" data-csp="${sp.id}" style="cursor:pointer">${cface(sp, st)}<b class="disp">${esc(sp.name)}</b><span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span><small class="cwhen">${sp.whenT}</small><small>seen ${e.s}&times; &middot; ${e.v} visit${e.v === 1 ? '' : 's'}${e.g ? ` &middot; ${e.g} gift${e.g === 1 ? '' : 's'}` : ''}</small></div>`;
-      else if (st === 'glimpsed') h += `<div class="ptile ctile glim">${cface(sp, st)}<b class="disp">${esc(sp.name)}</b><span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span><small class="ch">It came by ${e.v}&times;, but you have not met yet. Tap it next time!</small><small class="cwhen">${esc(hn.text)}</small></div>`;
+      else if (st === 'glimpsed') h += `<div class="ptile ctile glim">${cface(sp, st)}<b class="disp">${esc(sp.name)}</b><span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span><small class="ch">It has come by ${e.v}&times;, but you haven't met yet. Tap it next time!</small><small class="cwhen">${esc(hn.text)}</small></div>`;
       else h += `<div class="ptile ctile lock">${cface(sp, st)}<b class="disp">???</b>${sp.rar === 'legendary' ? `<span class="rar legendary">${RAR_T.legendary}</span>` : ''}<small class="ch">${esc(hn.text)}</small></div>`;
     }
     return h + '</div>';
@@ -874,7 +881,7 @@
   function openCritCard(cid, v, first) {
     const sp = Critters.BY[cid]; if (!sp) return; const e = S.crit.al[cid] || { v: 0, s: 0, g: 0 };
     critOpen = v ? v.id : null;
-    $('ccBody').innerHTML = `<div class="cch">${cface(sp, 'seen')}<div><h3>${esc(sp.name)}<span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span></h3>${first ? `<span class="cnew">${IC.star} New in your album!</span>` : ''}</div></div>
+    $('ccBody').innerHTML = `<div class="cch">${cface(sp, 'seen')}<div><h3>${esc(sp.name)}<span class="rar ${sp.rar}">${RAR_T[sp.rar]}</span></h3>${first ? `<span class="cnew">${IC.star} A new friend for the album!</span>` : ''}</div></div>
       <p>${esc(sp.note)}</p><div class="cmeta"><span>${IC.clock} ${sp.whenT}</span>${v ? `<span>${IC.critter} ${esc(Critters.where(S, v, nav))}</span>` : ''}<span>${IC.heart} loves ${esc(sp.fav)}</span><span>seen ${e.s}&times; &middot; ${e.v} visit${e.v === 1 ? '' : 's'}${e.g ? ` &middot; ${e.g} gift${e.g === 1 ? '' : 's'}` : ''}</span>${sp.gift ? `<span>${IC.gift} sometimes leaves ${esc(sp.gift.name)}</span>` : ''}</div>`;
     $('critCard').hidden = false;
   }
@@ -887,7 +894,7 @@
   }
   // tap a visitor (or a "Go see" button): the card; first sighting = sparkle + sting. fly = move the camera there first.
   function meetCritter(id, fly) {
-    const v = S.crit.vis.find(x => x.id === id); if (!v) { toast(`${IC.critter} It has already wandered off. It will be back!`, 2600); return; }
+    const v = S.crit.vis.find(x => x.id === id); if (!v) { toast(`${IC.critter} It has already wandered off. It'll be back!`, 2600); return; }
     if (fly) critCam(id);
     if (VISIT) { openCritCard(v.c, v, false); return; }   // someone else's island: look, never write their album
     const r = Critters.tap(S, id); if (!r) return;
@@ -930,7 +937,7 @@
     }
     follow = -1; pups.select(-1); flyTo(tgt.clone().add(dir.multiplyScalar(d)).add(up), tgt, 1.3);
   }
-  const findWhere = d => { if (Catalog.BY[d] && Catalog.BY[d].from === 'craft') return 'craft it: the Craft card'; const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the trader' : 'a daily-gift present'; };
+  const findWhere = d => { if (Catalog.BY[d] && Catalog.BY[d].from === 'craft') return 'made in the crafting nook'; const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the wandering trader' : 'tucked in a gift basket'; };
 
   // ---- daily gift (src/daily.js): calendar popup, opened by itself on the first open of a local day
   let giftPending = false, giftJust = null;
@@ -952,20 +959,20 @@
       return `<div class="gt${x.done ? ' done' : ''}${x.today ? ' today' : ''}${x.k === 6 ? ' rare' : ''}${giftJust !== null && x.today && x.done ? ' pop' : ''}"><b>Day ${x.k + 1}</b><div class="gi">${ic}</div><small>${items.join(' ')}</small>${x.done ? `<i class="stamp">${IC.paw}</i>` : ''}${x.k === 6 ? '<em>rare</em>' : ''}</div>`;
     }).join('');
     let msg = '';
-    if (st.back) msg = `Your clock seems to have gone back in time. The next gift opens on your next new day.`;
-    else if (st.can && st.missed) msg = `Welcome back! Your calendar waited for you: nothing was lost.`;
-    else if (st.can) msg = `A gift from the Elder Tree for coming by today.`;
-    else msg = `Today's gift is in the pantry. Come back tomorrow for Day ${(S.daily.claims % 7) + 1}!`;
+    if (st.back) msg = `Your clock seems to have slipped back in time. The next basket waits for your next new day.`;
+    else if (st.can && st.missed) msg = `Welcome back! Missed a day? The calendar simply waits for you. Nothing is lost.`;
+    else if (st.can) msg = `The Elder Tree packed a basket for you, just for coming by today.`;
+    else msg = `Tucked into the pantry. Tomorrow's basket holds Day ${(S.daily.claims % 7) + 1}.`;
     $('gMsg').innerHTML = msg;
-    $('gStreak').innerHTML = `${IC.star}<b>${st.streak}</b> day${st.streak === 1 ? '' : 's'} in a row${st.bonusPct ? ` &middot; gifts +${st.bonusPct}%` : ''}`;
-    $('gMonth').innerHTML = `<span>${IC.moon} Monthly bonus</span><div class="bar"><i style="width:${Math.min(100, st.month.n / st.month.goal * 100).toFixed(0)}%"></i><span>${Math.min(st.month.n, st.month.goal)} / ${st.month.goal} days${st.month.done ? ' &middot; got it!' : ''}</span></div>`;
+    $('gStreak').innerHTML = `${IC.star}<b>${st.streak}</b> day${st.streak === 1 ? '' : 's'} in a row${st.bonusPct ? ` &middot; baskets +${st.bonusPct}%` : ''}`;
+    $('gMonth').innerHTML = `<span>${IC.moon} Moon bonus</span><div class="bar"><i style="width:${Math.min(100, st.month.n / st.month.goal * 100).toFixed(0)}%"></i><span>${Math.min(st.month.n, st.month.goal)} / ${st.month.goal} days${st.month.done ? ' &middot; yours!' : ''}</span></div>`;
     if (giftJust) {
       const g = giftJust, items = giftItems(g);
       if (g.month) { if (g.month.sap) items.push(`<span class="gl">${IC.sap}+${g.month.sap}</span>`); if (g.month.decor) items.push(`<span class="gl">${IC.jar}${Daily.DECOR[g.month.decor]}</span>`); if (g.month.seeds) items.push(`<span class="gl">${IC.seed}+${g.month.seeds} seeds</span>`); }
-      $('gGot').innerHTML = `<b>You got:</b> ${items.join(' ')}${g.month ? ' <b class="mb">+ monthly bonus!</b>' : ''}${g.pup ? `<br><small>${esc(g.pup.name)} moves in as soon as a bed is free.</small>` : g.outfit ? '<br><small>Find it in the wardrobe: tap a pup, then Wardrobe.</small> <button class="ghost sm" data-dress="1">Dress a pup</button>' : g.decor ? '<br><small>Place it on the island: Sky trips card, then Place.</small>' : g.seeds ? '<br><small>Seeds grow glow sprouts by the roots (gardeners work better).</small>' : ''}`;
+      $('gGot').innerHTML = `<b>In the basket:</b> ${items.join(' ')}${g.month ? ' <b class="mb">+ the moon bonus!</b>' : ''}${g.pup ? `<br><small>${esc(g.pup.name)} moves in as soon as a bed is free.</small>` : g.outfit ? '<br><small>It hangs in the wardrobe: tap a pup, then Wardrobe.</small> <button class="ghost sm" data-dress="1">Dress a pup</button>' : g.decor ? '<br><small>Place it on the island: Skyboats, then Place.</small>' : g.seeds ? '<br><small>Seeds grow glow sprouts by the roots (root gardeners work better).</small>' : ''}`;
       $('gGot').hidden = false;
     } else $('gGot').hidden = true;
-    $('gClaim').textContent = st.can ? 'Claim!' : 'Lovely!';
+    $('gClaim').textContent = st.can ? 'Open the basket' : 'Lovely!';
     $('gClaim').classList.toggle('pulse', st.can);
     $('giftBtn').classList.toggle('ready', st.can);
   }
@@ -975,7 +982,7 @@
     if (!Daily.status(S, new Date()).can) { closeGift(); return; }
     const g = Daily.claim(S, new Date()); if (!g) { closeGift(); return; }
     giftJust = g; save(); renderGift(); refreshTree(); snd.sfx('sting_gift');
-    toast(`${IC.gift} Daily gift: ${giftItems(g).join(' ')}`, 3200);
+    toast(`${IC.gift} Today's basket: ${giftItems(g).join(' ')}`, 3200);
   }
   function giftCheck(auto) {
     if (VISIT) return;
@@ -1001,20 +1008,20 @@
       const work = Sim.workOf(e.type, q), f = e.prog / work, cost = Sim.costOf(e.type, q);
       const on = S.pups.filter(p => p.tgt === pid && p.phase === 'build').length;
       let st;
-      if (!builders) st = 'needs a pup on Build';
-      else if (!e.paid) { const miss = Object.keys(cost).filter(k => have(k) < cost[k]).map(k => `${Math.ceil(cost[k] - have(k))} ${k === 'sap' ? 'glow sap' : k}`); st = miss.length ? 'waiting for ' + miss.join(' + ') : 'starting soon'; }
-      else st = on ? `${on} pup${on > 1 ? 's' : ''} building &middot; ~${fmtT((work - e.prog) / Math.max(1, on))} left` : 'builders on the way';
+      if (!builders) st = 'needs a builder';
+      else if (!e.paid) { const miss = Object.keys(cost).filter(k => have(k) < cost[k]).map(k => `${Math.ceil(cost[k] - have(k))} ${k === 'sap' ? 'glow sap' : k}`); st = miss.length ? 'a little more needed: ' + miss.join(' + ') : 'starting soon'; }
+      else st = on ? `${on} pup${on > 1 ? 's' : ''} building &middot; ~${fmtT((work - e.prog) / Math.max(1, on))} to go` : 'builders on the way';
       html += `<div class="qi" data-pid="${pid}">${IC[B_ICON[e.type]]}<div><b>${bName(e.type, q)}</b>${e.auto ? '<span class="auto">pups\' idea</span>' : ''}<div class="bar"><i style="width:${(f * 100).toFixed(1)}%"></i></div><small>${st}</small></div></div>`;
     }
-    if (!html) html = `<div class="qe">${S.decide ? 'Nothing needed right now; the pups will start something when the island needs it.' : 'No blueprints. Tap <b>Build</b> (or a plot sign) to place one.'}</div>`;
+    if (!html) html = `<div class="qe">${S.decide ? 'Nothing needed right now; the pups will start something when the island needs it.' : 'No plans on the table yet. Tap <b>Build</b> or a plot sign to sketch one.'}</div>`;
     // arrivals hint
     const beds = Sim.bedsOf(S, nav), n = S.pups.length;
     let why = '';
-    if (n >= beds) why = 'No free bed: build a home and a stray may move in.';
-    else if (S.res.food < Sim.C.ARRIVE_FOOD) why = 'The pantry is too low for newcomers.';
+    if (n >= beds) why = 'Every bed is taken: build a home and a wanderer may move in.';
+    else if (S.res.food < Sim.C.ARRIVE_FOOD) why = 'The pantry needs a few more berries before newcomers come.';
     else if (Sim.avgMorale(S) < Sim.C.ARRIVE_MORALE) why = 'The pups are a bit glum; newcomers wait for happier days.';
-    else if (S.time - S.lastArrive < Sim.C.ARRIVE_GAP) why = `A free bed! Next stray can come in ~${fmtT(Math.max(Sim.C.ARRIVE_GAP - (S.time - S.lastArrive), Sim.C.ARRIVE_WAIT - S.arrive))}.`;
-    else why = `A free bed! A stray is on the way (~${fmtT(Sim.C.ARRIVE_WAIT - S.arrive)}).`;
+    else if (S.time - S.lastArrive < Sim.C.ARRIVE_GAP) why = `A bed is free. The next wanderer may come in ~${fmtT(Math.max(Sim.C.ARRIVE_GAP - (S.time - S.lastArrive), Sim.C.ARRIVE_WAIT - S.arrive))}.`;
+    else why = `A bed is free, and a wanderer has noticed. Arrives in ~${fmtT(Sim.C.ARRIVE_WAIT - S.arrive)}.`;
     // vibe pass 1: a blueprint card appearing / leaving used to push the roster under the pointer (clicks landed on a
     // filter chip instead of a pup): while the pointer is on the panel, a change that would move the rows waits
     const qe = $('queue'), h0 = qe.offsetHeight, old = qe.innerHTML;
@@ -1052,40 +1059,40 @@
     if (!force && sig === plotSig) return; plotSig = sig;
     const builders = Math.max(1, S.pups.filter(p => p.job === 'build').length), nb = S.pups.filter(p => p.job === 'build').length;
     const fType = q.faction ? Object.keys(Sim.C.B).find(t => Sim.C.B[t].piece === q.piece) : null;   // step 5: the hall this plot holds
-    $('pcTitle').innerHTML = `${q.faction ? (fType ? IC[B_ICON[fType]] : IC.lock) : e ? IC[B_ICON[e.type]] : IC.home} ${plotName(q)} ${q.free ? '<small>on open land</small>' : `<small>${Math.round(q.d)} m walk</small>`}`;
+    $('pcTitle').innerHTML = `${q.faction ? (fType ? IC[B_ICON[fType]] : IC.lock) : e ? IC[B_ICON[e.type]] : IC.home} ${plotName(q)} ${q.free ? '<small>on open land</small>' : `<small>${Math.round(q.d)} m stroll</small>`}`;
     let h = '';
-    if (q.faction && !e && q.lv > S.level) h = `<p class="lockd">${IC.lock} <b>${q.faction.name}</b> &middot; ${q.faction.what}.<br>The old hall wakes up when the Elder Tree reaches <b>level ${q.faction.lv}</b> (${Growth.stageName(q.faction.lv)} stage; now ${S.level}).</p>${fType ? `<p class="sub">${gives(fType, q)}</p>` : ''}`;
-    else if (!e && q.lv > S.level) h = `<p class="lockd">${IC.lock} This land opens when the Elder Tree reaches <b>level ${q.lv}</b> (now ${S.level}).</p>`;
+    if (q.faction && !e && q.lv > S.level) h = `<p class="lockd">${IC.lock} <b>${q.faction.name}</b> &middot; ${q.faction.what}.<br>The old hall wakes when the Elder Tree reaches <b>level ${q.faction.lv}</b> (${Growth.stageName(q.faction.lv)} stage; now ${S.level}).</p>${fType ? `<p class="sub">${gives(fType, q)}</p>` : ''}`;
+    else if (!e && q.lv > S.level) h = `<p class="lockd">${IC.lock} This land opens when the Elder Tree grows to <b>level ${q.lv}</b> (now ${S.level}).</p>`;
     else if (!e) {
-      h = `<p class="sub">${q.faction ? `The old <b>${q.faction.name}</b> can be rebuilt: ${q.faction.what}.` : 'Pick what the pups should build here.'}${nb ? '' : ' <b>Nobody has the Build job yet.</b>'}</p>`;
+      h = `<p class="sub">${q.faction ? `The old <b>${q.faction.name}</b> can rise again: ${q.faction.what}.` : 'Pick what the pups should build here.'}${nb ? '' : ' <b>No pup is a builder yet.</b>'}</p>`;
       for (const type of Object.keys(Sim.C.B)) {
         if (!Sim.fits(q, type)) continue;   // a faction plot lists only its own hall; house plots never list halls
         const cost = Sim.costOf(type, q), work = Sim.workOf(type, q), B = Sim.C.B[type];
-        const why = B.need && Needs.awakeK(S, B.need) < 0 ? `With ${NEED_NAMES[B.need]}` : B.lv && S.level < B.lv ? `Tree level ${B.lv}` : B.one && Object.values(S.plots).some(e => e.type === type) ? 'Have one' : '';
+        const why = B.need && Needs.awakeK(S, B.need) < 0 ? `With ${NEED_NAMES[B.need]}` : B.lv && S.level < B.lv ? `Tree level ${B.lv}` : B.one && Object.values(S.plots).some(e => e.type === type) ? 'Built' : '';
         h += `<div class="bo${why ? ' off' : ''}">${IC[B_ICON[type]]}<div class="bi"><b>${bName(type, q)}</b><small>${gives(type, q)}</small><div class="cs">${costHtml(cost)}<span class="tm">${IC.clock}${fmtT(work / builders)}${nb > 1 ? ` with ${nb}` : ''}</span></div></div>${why ? `<span class="why">${IC.lock}${why}</span>` : `<button class="go" data-act="order" data-type="${type}">Build</button>`}</div>`;
       }
-      h += `<p class="sub small">Builders pay when they start and fetch missing wood / stone themselves. Glow sap comes from a healthy tree.</p>`;
-    } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}${q.free ? ' on a spot you picked' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the trip board</button>` : ''}` + homeTools(q, e);
+      h += `<p class="sub small">Builders pay when they start and fetch any missing wood or stone themselves. Glow sap comes from a happy tree.</p>`;
+    } else if (e.done) h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><p class="sub">Built by the pups${e.auto ? ' (their own idea)' : ''}${q.free ? ' on a spot you picked' : ''}.</p>${e.type === 'board' ? `<button class="go" data-act="exp">${IC.board} Open the skyboat dock</button>` : ''}` + homeTools(q, e);
     else {
       const work = Sim.workOf(e.type, q), f = e.prog / work, on = S.pups.filter(p => p.tgt === curPlot && p.phase === 'build').length;
-      const stage = !e.paid ? 'Blueprint (waiting for materials)' : f < plots.SCAF ? 'Scaffold' : f < 0.98 ? 'Frame' : 'Finishing';
+      const stage = !e.paid ? 'Plans (gathering materials)' : f < plots.SCAF ? 'Scaffolding' : f < 0.98 ? 'Framing' : 'Finishing touches';
       h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage} ${Math.floor(f * 100)}%</span></div>
-        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} left` : `Needs ${costHtml(Sim.costOf(e.type, q))}`}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Cancel blueprint${e.paid ? ' (refund)' : ''}</button>`;
+        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} to go` : `Waiting for ${costHtml(Sim.costOf(e.type, q))}`}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Roll up the plans${e.paid ? ' (refund)' : ''}</button>`;
     }
     $('pcBody').innerHTML = h;
   }
   // creative build part 2, buildings (src/homes.js): a home's colours (6 palettes + the kit's own), another roof (the next house
   // piece of its class), a quarter turn; a free home also moves + comes down (a built one only when nobody needs its beds)
-  const HOME_WHY = { far: 'Too far out: more land opens as the tree grows', tree: 'Too close to the Elder Tree', plaza: 'The plaza in front of the tree stays open', door: 'The door would face a wall, water or a bridge',
-    road: 'The door must be within 25 m of a path', blocked: 'The pups could not walk to its door (or to a job nearby)', bridge: 'Not on a bridge', path: 'It would stand on a path', water: 'Not in the water',
-    building: 'Another building is in the way', nature: 'A tree or rock is in the way', decor: 'A decoration is in the way', job: 'The pups work right there', full: `The island has ${Homes.C.MAX} homes of your own already`,
-    level: `Treehouses come at tree level ${Homes.C.TREE_LV}`, beds: 'Pups live here: build another home first', none: 'Not here', land: 'Not on open ground' };
+  const HOME_WHY = { far: 'Not yet: more land opens as the tree grows', tree: 'A little too close to the Elder Tree', plaza: 'The plaza in front of the tree stays open', door: 'The door would face a wall, water or a bridge',
+    road: 'The door wants a path within 25 m', blocked: 'The pups couldn\'t reach its door (or a job nearby)', bridge: 'Not on a bridge', path: 'It would sit on a path', water: 'Not in the water',
+    building: 'Another building is in the way', nature: 'A tree or rock is in the way', decor: 'A treasure is in the way', job: 'The pups work right there', full: `The island already has ${Homes.C.MAX} homes of your own`,
+    level: `Treehouses come at tree level ${Homes.C.TREE_LV}`, beds: 'Pups sleep here: build another home first', none: 'Not here', land: 'Only on open ground' };
   function homeTools(q, e) {
     if (!q || !e || VISIT) return '';
     const home = e.type === 'home', turnable = q.free || Homes.canTurn(q), roofs = home ? Homes.choices(S, nav, curPlot) : [];
     if (!home && !turnable) return '';
     let h = '<div class="hmt">';
-    if (home) h += `<div class="hmsw"><span>Colours</span>${['', ...Homes.PAL].map((p, i) => `<button class="hsw${(e.col || 0) === i ? ' on' : ''}" data-act="col" data-col="${i}" title="${i ? p.name : 'Kit colours'}" style="${i ? `background:linear-gradient(135deg,${p.roof} 0 48%,${p.wall} 48% 78%,${p.trim} 78%)` : ''}">${i ? '' : '&#8634;'}</button>`).join('')}</div>`;
+    if (home) h += `<div class="hmsw"><span>Colours</span>${['', ...Homes.PAL].map((p, i) => `<button class="hsw${(e.col || 0) === i ? ' on' : ''}" data-act="col" data-col="${i}" title="${i ? p.name : 'Its own colours'}" style="${i ? `background:linear-gradient(135deg,${p.roof} 0 48%,${p.wall} 48% 78%,${p.trim} 78%)` : ''}">${i ? '' : '&#8634;'}</button>`).join('')}</div>`;
     h += '<div class="hmb">';
     if (roofs.length > 1) h += `<button class="ghost sm" data-act="roof">${IC.home} Change roof</button>`;
     if (turnable) h += `<button class="ghost sm" data-act="turn">&#8635; Turn</button>`;
@@ -1096,12 +1103,12 @@
     const pid = curPlot, q = nav.plotBy[pid], e = S.plots[pid]; if (!q || !e) return;
     const r = {};
     if (a === 'col') { if (Homes.paint(S, pid, +el.dataset.col)) { save(); snd.sfx('pop'); } }
-    else if (a === 'roof') { const p = Homes.swap(S, nav, pid, r); if (p) { save(); syncPups(); snd.sfx('built'); toast(`${IC.home} A new roof!`, 1600); } else toast(`${IC.home} No other roof fits here: ${HOME_WHY[r.why] || 'not here'}`, 2600); }
+    else if (a === 'roof') { const p = Homes.swap(S, nav, pid, r); if (p) { save(); syncPups(); snd.sfx('built'); toast(`${IC.home} A fresh new roof!`, 1600); } else toast(`${IC.home} No other roof fits here: ${HOME_WHY[r.why] || 'not here'}`, 2600); }
     else if (a === 'turn') {
       if (Homes.turn(S, nav, pid, r)) { save(); syncPups(); snd.sfx('pop'); if (r.k > 1) toast(`${IC.home} Turned ${r.k * 90}&deg; (a quarter turn would not fit: ${HOME_WHY[r.why] || 'not here'})`, 3200); }
-      else toast(`${IC.home} It cannot turn here: ${HOME_WHY[r.why] || 'not here'}`, 2800);
+      else toast(`${IC.home} It can't turn here: ${HOME_WHY[r.why] || 'not here'}`, 2800);
     } else if (a === 'hmove') { const f = Homes.freeOf(S, pid); closePlot(); startHome(f.piece, pid); return; }
-    else if (a === 'hdown') { if (Homes.takeDown(S, nav, pid, r)) { save(); syncPups(); closePlot(); snd.sfx('close'); toast(`${IC.home} Taken down: half the materials are back in the pile`, 2600); return; } toast(`${IC.home} ${HOME_WHY[r.why] || 'Not now'}`, 2600); }
+    else if (a === 'hdown') { if (Homes.takeDown(S, nav, pid, r)) { save(); syncPups(); closePlot(); snd.sfx('close'); toast(`${IC.home} Taken down gently: half the materials are back in the pile`, 2600); return; } toast(`${IC.home} ${HOME_WHY[r.why] || 'Not now'}`, 2600); }
     plotSig = ''; renderPlot(true);
   }
 
@@ -1112,19 +1119,19 @@
   const expLv = p => Exped.lvOf(p.xpE);
   function haulItems(h) {   // [{ic, txt, rare}] in reveal order: resources, crystals, seeds, decor, rare
     const a = [];
-    for (const k of ['wood', 'stone', 'food']) if (h.res[k]) a.push({ ic: IC[k], txt: `+${h.res[k]}`, sub: JOB_NAMES[k] === 'Berries' ? 'berries' : k });
+    for (const k of ['wood', 'stone', 'food']) if (h.res[k]) a.push({ ic: IC[k], txt: `+${h.res[k]}`, sub: k === 'food' ? 'berries' : k });   // (compares the key: the display name changed in the UI voice pass)
     if (h.crystal) a.push({ ic: IC.crystal, txt: `+${h.crystal}`, sub: h.cache ? 'crystals (a cache!)' : 'crystals' });
     if (h.seeds) a.push({ ic: IC.seed, txt: `+${h.seeds}`, sub: 'seeds' });
-    for (const d of h.decor) a.push({ ic: IC.decor, txt: decorName(d), sub: 'decoration' });
+    for (const d of h.decor) a.push({ ic: IC.decor, txt: decorName(d), sub: 'treasure' });
     if (h.outfit) a.push({ ic: IC.scarf, txt: outfitName(h.outfit), sub: 'rare outfit!', rare: true });
-    if (h.pup) a.push({ ic: IC.paw, txt: esc(h.pup.name), sub: h.waits ? 'a Noodle pup! (moves in when a bed is free)' : 'a Noodle pup joins you!', rare: true });
+    if (h.pup) a.push({ ic: IC.paw, txt: esc(h.pup.name), sub: h.waits ? 'a Noodle pup! (moves in when a bed is free)' : 'a Noodle pup comes home with them!', rare: true });
     return a;
   }
   const haulLine = h => haulItems(h).map(x => `<span class="gl">${x.ic}${x.txt}${/^\+/.test(x.txt) && x.sub !== 'berries' && x.sub !== 'wood' && x.sub !== 'stone' ? ' ' + x.sub.split(' ')[0] : ''}</span>`).join(' ');
   function tripState(tr) {
-    if (tr.dep < 0) return { txt: 'boarding at the dock', f: 0 };
+    if (tr.dep < 0) return { txt: 'climbing aboard at the dock', f: 0 };
     const el = S.time - tr.dep, FLY = Math.min(Exped.C.FLY, tr.dur * 0.25), left = Math.max(0, tr.dep + tr.dur - S.time);
-    return { txt: el < FLY ? 'flying out' : left < FLY ? 'flying home!' : `exploring &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
+    return { txt: el < FLY ? 'sailing out' : left < FLY ? 'drifting home!' : `exploring &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
   }
   function openExp(view) {
     closePlot(); closeEvents(); closeNeed(); closeCraft(); expView = view || { v: 'home' }; $('expCard').hidden = false; renderExp(true);
@@ -1136,63 +1143,63 @@
     if (!force && sig === expSig) return; expSig = sig;
     const bd = Exped.board(S), body = $('ecBody');
     if (expView.v === 'plan') { renderPlan(body); return; }
-    $('ecTitle').innerHTML = `${IC.board} Sky trips`;
+    $('ecTitle').innerHTML = `${IC.board} The skyboat dock`;
     let h = '';
     if (bd === null) {
       const queued = Object.values(S.plots).some(e => e.type === 'board');
-      h += `<p class="lockd">${IC.lock} ${S.level < Exped.C.BOARD_LV ? `The floating isles drift close enough when the Elder Tree reaches <b>level ${Exped.C.BOARD_LV}</b> (now ${S.level}). Keep it healthy!` : queued ? 'The pups are building the <b>Expedition dock</b>. Trips start when it is done.' : 'Build an <b>Expedition dock</b> on a free plot (tap <b>Build</b>), then send pups to the floating isles.'}</p>`;
+      h += `<p class="lockd">${IC.lock} ${S.level < Exped.C.BOARD_LV ? `The floating isles drift close when the Elder Tree reaches <b>level ${Exped.C.BOARD_LV}</b> (now ${S.level}). Keep it glowing!` : queued ? 'The pups are building the <b>Skyboat dock</b>. The first crew sails when it is done.' : 'Build a <b>Skyboat dock</b> on a free plot (tap <b>Build</b>), then send a crew to the floating isles.'}</p>`;
       if (S.level >= Exped.C.BOARD_LV && !queued) h += `<button class="go" data-x="findplot">${IC.home} Pick a plot for the dock</button>`;
     }
     if (S.exp.hauls.length) {
-      h += `<h4>${IC.gift} Hauls to open</h4>`;
-      S.exp.hauls.forEach((x, k) => { h += `<div class="qi hl" data-x="haul" data-k="${k}">${IC.board}<div><b>${Exped.DEST[x.dest].name} team is back!</b><small>${x.names.map(esc).join(', ')}</small></div><button class="go">Open</button></div>`; });
+      h += `<h4>${IC.gift} Sacks of treasures</h4>`;
+      S.exp.hauls.forEach((x, k) => { h += `<div class="qi hl" data-x="haul" data-k="${k}">${IC.board}<div><b>The ${Exped.DEST[x.dest].name} crew is home!</b><small>${x.names.map(esc).join(', ')}</small></div><button class="go">Open</button></div>`; });
     }
     if (S.exp.trips.length) {
       h += `<h4>${IC.isle} Out in the sky <span class="cnt">${S.exp.trips.length}/${Exped.maxTrips(S)}</span></h4>`;
       for (const tr of S.exp.trips) {
         const st = tripState(tr), d = Exped.DEST[tr.dest];
-        h += `<div class="qi" data-x="look" data-id="${tr.id}">${IC.board}<div><b>${d.name}</b> <small class="inl">${Exped.TIERS[tr.tier].label}</small><div class="bar"><i style="width:${(st.f * 100).toFixed(1)}%"></i></div><small>${tr.team.map(i => `<span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}`).join(' ')} &middot; ${st.txt}</small></div>${tr.dep < 0 ? `<button class="ghost" data-x="recall" data-id="${tr.id}">Call off</button>` : ''}</div>`;
+        h += `<div class="qi" data-x="look" data-id="${tr.id}">${IC.board}<div><b>${d.name}</b> <small class="inl">${Exped.TIERS[tr.tier].label}</small><div class="bar"><i style="width:${(st.f * 100).toFixed(1)}%"></i></div><small>${tr.team.map(i => `<span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}`).join(' ')} &middot; ${st.txt}</small></div>${tr.dep < 0 ? `<button class="ghost" data-x="recall" data-id="${tr.id}">Stay home</button>` : ''}</div>`;
       }
     }
     h += `<h4>${IC.isle} Floating isles</h4>`;
     for (const d of Exped.DEST) {
       const ok = Exped.unlocked(S, d);
       const finds = d.locked ? '' : Object.keys(d.res).map(k => IC[k]).join('') + (d.roll.crystal >= 2 ? IC.crystal : '') + (d.roll.seeds >= 2 ? IC.seed : '') + (d.roll.decor >= 2 ? IC.decor : '') + (d.rare ? IC.star : '');
-      h += `<div class="bo dest${ok ? '' : ' off'}" data-x="${ok ? 'plan' : 'peek'}" data-d="${d.i}">${IC.isle}<div class="bi"><b>${d.name}</b><small>${d.blurb}</small>${ok ? `<div class="cs">${finds}</div>` : ''}</div>${ok ? `<button class="go"${bd === null ? ' disabled' : ''}>Plan</button>` : `<span class="why">${IC.lock}${d.locked ? `Lv ${d.lv}, later` : `Tree Lv ${d.lv}`}</span>`}</div>`;
+      h += `<div class="bo dest${ok ? '' : ' off'}" data-x="${ok ? 'plan' : 'peek'}" data-d="${d.i}">${IC.isle}<div class="bi"><b>${d.name}</b><small>${d.blurb}</small>${ok ? `<div class="cs">${finds}</div>` : ''}</div>${ok ? `<button class="go"${bd === null ? ' disabled' : ''}>Plan</button>` : `<span class="why">${IC.lock}${d.locked ? 'Far sky, soon' : `Tree Lv ${d.lv}`}</span>`}</div>`;
     }
     // decorations: what you own (not placed) + what's out on the island
     const own = {}; for (const id of S.inv.decor) own[id] = (own[id] || 0) + 1;
     const ids = Object.keys(own);
-    h += `<h4>${IC.decor} Decorations <small class="inl">${S.placed.length} on the island</small><button class="go sm" data-x="craft" style="margin-left:auto">Craft</button></h4>`;
-    if (!ids.length) h += `<div class="qe">Expeditions bring back wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to place anywhere on your island.</div>`;
-    else h += `<p class="sub small">Place one anywhere on open ground. Tap one on the island to move, turn or pack it away.</p>`;
+    h += `<h4>${IC.decor} Treasures <small class="inl">${S.placed.length} on the island</small><button class="go sm" data-x="craft" style="margin-left:auto">Craft</button></h4>`;
+    if (!ids.length) h += `<div class="qe">Skyboat crews bring home wisp trees, rune boulders, glow shrooms, fairy rings and crystal pillars to set anywhere on your island.</div>`;
+    else h += `<p class="sub small">Set one anywhere on open ground. Tap one on the island to move, turn or pack it away.</p>`;
     for (const id of ids) {
       const free = Exped.ownedFree(S, id), placed = S.placed.filter(x => x.id === id);
-      h += `<div class="dec">${IC.decor}<b>${decorName(id)}</b><small>${placed.length} placed${free ? ` &middot; ${free} in the shed` : ''}</small>${free > 0 ? `<button class="go sm" data-x="place" data-id="${id}">Place</button>` : ''}${placed.length ? `<button class="ghost sm" data-x="unplace" data-k="${placed[placed.length - 1].k}">Put away</button>` : ''}</div>`;
+      h += `<div class="dec">${IC.decor}<b>${decorName(id)}</b><small>${placed.length} placed${free ? ` &middot; ${free} in the shed` : ''}</small>${free > 0 ? `<button class="go sm" data-x="place" data-id="${id}">Place</button>` : ''}${placed.length ? `<button class="ghost sm" data-x="unplace" data-k="${placed[placed.length - 1].k}">Pack away</button>` : ''}</div>`;
     }
-    h += `<p class="sub small">Trips are risk-free: nobody gets lost, bad luck just means a smaller haul. A team away does no island work but packs its own berries.</p>`;
+    h += `<p class="sub small">Every pup always comes home. A quiet sky only means a smaller sack. A crew away does no island work but packs its own berries.</p>`;
     body.innerHTML = h;
   }
   function renderPlan(body) {
     const pv = expView, d = Exped.DEST[pv.dest], T = Exped.TIERS[pv.tier];
     $('ecTitle').innerHTML = `${IC.isle} ${d.name}`;
-    let h = `<p class="sub">${d.blurb} Pick 1-4 pups: a pup who loves a job finds more of its kind.</p><div class="tiers">`;
+    let h = `<p class="sub">${d.blurb} Pick a crew of 1-4 pups: a pup who loves a job finds more of its kind.</p><div class="tiers">`;
     Exped.TIERS.forEach((t, k) => { h += `<button data-x="tier" data-k="${k}" class="${k === pv.tier ? 'on' : ''}">${IC.clock}${t.label}<small>${IC.food}${t.food}/pup</small></button>`; });
     h += `</div><div class="team">`;
     S.pups.forEach((p, i) => {
       const on = pv.team.includes(i), bz = Exped.busy(p), w = Exped.LIKE[p.like], good = w && (!['wood', 'stone', 'food'].includes(w) || d.res[w]);
-      h += `<button class="tp${on ? ' on' : ''}${bz ? ' busy' : ''}" data-x="pick" data-i="${i}"${bz ? ' disabled' : ''}><span class="dot" style="background:${p.collar}"></span><b>${esc(p.name)}</b><span class="xl">Explorer ${expLv(p)}</span><small>${bz ? (p.exp ? 'on a trip' : 'arriving') : `loves ${IC[p.like] || ''}${good ? ` <i class="bon">${Exped.LIKE_TXT[w]}</i>` : ''}`}</small>${on ? `<em>${pv.team.indexOf(i) + 1}</em>` : ''}</button>`;
+      h += `<button class="tp${on ? ' on' : ''}${bz ? ' busy' : ''}" data-x="pick" data-i="${i}"${bz ? ' disabled' : ''}><span class="dot" style="background:${p.collar}"></span><b>${esc(p.name)}</b><span class="xl">Explorer ${expLv(p)}</span><small>${bz ? (p.exp ? 'away on a skyboat' : 'just arriving') : `loves ${IC[p.like] || ''}${good ? ` <i class="bon">${Exped.LIKE_TXT[w]}</i>` : ''}`}</small>${on ? `<em>${pv.team.indexOf(i) + 1}</em>` : ''}</button>`;
     });
     h += `</div>`;
     const c = Exped.canSend(S, nav, pv.dest, pv.tier, pv.team), est = pv.team.length ? Exped.estimate(S, pv.dest, pv.tier, pv.team) : null;
-    if (est) h += `<div class="est"><b>Likely haul</b> ${Object.keys(est.res).filter(k => est.res[k]).map(k => `<span class="gl">${IC[k]}~${est.res[k]}</span>`).join(' ')} <span class="gl">${IC.crystal}~${est.crystal}+</span> <span class="gl">${IC.gift}${est.rolls} bonus finds</span> <span class="gl">${IC.star}${Math.max(1, Math.round(est.rare * 100))}% rare</span><br><small>Supplies ${IC.food}${T.food * pv.team.length} &middot; back in ${T.label} (online or not) &middot; +${T.xp} explorer xp each</small></div>`;
+    if (est) h += `<div class="est"><b>Likely treasures</b> ${Object.keys(est.res).filter(k => est.res[k]).map(k => `<span class="gl">${IC[k]}~${est.res[k]}</span>`).join(' ')} <span class="gl">${IC.crystal}~${est.crystal}+</span> <span class="gl">${IC.gift}${est.rolls} bonus finds</span> <span class="gl">${IC.star}${Math.max(1, Math.round(est.rare * 100))}% rare</span><br><small>Packed berries ${IC.food}${T.food * pv.team.length} &middot; home in ${T.label} (even while you're away) &middot; +${T.xp} explorer xp each</small></div>`;
     h += `<div class="pf"><button class="ghost" data-x="back">&#9664; Isles</button><button class="big${c.ok ? ' pulse' : ''}" data-x="send"${c.ok ? '' : ' disabled'}>${IC.board} Set sail!</button></div>${c.ok ? '' : `<p class="why2">${c.why}</p>`}`;
     body.innerHTML = h;
   }
   function sendTrip(dest, tier, team) {
     const tr = Exped.send(S, nav, dest, tier, team); if (!tr) return null;
     const d = Exped.DEST[dest]; save(); syncPups(); refreshRoster(true);
-    toast(`${IC.board} ${team.map(i => esc(S.pups[i].name)).join(', ')} ${team.length > 1 ? 'are' : 'is'} off to <b>${d.name}</b>!`, 3600);
+    toast(`${IC.board} ${team.map(i => esc(S.pups[i].name)).join(', ')} ${team.length > 1 ? 'sail' : 'sails'} for <b>${d.name}</b>!`, 3600);
     closeExp(); dockCam(dest);
     return tr;
   }
@@ -1220,7 +1227,7 @@
   // ---- Round 3 update 2: photo mode. Hides the HUD; the camera orbits / tilts freely; time-of-day + season PREVIEW (view only:
   // the sky + season tint read PHOTO, the sim's clock and season never change); a frame; Save image = a PNG download (no upload).
   let PHOTO = null;   // { h: preview hour | null = now, sea: season index | null = now, frame: 'none' | 'soft' | 'card' }
-  const PH_SEA = ['Now', 'Spring', 'Summer', 'Autumn', 'Winter'], PH_FRAME = [['none', 'No frame'], ['soft', 'Soft'], ['card', 'Card']];
+  const PH_SEA = ['Now', 'Spring', 'Summer', 'Autumn', 'Winter'], PH_FRAME = [['none', 'No frame'], ['soft', 'Soft glow'], ['card', 'Postcard']];
   function openPhoto() {
     if (!booted || PHOTO) return; closeExp(); closePlot(); closeEvents(); closeNeed(); closeCraft(); closeWard(); closeSay(); closeDecMenu(); if (soc) soc.close(); endPlace();
     follow = -1; pups.select(-1); tween = null; boatCam = null;
@@ -1236,7 +1243,7 @@
     $('phCap').textContent = photoCaption();
   }
   function photoCaption() {
-    const so = VISIT ? null : S.social, nm = VISIT && soc && soc.V ? (soc.V.name || '') : so && so.island ? so.island : 'My island';
+    const so = VISIT ? null : S.social, nm = VISIT && soc && soc.V ? (soc.V.name || '') : so && so.island ? so.island : 'My Elderglow isle';
     const d = new Date(); return `${nm} · ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
   }
   function savePhoto() {
@@ -1259,12 +1266,12 @@
   // Craft = paid at once, into the shed; Place starts place mode; Undo = a crafted one still in the shed comes back for its cost.
   let craftSet = 'path', craftOpen = false;
   const COST_IC = { wood: 'wood', stone: 'stone', food: 'food', crystal: 'crystal', sap: 'sap', seeds: 'seed' };
-  const CRAFT_WHY = { level: lv => `Tree level ${lv}`, rare: () => 'Found, not crafted' };
+  const CRAFT_WHY = { level: lv => `Tree level ${lv}`, rare: () => 'Found, never made' };
   function openCraft(set) { if (VISIT) return; closeExp(); closePlot(); closeEvents(); closeNeed(); if (set) craftSet = set; craftOpen = true; $('craftCard').hidden = false; renderCraft(); snd.sfx('open'); }
   function closeCraft() { if (!craftOpen) return; craftOpen = false; $('craftCard').hidden = true; }
   function renderCraft() {
     if (!craftOpen) return;
-    $('crTitle').innerHTML = `${IC.decor} Craft for the island`;
+    $('crTitle').innerHTML = `${IC.decor} The crafting nook`;
     $('crSets').innerHTML = Catalog.SETS.filter(t => Catalog.LIST.some(e => e.set === t.id)).map(t => `<button data-set="${t.id}" class="${t.id === craftSet ? 'on' : ''}">${t.name}</button>`).join('') +
       `<button data-set="land" class="${craftSet === 'land' ? 'on' : ''}">Shape the land</button>` +   // creative build part 2
       `<button data-set="homes" class="${craftSet === 'homes' ? 'on' : ''}">Place a home</button>`;   // (buildings: a home on open land)
@@ -1274,11 +1281,11 @@
     for (const e of Catalog.LIST.filter(x => x.set === craftSet)) {
       const shed = Catalog.inShed(S, e.id), out = S.placed.filter(x => x.id === e.id).length, F = e.fx ? Catalog.FX[e.fx] : null, c = Catalog.canCraft(S, e.id);
       const lock = e.from === 'craft' && c.why === 'level';
-      h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC[F ? F.ic : 'decor'] || IC.decor}<b>${esc(e.name)}</b><small>${out ? out + ' placed' : ''}${out && shed ? ' &middot; ' : ''}${shed ? shed + ' in the shed' : ''}</small></div>`;
+      h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC[F ? F.ic : 'decor'] || IC.decor}<b>${esc(e.name)}</b><small>${out ? out + ' out' : ''}${out && shed ? ' &middot; ' : ''}${shed ? shed + ' in the shed' : ''}</small></div>`;
       if (e.from === 'craft') h += `<div class="crc">${Object.keys(e.cost).map(k => `<span class="${c.need && c.need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${e.cost[k]}</span>`).join('')}</div>`;
-      h += F ? `<div class="crf">${IC.star}${esc(F.txt)}</div>` : `<div class="crf pure">Pure decoration</div>`;
-      h += `<div class="crb">${e.from !== 'craft' ? `<span class="why">${e.from === 'gift' ? 'A daily-gift present' : 'Found on sky trips'}</span>` : !c.ok ? `<span class="why">${c.why === 'cost' ? 'Not enough yet' : CRAFT_WHY[c.why] ? CRAFT_WHY[c.why](e.lv) : ''}</span>` : ''}`;
-      if (S.inv.craft[e.id] > 0 && shed > 0) h += `<button class="ghost sm" data-x="undo" data-id="${e.id}" title="Give it back: the full cost returns">Undo</button>`;
+      h += F ? `<div class="crf">${IC.star}${esc(F.txt)}</div>` : `<div class="crf pure">Just for beauty</div>`;
+      h += `<div class="crb">${e.from !== 'craft' ? `<span class="why">${e.from === 'gift' ? 'From a gift basket' : 'Found by skyboat crews'}</span>` : !c.ok ? `<span class="why">${c.why === 'cost' ? 'A little more needed' : CRAFT_WHY[c.why] ? CRAFT_WHY[c.why](e.lv) : ''}</span>` : ''}`;
+      if (S.inv.craft[e.id] > 0 && shed > 0) h += `<button class="ghost sm" data-x="undo" data-id="${e.id}" title="Take it apart: the full cost comes back">Undo</button>`;
       if (shed > 0) h += `<button class="ghost sm" data-x="place" data-id="${e.id}">Place</button>`;
       if (e.from === 'craft') h += `<button class="go sm" data-x="craft" data-id="${e.id}"${c.ok ? '' : ' disabled'}>Craft</button>`;
       h += `</div></div>`;
@@ -1286,8 +1293,8 @@
     $('crBody').innerHTML = h;
   }
   function craftAct(x, id) {
-    if (x === 'craft') { const r = Catalog.craft(S, id); if (!r.ok) return; save(); refreshTree(); snd.sfx('built'); toast(`${IC.decor} ${esc(decorName(id))} crafted: it's in the shed`, 2000); }
-    else if (x === 'undo') { if (!Catalog.uncraft(S, id)) return; save(); refreshTree(); snd.sfx('close'); toast(`${esc(decorName(id))} taken apart: the cost is back`, 1800); }
+    if (x === 'craft') { const r = Catalog.craft(S, id); if (!r.ok) return; save(); refreshTree(); snd.sfx('built'); toast(`${IC.decor} ${esc(decorName(id))} is ready, waiting in the shed`, 2000); }
+    else if (x === 'undo') { if (!Catalog.uncraft(S, id)) return; save(); refreshTree(); snd.sfx('close'); toast(`${esc(decorName(id))} taken apart: everything is back`, 1800); }
     else if (x === 'place') { closeCraft(); startPlace(id); return; }
     else if (x === 'land') { closeCraft(); startLand(id); return; }
     else if (x === 'home') { const k = Homes.KINDS.find(k => k.k === id); if (k) { closeCraft(); startHome(k.piece); } return; }
@@ -1296,11 +1303,11 @@
   // the Craft card's "Place a home" tab: a cottage / big cottage / treehouse anywhere on open land (its door within 25 m of a
   // path); it goes down as a blueprint the builders build like any plot (the usual cost, paid when they start)
   function homesCraftHtml() {
-    const n = (S.free || []).length; let h = `<p class="sub">Put a home anywhere on open land. Its door needs a path within 25 m; the builders build it like any plot. ${n} of ${Homes.C.MAX} placed.</p>`;
+    const n = (S.free || []).length; let h = `<p class="sub">Set a home anywhere on open land. Its door wants a path within 25 m; the builders raise it like any plot. ${n} of ${Homes.C.MAX} placed.</p>`;
     for (const k of Homes.KINDS) {
       const q = { piece: k.piece }, cost = Sim.costOf('home', q), lock = k.lv && S.level < k.lv, full = n >= Homes.C.MAX;
       h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC.home}<b>${k.name}</b><small>${IC.bed} +${Sim.bedsFor(q)} beds</small></div><div class="crc">${Object.keys(cost).map(c => `<span>${IC[COST_IC[c]] || ''}${cost[c]}</span>`).join('')}</div>`;
-      h += `<div class="crf">${IC.star}Paid when the builders start; colours, roof + turn from its plot card</div><div class="crb">${lock ? `<span class="why">Tree level ${k.lv}</span>` : full ? '<span class="why">As many as the island holds</span>' : ''}<button class="go sm" data-x="home" data-id="${k.k}"${lock || full ? ' disabled' : ''}>Place</button></div></div>`;
+      h += `<div class="crf">${IC.star}Paid when the builders start; colours, roof + turn from its plot card</div><div class="crb">${lock ? `<span class="why">Tree level ${k.lv}</span>` : full ? '<span class="why">The island is full of homes</span>' : ''}<button class="go sm" data-x="home" data-id="${k.k}"${lock || full ? ' disabled' : ''}>Place</button></div></div>`;
     }
     return h;
   }
@@ -1309,8 +1316,8 @@
   function openHaul(k) {
     const h = S.exp.hauls[k]; if (!h) return; haulK = k; closeExp();
     const d = Exped.DEST[h.dest], items = haulItems(h);
-    $('hTitle').innerHTML = `The ${d.name} team came back!`;
-    $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + `<small class="trip">${Exped.TIERS[h.tier].label} trip</small>`;
+    $('hTitle').innerHTML = `The skyboat drifts home from ${d.name}!`;
+    $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + `<small class="trip">a ${Exped.TIERS[h.tier].label} skyboat trip</small>`;
     $('hItems').innerHTML = items.map((x, m) => `<div class="hi${x.rare ? ' rare' : ''}" style="animation-delay:${(0.45 + m * 0.32).toFixed(2)}s">${x.ic}<b>${x.txt}</b><small>${x.sub}</small></div>`).join('');
     $('hSack').classList.remove('open'); void $('hSack').offsetWidth; $('hSack').classList.add('open');
     $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0); $('hWard').hidden = !h.outfit;
@@ -1327,9 +1334,9 @@
   // bar's turn buttons) rotate it 15 degrees; a mouse click or "Place here" puts it down. Phone: a tap moves the ghost there,
   // dragging the ghost slides it, dragging elsewhere moves the camera. The rules are the sim's own (Decor.check: water,
   // bridges, paths, doors, buildings, trees + rocks, other decor, the trunk, job spots, the pups' ways), plus lane A's props.
-  const WHY = { far: 'Too far out: more land opens as the tree grows', land: 'Not on open ground', tree: 'Too close to the Elder Tree', door: 'Keep the path to the tree door free',
-    water: 'Not in the water', bridge: 'Not on a bridge', path: 'Not on a path', building: 'Too close to a building', nature: 'A tree or rock is in the way',
-    decor: 'Something else is in the way', job: 'The pups work right here', blocked: 'That would block the pups\' way to a job', full: `The island has ${Decor.C.MAX} decorations already`, none: 'None left in the shed' };
+  const WHY = { far: 'Not yet: more land opens as the tree grows', land: 'Only on open ground', tree: 'A little too close to the Elder Tree', door: 'The way to the tree door stays open',
+    water: 'Not in the water', bridge: 'Not on a bridge', path: 'Not on a path', building: 'A little too close to a building', nature: 'A tree or rock is in the way',
+    decor: 'Something else is in the way', job: 'The pups work right here', blocked: 'That would block the pups\' way to a job', full: `The island already holds ${Decor.C.MAX} treasures`, none: 'None left in the shed' };
   let PM = null;   // place mode: { id, k (moving: its handle, else null), x, z, r, ok, why, done (full check ran), t (last change), drag }
   const pmRay = new THREE.Raycaster();
   function pickGround(mx, my) {   // the ground point under a screen point (the same march as walker.js), or null off the map
@@ -1356,24 +1363,24 @@
     const f = Nav.FOOT[piece]; return wfx && wfx.propHit && wfx.propHit(x + f[0], z + f[1], Math.max(f[2], f[3]) * 0.85) ? { ok: false, why: 'decor' } : c;
   }
   function pmShow() {
-    $('pbWhy').textContent = PM.ok ? (PM.done ? (PHONE ? 'Looks lovely here!' : 'Click to put it here') : 'Looking...') : (PM.home ? HOME_WHY : WHY)[PM.why] || 'Not here';
+    $('pbWhy').textContent = PM.ok ? (PM.done ? (PHONE ? 'Looks lovely here!' : 'Looks lovely here! Click to set it down') : 'Having a look...') : (PM.home ? HOME_WHY : WHY)[PM.why] || 'Not here';
     pmFx();
     $('placeBar').classList.toggle('bad', !PM.ok); $('pbOk').disabled = !PM.ok;
   }
   // Round 3 update 2: what this piece would do right here (src/catalog.js preview) + a soft ring of its reach round the ghost
   let pmFxKey = '';
-  const FX_HELP = { light: 'by a path: lantern keepers bring more light', garden: 'by a garden: the beds grow more', bloom: 'by a garden: the beds grow a little more', rest: 'a cozy seat: every pup a bit happier',
-    spirit: 'a happy spot: Spirit rises a little', protect: 'by a blight spot: it grows slower there', gather: 'by a work yard: gatherers bring more' };
-  const FX_NEED = { light: 'put it within 8 m of a path', garden: 'put it near a berry garden or a root bed', bloom: 'put it near a berry garden or a root bed', rest: 'put it near the plaza or a home',
-    spirit: 'put it near the plaza or the stage', protect: 'put it near where blight grows', gather: 'put it by a woodshed, stone pile or berry garden' };
+  const FX_HELP = { light: 'by a path: lamplighters bring more light', garden: 'by a garden: the beds grow more', bloom: 'by a garden: the beds grow a little more', rest: 'a cozy seat: every pup a bit happier',
+    spirit: 'a happy spot: Song rises a little', protect: 'by a blight spot: it creeps slower there', gather: 'tidy yard: gatherers bring more' };
+  const FX_NEED = { light: 'set it within 8 m of a path', garden: 'set it near a berry patch or a root bed', bloom: 'set it near a berry patch or a root bed', rest: 'set it near the plaza or a home',
+    spirit: 'set it near the plaza or the stage', protect: 'set it near where blight grows', gather: 'set it near a woodshed, stone yard or berry patch' };
   function pmFx() {
-    if (PM.home) { const el = $('pbFx'); el.hidden = false; el.className = PM.ok ? '' : 'none'; el.innerHTML = `${IC.bed} +${Sim.bedsFor({ piece: PM.home.piece })} beds &middot; ${PM.home.pid !== null ? 'it moves here as it is' : 'a blueprint the builders build here'}`; if (expFx.ring) expFx.ring(null); return; }
+    if (PM.home) { const el = $('pbFx'); el.hidden = false; el.className = PM.ok ? '' : 'none'; el.innerHTML = `${IC.bed} +${Sim.bedsFor({ piece: PM.home.piece })} beds &middot; ${PM.home.pid !== null ? 'it moves here just as it is' : 'plans the builders raise here'}`; if (expFx.ring) expFx.ring(null); return; }
     const e = Catalog.BY[PM.id], F = e && e.fx ? Catalog.FX[e.fx] : null, el = $('pbFx');
-    if (!F) { el.hidden = false; el.className = 'none'; el.textContent = 'Pure decoration'; if (expFx.ring) expFx.ring(null); return; }
+    if (!F) { el.hidden = false; el.className = 'none'; el.textContent = 'Just for beauty'; if (expFx.ring) expFx.ring(null); return; }
     const key = PM.id + PM.x + ',' + PM.z + PM.ok; if (key === pmFxKey) return; pmFxKey = key;
     const pv = PM.ok ? Catalog.preview(S, nav, PM.id, PM.x, PM.z) : null, on = !!(pv && pv.helps);
     el.hidden = false; el.className = on ? '' : 'none';
-    el.innerHTML = `${IC[F.ic] || IC.star} ${on ? FX_HELP[e.fx] : 'No effect here: ' + FX_NEED[e.fx]}`;
+    el.innerHTML = `${IC[F.ic] || IC.star} ${on ? FX_HELP[e.fx] : 'Just for beauty here: ' + FX_NEED[e.fx]}`;
     if (expFx.ring) expFx.ring([PM.x, PM.z], F.R, on);
   }
   function pmCheck(full) { if (!PM) return; const c = PM.home ? homeCheck(PM.home.piece, PM.x, PM.z, PM.r, PM.home.pid, full) : decorCheck(PM.id, PM.x, PM.z, PM.r, PM.k, full); PM.ok = c.ok; PM.why = c.why; PM.done = !!full || !c.ok; pmShow(); }
@@ -1456,7 +1463,7 @@
       if (pid < 0) { PM.ok = false; PM.why = res.why; PM.done = true; pmShow(); snd.sfx('close'); return false; }
       save(); snd.sfx('built'); syncPups(); refreshBuild(true);
       const builders = S.pups.filter(p => p.job === 'build').length, kd = Homes.KINDS.find(k => Homes.CLASS[k.piece] === Homes.CLASS[piece]);
-      toast(`${IC.home} ${mv ? 'Moved!' : `Blueprint: ${esc(kd ? kd.name : 'a home')} on open land${builders ? '' : ' &middot; give a pup the Build job'}`}`, 3000);
+      toast(`${IC.home} ${mv ? 'Moved!' : `Plans drawn: ${esc(kd ? kd.name : 'a home')} on open land${builders ? '' : ' &middot; a pup needs the Builder job'}`}`, 3000);
       endPlace(); return true;
     }
     const res = {}, id = PM.id, moving = PM.k !== null;
@@ -1464,7 +1471,7 @@
     if (!done) { PM.ok = false; PM.why = res.why; PM.done = true; pmShow(); snd.sfx('close'); return false; }
     DPREF.lastR = PM.r; saveDPref();   // "Same turn" next time
     save(); snd.sfx('built'); syncPups();
-    toast(`${IC.decor} ${esc(decorName(id))} ${moving ? 'moved' : 'placed'}!${!moving && Exped.ownedFree(S, id) > 0 ? ` ${Exped.ownedFree(S, id)} more in the shed.` : ''}`, 2400);
+    toast(`${IC.decor} ${esc(decorName(id))} ${moving ? 'has a new spot' : 'is in its place'}!${!moving && Exped.ownedFree(S, id) > 0 ? ` ${Exped.ownedFree(S, id)} more in the shed.` : ''}`, 2400);
     endPlace(); return true;
   }
   // tap a placed decoration (not in place mode): a little menu over it: Move / Turn / Pack away
@@ -1497,14 +1504,14 @@
       for (let n = 1; n < 8; n++) { const r = (o.r + n * Math.PI / 4) % (Math.PI * 2); if (decorCheck(o.id, o.x, o.z, r, k, true).ok && Decor.move(S, nav, k, o.x, o.z, r)) { DPREF.lastR = o.r; saveDPref(); save(); snd.sfx('pop'); return; } }
       toast(`${IC.decor} No room to turn it here`, 1800);
     } else if (a === 'tour') startTourPick({ t: 'd', r: k });   // piece 5: this piece as a stop on the guided tour
-    else if (a === 'pack') { closeDecMenu(); if (Decor.remove(S, nav, k)) { save(); syncPups(); snd.sfx('close'); toast(`${IC.decor} ${esc(decorName(o.id))} packed away in the shed`, 2000); } }
+    else if (a === 'pack') { closeDecMenu(); if (Decor.remove(S, nav, k)) { save(); syncPups(); snd.sfx('close'); toast(`${IC.decor} ${esc(decorName(o.id))} is tucked back in the shed`, 2000); } }
   }
   function placeDecor(id) { return startPlace(id); }   // (kept for tests + the old callers: place mode for that decoration)
 
   // ---- creative build piece 5: the guided tour. HOME: tour mode (Explore -> My island -> Add a stop, or a placed piece's "Tour stop"):
   // tap a decoration, a building or a spot (pins show the stops so far), type a note (the guestbook filter, 60 letters), Add stop.
   // VISIT: the Tour button -> Schiffy walks the host's stops (walker.tour) with the notes as a bubble over her; any input ends it.
-  const TOUR_WHY = { full: 'The tour has 6 stops: remove one first', dup: 'That is already a stop', gone: 'That is not there any more', far: 'Pick a spot on the island (dry land, near a path)' };
+  const TOUR_WHY = { full: 'The tour has all 6 stops: take one out first', dup: 'That is already a stop', gone: 'That is not there any more', far: 'Pick a spot on the island (dry land, near a path)' };
   let TPM = null;   // { tgt: {t, r, x, z} | null, label }
   const stopName = st => st.t === 'd' ? (() => { const o = S.placed.find(p => p.k === st.r); return o ? decorName(o.id) : 'A spot'; })()
     : st.t === 'h' ? (S.plots[st.r] ? bName(S.plots[st.r].type, nav.plotBy[st.r]) : 'A spot') : 'A spot';
@@ -1517,9 +1524,9 @@
   function tourTarget(tgt) { if (!TPM) return; TPM.tgt = tgt; TPM.label = stopName(tgt); snd.sfx('tap'); tpShow(); setTimeout(() => { const n = $('tbNote'); if (n && !PHONE) n.focus(); }, 0); }
   function tpShow(why) {
     const n = (S.tour || []).length, full = n >= Tour.C.MAX, el = $('tourBar');
-    $('tbName').innerHTML = `${IC.decor} ${TPM.show ? 'Your tour' : full ? 'Your tour is full' : `Tour stop ${n + 1} of ${Tour.C.MAX}`}`;
+    $('tbName').innerHTML = `${IC.decor} ${TPM.show ? 'Your island tour' : full ? 'Your tour is full' : `Tour stop ${n + 1} of ${Tour.C.MAX}`}`;
     el.classList.toggle('bad', !!why); el.classList.toggle('got', !why && !!TPM.tgt);
-    $('tbWhy').textContent = why || (TPM.show ? `${n} stop${n === 1 ? '' : 's'}: the numbers show where. Tap a spot to add another.` : TPM.tgt ? `Stop: ${TPM.label}. Add a note for visitors (optional).` : full ? 'Remove a stop in Explore > My island to add another.' : (PHONE ? 'Tap' : 'Click') + ' a decoration, a home or a spot on the island.');
+    $('tbWhy').textContent = why || (TPM.show ? `${n} stop${n === 1 ? '' : 's'}: the numbers show where. Tap a spot to add another.` : TPM.tgt ? `Stop: ${TPM.label}. Leave a note for visitors (optional).` : full ? 'Take a stop out in Visit > My island to add another.' : (PHONE ? 'Tap' : 'Click') + ' a treasure, a home or a spot on the island.');
     $('tbAdd').disabled = !TPM.tgt || full; $('tbNote').hidden = !TPM.tgt;
   }
   function tourPickAt(mx, my) {   // what the tap is on: a placed piece, then a building, then the ground
@@ -1531,7 +1538,7 @@
   function tourAdd() {
     if (!TPM || !TPM.tgt) return; const res = {}, i = Tour.add(S, nav, Object.assign({ note: $('tbNote').value }, TPM.tgt), res);
     if (i < 0) { tpShow(TOUR_WHY[res.why] || 'Note: ' + res.why); snd.sfx('close'); return; }
-    save(); snd.sfx('pop'); toast(`${IC.decor} Tour stop ${i + 1} added`, 1600); TPM.tgt = null; $('tbNote').value = ''; tpShow();
+    save(); snd.sfx('pop'); toast(`${IC.decor} Tour stop ${i + 1} is ready`, 1600); TPM.tgt = null; $('tbNote').value = ''; tpShow();
   }
   // pins over the stops (tour mode) + the guide's bubble over Schiffy (a visit): DOM, placed after each render
   const tpV = new THREE.Vector3();
@@ -1549,11 +1556,11 @@
     if (!VISIT || !walker || !S.tour) return false;
     const stops = Tour.stops(S, nav), n = stops.length, el = $('guideSay'), chip = $('tourChip');
     const say = (html, i) => { GUIDE = { i, n, text: html }; el.innerHTML = html; el.hidden = false; el.classList.remove('in'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in'))); };
-    chip.textContent = `Tour: stop 1 of ${n} · tap anywhere or press a key to stop`; chip.hidden = false; $('visHint').hidden = true;
+    chip.textContent = `Island tour: stop 1 of ${n} · tap or press a key to stop`; chip.hidden = false; $('visHint').hidden = true;
     const ok = walker.tour(stops, nav.trunkR(fx.scale), {
-      onLeg: i => { chip.textContent = `Tour: stop ${i + 1} of ${n} · tap anywhere or press a key to stop`; say(`<b>${i + 1} / ${n}</b>On the way...`, i); },
+      onLeg: i => { chip.textContent = `Island tour: stop ${i + 1} of ${n} · tap or press a key to stop`; say(`<b>${i + 1} / ${n}</b>Trotting along...`, i); },
       onStop: (i, s) => { snd.sfx('pop'); stopCam(s); say(`<b>${i + 1} / ${n}</b>${s.note ? '"' + esc(s.note) + '"' : esc(i ? 'And here!' : 'Here it is!')}<small>${esc(SOC_HOST())}'s tour</small>`, i); },
-      onEnd: skipped => { GUIDE = null; el.hidden = true; el.classList.remove('in'); chip.hidden = true; chip.textContent = 'Tap anywhere to skip'; if (!skipped) toast(`${IC.decor} That was ${esc(SOC_HOST())}'s tour. Lovely!`, 2600); },
+      onEnd: skipped => { GUIDE = null; el.hidden = true; el.classList.remove('in'); chip.hidden = true; chip.textContent = 'Tap anywhere to skip'; if (!skipped) toast(`${IC.decor} That was ${esc(SOC_HOST())}'s island tour. Lovely!`, 2600); },
     });
     if (!ok) chip.hidden = true;
     return ok;
@@ -1580,19 +1587,19 @@
   // forest tree on open land for wood once, or your own path / meadow / planted tree). Green / red + why like place mode; Undo =
   // the last change made this session. PC: left drag paints / click does it (right drag turns the view); phone: one finger paints
   // or taps, two fingers move the camera, "Here" confirms a tap.
-  const LAND_WHY = Object.assign({}, WHY, { short: 'Drag a little further', long: `Paths are capped at ${Land.C.TOTAL} m in all`, full: 'The island has as many as it can hold',
-    gather: 'The pups gather here: this tree stays', cost: 'Not enough yet', level: 'Needs a taller Elder Tree', none: 'Nothing of yours or a forest tree here' });
-  const MEADOW_R = [3.5, 5.5, 8], MEADOW_N = ['Mixed', 'Pink', 'Gold', 'Blue'], STYLE_N = ['Stepping stones', 'Packed earth'];
-  const LAND_TOOLS = { path: 'Paint a path', meadow: 'Lay a meadow', plant: 'Plant a tree', remove: 'Remove' };
+  const LAND_WHY = Object.assign({}, WHY, { short: 'Drag a little further', long: `Paths can wind ${Land.C.TOTAL} m in all`, full: 'The island holds as many as it can',
+    gather: 'The pups gather here: this tree stays', cost: 'A little more needed', level: 'Opens when the Elder Tree grows taller', none: 'Nothing of yours or a forest tree here' });
+  const MEADOW_R = [3.5, 5.5, 8], MEADOW_N = ['Wildflower', 'Rose', 'Buttercup', 'Bluebell'], STYLE_N = ['Stepping stones', 'Packed earth'];
+  const LAND_TOOLS = { path: 'Paint a path', meadow: 'Sow a meadow', plant: 'Plant a tree', remove: 'Remove' };
   let LM = null;   // land mode: { tool, style, kind, size, mf, raw (stroke), paint (painting now), pid (pointer), x, z, ok, why, bad, target, t }
   const landUndo = [];   // this session's changes, last first out
   const landYaw = (x, z) => Math.round(((Math.abs(x * 7.31 + z * 3.17) % 6.283)) * 1000) / 1000;
   function landCraftHtml() {
     const l = S.land, used = Land.total(S), cp = Land.canPlant(S, 0);
-    const row = (id, ic, name, txt, small, extra) => `<div class="cri land"><div class="crh">${IC[ic] || IC.decor}<b>${name}</b><small>${small}</small></div>${extra || ''}<div class="crf">${txt}</div><div class="crb"><button class="go sm" data-x="land" data-id="${id}">${id === 'remove' ? 'Remove' : id === 'plant' ? 'Plant' : id === 'meadow' ? 'Lay flowers' : 'Paint'}</button></div></div>`;
-    return `<p class="crf pure" style="margin:4px 2px">Shape the island your way. Everything follows the same rules as decorations: dry, open land, off the pups' work spots.</p>` +
-      row('path', 'build', 'Paint a path', 'Drag along the ground: stepping stones or packed earth. The pups like painted paths and take them when they are the shorter way.', `${Math.round(used)} of ${Land.C.TOTAL} m`) +
-      row('meadow', 'sprout', 'Flower meadow', 'A patch of flowers to walk through. Next to a berry garden it helps the beds grow a little more.', `${l.meadows.length} of ${Land.C.MEADOWS}`) +
+    const row = (id, ic, name, txt, small, extra) => `<div class="cri land"><div class="crh">${IC[ic] || IC.decor}<b>${name}</b><small>${small}</small></div>${extra || ''}<div class="crf">${txt}</div><div class="crb"><button class="go sm" data-x="land" data-id="${id}">${id === 'remove' ? 'Remove' : id === 'plant' ? 'Plant' : id === 'meadow' ? 'Sow' : 'Paint'}</button></div></div>`;
+    return `<p class="crf pure" style="margin:4px 2px">Shape the island your way. The same gentle rules as treasures: dry, open land, clear of the pups' work spots.</p>` +
+      row('path', 'build', 'Paint a path', 'Drag along the ground: stepping stones or packed earth. The pups love painted paths and take them when they are the shorter way.', `${Math.round(used)} of ${Land.C.TOTAL} m`) +
+      row('meadow', 'sprout', 'Flower meadow', 'A patch of flowers to wander through. Beside a berry patch it helps the beds grow a little more.', `${l.meadows.length} of ${Land.C.MEADOWS}`) +
       row('plant', 'tree', 'Plant a tree', `Oaks + spruces from a seed: a sapling that grows into a full tree over 2 days. The pups walk round it.`, `${l.planted.length} of ${Land.C.PLANT}`,
         `<div class="crc">${Object.keys(Land.C.COST).map(k => `<span class="${cp.need && cp.need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${Land.C.COST[k]}</span>`).join('')}</div>`) +
       row('remove', 'wood', 'Remove', `A forest tree on open land gives ${Land.C.CUT_WOOD} wood, once (the trees the pups gather from stay). Also rubs out your own paths, meadows and planted trees.`, `${l.cut.length} trees removed`);
@@ -1615,7 +1622,7 @@
     if (!LM || !LAND_TOOLS[t]) return; LM.tool = t; LM.failed = false; LM.raw = null; LM.paint = false; LM.target = null; expFx.ghost(null); if (expFx.ring) expFx.ring(null); if (landFx) landFx.stroke(null);
     for (const b of $('lbTools').querySelectorAll('button')) b.classList.toggle('on', b.dataset.t === t);
     $('lbOk').hidden = !(PHONE && t !== 'path');
-    $('lbKeys').innerHTML = t === 'path' ? 'Drag to paint &middot; right drag turns the view &middot; Ctrl+Z undo &middot; Esc done' : 'Click to ' + (t === 'remove' ? 'remove' : t === 'plant' ? 'plant' : 'lay flowers') + ' &middot; Ctrl+Z undo &middot; 1-4 tools &middot; Esc done';
+    $('lbKeys').innerHTML = t === 'path' ? 'Drag to paint &middot; right drag turns the view &middot; Ctrl+Z undo &middot; Esc done' : 'Click to ' + (t === 'remove' ? 'remove' : t === 'plant' ? 'plant' : 'sow flowers') + ' &middot; Ctrl+Z undo &middot; 1-4 tools &middot; Esc done';
     lmOpts(); if (isFinite(LM.x)) lmHover(LM.x, LM.z); else lmShow();
   }
   function lmOpts() {
@@ -1629,11 +1636,11 @@
     if (!LM) return; const t = LM.tool, el = $('lbFx');
     $('lbName').innerHTML = `${IC[{ path: 'build', meadow: 'sprout', plant: 'tree', remove: 'wood' }[t]]} <b>${LAND_TOOLS[t]}</b>`;
     let why = LM.ok ? '' : (LAND_WHY[LM.why] || 'Not here'), fx = '';
-    if (t === 'path') { why = LM.paint ? (LM.ok ? 'Looks good: let go to lay it' : why) : LM.ok === 'done' ? 'Path laid!' : LM.failed ? why : (LM.why === 'land' || !LM.raw ? (PHONE ? 'Drag a finger along the ground' : 'Hold the mouse button and drag along the ground') : why); fx = LM.fx || 'The pups take painted paths when they are the shorter way'; }
-    else if (t === 'meadow') { if (LM.ok) why = PHONE ? 'Tap Here to lay the flowers' : 'Click to lay the flowers'; fx = LM.fx || 'Walked on: blocks nobody'; }
-    else if (t === 'plant') { const c = Land.canPlant(S, LM.kind); if (!c.ok && (LM.ok || !isFinite(LM.x))) { why = c.why === 'cost' ? `Needs ${Object.keys(c.need).map(k => c.need[k] + ' more ' + (k === 'food' ? 'berries' : k)).join(' + ')}` : LAND_WHY[c.why] || why; LM.ok = false; } else if (LM.ok) why = PHONE ? 'Tap Here to plant it' : 'Click to plant it here';
+    if (t === 'path') { why = LM.paint ? (LM.ok ? 'Looks lovely: let go to lay it' : why) : LM.ok === 'done' ? 'Path laid!' : LM.failed ? why : (LM.why === 'land' || !LM.raw ? (PHONE ? 'Drag a finger along the ground' : 'Hold the mouse button and drag along the ground') : why); fx = LM.fx || 'The pups take painted paths when they are the shorter way'; }
+    else if (t === 'meadow') { if (LM.ok) why = PHONE ? 'Tap Here to sow the flowers' : 'Click to sow the flowers'; fx = LM.fx || 'Walked through: blocks nobody'; }
+    else if (t === 'plant') { const c = Land.canPlant(S, LM.kind); if (!c.ok && (LM.ok || !isFinite(LM.x))) { why = c.why === 'cost' ? `A little more needed: ${Object.keys(c.need).map(k => c.need[k] + ' ' + (k === 'food' ? 'berries' : k)).join(' + ')}` : LAND_WHY[c.why] || why; LM.ok = false; } else if (LM.ok) why = PHONE ? 'Tap Here to plant it' : 'Click to plant it here';
       fx = `${IC.seed}${Land.C.COST.seeds} + ${IC.food}${Land.C.COST.food} &middot; a sapling, full grown in 2 days`; }
-    else if (t === 'remove') { const g = LM.target; if (g && g.ok) why = g.what; fx = g && g.ok ? g.fx : 'Point at a forest tree, or your own path / meadow / planted tree'; }
+    else if (t === 'remove') { const g = LM.target; if (g && g.ok) why = g.what; fx = g && g.ok ? g.fx : 'Point at a forest tree, or a path / meadow / tree of your own'; }
     $('lbWhy').textContent = why; el.hidden = !fx; el.className = LM.fxOn ? '' : 'none'; el.innerHTML = fx;
     $('landBar').classList.toggle('bad', t === 'path' ? (LM.paint ? !LM.ok : !!LM.failed) : !LM.ok); $('lbOk').disabled = !LM.ok;
     $('lbUndo').disabled = !landUndo.length;
@@ -1658,7 +1665,7 @@
   }
   // what Remove would take at (x, z): your planted tree > your meadow > your painted path > a forest tree
   function landTarget(x, z) {
-    const k1 = Land.plantedAt(S, x, z, 3.5); if (k1 !== null) { const it = S.land.planted.find(t => t.k === k1), e = Land.kindOf(it.t); return { kind: 'plant', k: k1, ok: true, c: [it.x, it.z], R: 3, what: `Dig up this ${e.name.toLowerCase()}`, fx: 'Planted trees come back as nothing: the seed is in the ground' }; }
+    const k1 = Land.plantedAt(S, x, z, 3.5); if (k1 !== null) { const it = S.land.planted.find(t => t.k === k1), e = Land.kindOf(it.t); return { kind: 'plant', k: k1, ok: true, c: [it.x, it.z], R: 3, what: `Dig up this ${e.name.toLowerCase()}`, fx: 'The seed stays in the ground: nothing comes back' }; }
     const k2 = Land.meadowAt(S, x, z); if (k2 !== null) { const m = S.land.meadows.find(q => q.k === k2); return { kind: 'meadow', k: k2, ok: true, c: [m.x, m.z], R: m.r, what: 'Pick these flowers', fx: 'The meadow goes' }; }
     const k3 = Land.pathAt(S, x, z, 1.6); if (k3 !== null) { const P = S.land.paths.find(q => q.k === k3); return { kind: 'path', k: k3, ok: true, c: [x, z], R: 1.5, pts: Land.ptsOf(P), what: 'Rub out this path', fx: `${Math.round(Land.lenOf(Land.ptsOf(P)))} m of ${STYLE_N[P.s].toLowerCase()}` }; }
     const tr = Land.treeAt(S, nav, x, z, 4.5); if (tr) { const p = map.layout.placements[tr.pid]; return { kind: 'tree', pid: tr.pid, ok: tr.ok, why: tr.why, c: [tr.pos[0], tr.pos[2]], R: 3.2 * (p.s || 1), what: `Remove this ${/Spruce/.test(p.piece) ? 'spruce' : 'oak'}: +${Land.C.CUT_WOOD} wood`, fx: `${IC.wood} +${Land.C.CUT_WOOD} wood, once; the ground joins open land` }; }
@@ -1667,11 +1674,11 @@
   function lmConfirm() {
     if (!LM) return false; const t = LM.tool, res = {};
     if (!isFinite(LM.x)) return false;
-    if (t === 'meadow') { const k = LM.ok ? Land.addMeadow(S, nav, LM.x, LM.z, MEADOW_R[LM.size], LM.mf, res) : -1; if (k < 0) { snd.sfx('close'); return false; } landUndo.push({ kind: 'meadow', k }); snd.sfx('pop'); landDone('Flowers laid'); }
+    if (t === 'meadow') { const k = LM.ok ? Land.addMeadow(S, nav, LM.x, LM.z, MEADOW_R[LM.size], LM.mf, res) : -1; if (k < 0) { snd.sfx('close'); return false; } landUndo.push({ kind: 'meadow', k }); snd.sfx('pop'); landDone('Flowers sown'); }
     else if (t === 'plant') {
       const r = landYaw(LM.x, LM.z), k = LM.ok ? Land.plant(S, nav, LM.kind, LM.x, LM.z, r, res) : -1;
       if (k < 0) { LM.ok = false; LM.why = res.why || LM.why; lmShow(); snd.sfx('close'); return false; }
-      landUndo.push({ kind: 'plant', k }); snd.sfx('built'); landDone(`${Land.kindOf(LM.kind).name} planted: it grows over 2 days`);
+      landUndo.push({ kind: 'plant', k }); snd.sfx('built'); landDone(`${Land.kindOf(LM.kind).name} planted: full grown in 2 days`);
     } else if (t === 'remove') {
       const g = LM.target; if (!g || !g.ok) { snd.sfx('close'); return false; }
       if (g.kind === 'plant') { const it = Object.assign({}, S.land.planted.find(x => x.k === g.k)); Land.unplant(S, nav, g.k, false); landUndo.push({ kind: 'replant', it }); landDone('Dug up'); }
@@ -1688,7 +1695,7 @@
     if (u.kind === 'path') ok = Land.removePath(S, nav, u.k);
     else if (u.kind === 'meadow') ok = Land.removeMeadow(S, u.k);
     else if (u.kind === 'plant') ok = Land.unplant(S, nav, u.k, true);   // a fresh planting comes back: seed + berries
-    else if (u.kind === 'cut') { ok = Land.uncut(S, nav, u.pid); if (!ok) toast(`${IC.wood} Undo needs the ${Land.C.CUT_WOOD} wood back first`, 2200); }
+    else if (u.kind === 'cut') { ok = Land.uncut(S, nav, u.pid); if (!ok) toast(`${IC.wood} To undo it, the ${Land.C.CUT_WOOD} wood goes back first`, 2200); }
     else if (u.kind === 'repath') ok = Land.addPath(S, nav, u.pts, u.s) >= 0;
     else if (u.kind === 'remeadow') ok = Land.addMeadow(S, nav, u.m.x, u.m.z, u.m.r, u.m.f) >= 0;
     else if (u.kind === 'replant') ok = Land.replant(S, nav, u.it);
@@ -1707,7 +1714,7 @@
     if (!end && now - lmCheckT < 80) return; lmCheckT = now;
     const pts = Land.resample(R, 2.5), c = pts.length >= 2 ? Land.checkPath(S, nav, pts) : { ok: false, why: 'short' };
     LM.ok = c.ok; LM.why = c.why; LM.bad = c.i; LM.fx = ''; LM.fxOn = false;
-    if (c.ok) { const pv = Catalog.landPreview(S, nav, 'path', { k: -1, s: LM.style, p: [].concat(...pts.map(p => [Math.round(p[0] * 10), Math.round(p[1] * 10)])) }); if (pv.helps) { LM.fx = `${IC.wood} Leads to a work yard: gatherers bring more`; LM.fxOn = true; } }
+    if (c.ok) { const pv = Catalog.landPreview(S, nav, 'path', { k: -1, s: LM.style, p: [].concat(...pts.map(p => [Math.round(p[0] * 10), Math.round(p[1] * 10)])) }); if (pv.helps) { LM.fx = `${IC.wood} Leads to a tidy yard: gatherers bring more`; LM.fxOn = true; } }
     if (landFx) landFx.stroke(pts, c.ok, c.i);
     if (end) {
       LM.paint = false; controls.enabled = true;
@@ -1751,17 +1758,17 @@
     $('ecBody').addEventListener('click', e => {
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
       if (x === 'plan') { const d = +b.dataset.d; if (Exped.board(S) === null) return; expView = { v: 'plan', dest: d, tier: 1, team: [] }; }
-      else if (x === 'peek') { const d = Exped.DEST[+b.dataset.d]; toast(`${IC.lock} ${d.name}: ${d.locked ? 'far out in the sky, it opens in a later update' : 'opens at tree level ' + d.lv}`, 2600); return; }
+      else if (x === 'peek') { const d = Exped.DEST[+b.dataset.d]; toast(`${IC.lock} ${d.name}: ${d.locked ? 'far out in the sky, out of reach for now' : 'drifts close at tree level ' + d.lv}`, 2600); return; }
       else if (x === 'back') expView = { v: 'home' };
       else if (x === 'tier') expView.tier = +b.dataset.k;
-      else if (x === 'pick') { const i = +b.dataset.i, k = expView.team.indexOf(i); if (k >= 0) expView.team.splice(k, 1); else if (expView.team.length < Exped.C.MAX_TEAM) expView.team.push(i); else toast('Up to 4 pups per boat', 1600); }
+      else if (x === 'pick') { const i = +b.dataset.i, k = expView.team.indexOf(i); if (k >= 0) expView.team.splice(k, 1); else if (expView.team.length < Exped.C.MAX_TEAM) expView.team.push(i); else toast('A skyboat holds 4 pups', 1600); }
       else if (x === 'send') { const v = expView; sendTrip(v.dest, v.tier, v.team.slice()); return; }
       else if (x === 'haul') { openHaul(+b.dataset.k); return; }
-      else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('Trip called off: supplies back in the pantry', 2400); save(); } }
+      else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('The crew stays home: packed berries back in the pantry', 2400); save(); } }
       else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
       else if (x === 'place') { placeDecor(b.dataset.id); }
       else if (x === 'craft') { openCraft(); return; }
-      else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k, nav)) { save(); syncPups(); toast('Put away in the shed', 1600); } }
+      else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k, nav)) { save(); syncPups(); toast('Tucked back in the shed', 1600); } }
       else if (x === 'findplot') { closeExp(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
       renderExp(true);
     });
@@ -1775,19 +1782,22 @@
   const EV_IC = { fruit: 'fruit', shower: 'rain', crystal: 'crystal', wish: 'wish', trader: 'cart', wave: 'blight', fest: 'fest' };
   // step 5: seasonal festivals (Events 'fest', e.sea = season index)
   const FEST = [{ t: 'Blossom picnic', s: 'petals everywhere, the pups play music under the blossoms' }, { t: 'Splash day', s: 'the pups splash in the river and bring the tree extra water' },
-    { t: 'Lantern night', s: 'paper lanterns all round the plaza: the tree glows brighter' }, { t: 'Snow pup day', s: 'the pups build snow pups by the plaza, everyone giggles' }];
+    { t: 'Lantern night', s: 'paper lanterns all round the plaza: the tree glows brighter' }, { t: 'Snow pup day', s: 'the pups build snow pups by the plaza, and everyone giggles' }];
+  // a wish: "Mochi dreams of lighting the lamps"
+  const JOB_DREAM = { water: 'carrying water from the spring', light: 'lighting the lamps', wood: 'chopping wood', stone: 'shaping stone', food: 'picking berries', build: 'building something',
+    rest: 'a long lazy nap', nourish: 'tending the roots', protect: 'standing watch', spirit: 'playing music' };
   function evText(e, live) {   // e = an active event or a log entry -> {t: title, s: sub}
     const n = e.n, pl = (x, w) => x + ' ' + w + (x === 1 ? '' : 's');
-    if (e.type === 'fruit') return { t: `The Elder Tree dropped ${pl(n, 'glowing fruit')}`, s: live ? 'Tap them by the roots: berries + nourishment, sometimes a seed' : e.out === 'auto' ? (e.got ? `you picked ${e.got}, the pups shared the rest` : 'the pups shared the fruit') : e.out === 'done' ? 'all collected!' : '' };
-    if (e.type === 'shower') return { t: 'A sudden shower', s: live ? 'the tree drinks it up (+' + Events.C.SHOWER + ' water/h)' : 'the tree drank it up' };
-    if (e.type === 'crystal') return { t: `${pupN(e.pup)} found ${pl(n, 'crystal')}`, s: 'in the grass by the roots' };
-    if (e.type === 'wish') return { t: `${pupN(e.pup)} wants to try ${IC[e.want] || ''}${JOB_NAMES[e.want] || e.want}`, s: live ? `give them that job for a big morale boost (+${Events.C.WISH_MORALE})` : e.out === 'done' ? 'wish came true! so happy' : e.out === 'forgot' ? 'forgot about it (no harm done)' : '' };
-    if (e.type === 'trader') return { t: 'A wandering trader', s: live ? `stall by the tree, here for ${fmtT(Math.max(0, e.end - S.time))}` : e.traded ? `traded ${e.traded} time${e.traded > 1 ? 's' : ''}, then moved on` : 'moved on' };
-    if (e.type === 'wave') return { t: `A blight wave: ${pl(n || 0, 'dark patch')}`, s: 'guardians sweep them away' };
-    if (e.type === 'fest') { const f = FEST[e.sea] || FEST[0], nd = e.need ? NEED_NAMES[e.need] : ''; return { t: f.t, s: live ? `${f.s} (+${Events.C.FEST_RATE} ${nd.toLowerCase()}/h for ${fmtT(Math.max(0, e.end - S.time))})` : 'a lovely day, everyone a little happier' }; }
+    if (e.type === 'fruit') return { t: `The Elder Tree dropped ${pl(n, 'glowing fruit')}`, s: live ? 'Tap them by the roots: berries + roots, sometimes a seed' : e.out === 'auto' ? (e.got ? `you picked ${e.got}, the pups shared the rest` : 'the pups shared the fruit') : e.out === 'done' ? 'every last one gathered!' : '' };
+    if (e.type === 'shower') return { t: 'A sudden shower', s: live ? 'the tree drinks it up (+' + Events.C.SHOWER + ' water an hour)' : 'the tree drank it all up' };
+    if (e.type === 'crystal') return { t: `${pupN(e.pup)} found ${pl(n, 'crystal')}`, s: 'twinkling in the grass by the roots' };
+    if (e.type === 'wish') return { t: `${pupN(e.pup)} dreams of ${IC[e.want] || ''}${JOB_DREAM[e.want] || JOB_NAMES[e.want] || e.want}`, s: live ? `give them the job: +${Events.C.WISH_MORALE} happiness` : e.out === 'done' ? 'wish granted, tail going like a windmill' : e.out === 'forgot' ? 'drifted off to another daydream (no harm done)' : '' };
+    if (e.type === 'trader') return { t: 'A wandering trader', s: live ? `a little stall by the tree, here for ${fmtT(Math.max(0, e.end - S.time))}` : e.traded ? `traded ${e.traded} time${e.traded > 1 ? 's' : ''}, then wandered on` : 'wandered on' };
+    if (e.type === 'wave') return { t: `A blight wave: ${pl(n || 0, 'dark patch')}`, s: 'wardens sweep them away' };
+    if (e.type === 'fest') { const f = FEST[e.sea] || FEST[0], nd = e.need ? NEED_NAMES[e.need] : ''; return { t: f.t, s: live ? `${f.s} (+${Events.C.FEST_RATE} ${nd.toLowerCase()} an hour for ${fmtT(Math.max(0, e.end - S.time))})` : 'a lovely day, everyone a little happier' }; }
     return { t: e.type, s: '' };
   }
-  function openEvents() { closePlot(); closeExp(); closeNeed(); evOpen = true; $('evTitle').innerHTML = `${IC.bell} Island events`; $('evCard').hidden = false; renderEvents(true); }
+  function openEvents() { closePlot(); closeExp(); closeNeed(); evOpen = true; $('evTitle').innerHTML = `${IC.bell} Island happenings`; $('evCard').hidden = false; renderEvents(true); }
   function closeEvents() { evOpen = false; $('evCard').hidden = true; }
   function renderEvents(force) {
     if (!evOpen) return;
@@ -1795,25 +1805,25 @@
     const sig = J(S.events.active) + S.events.log.length + J(last || 0) + Math.floor(S.time / 20) + Math.floor(S.res.crystal || 0) + S.inv.seeds + Math.floor(S.res.food) + Math.floor(S.res.wood) + Math.floor(S.res.stone) + S.pups.map(p => p.job).join();
     if (!force && sig === evSig) return; evSig = sig;
     let h = `<h4>${IC.bell} Happening now</h4>`;
-    if (!S.events.active.length) h += `<div class="qe">Nothing right now. Something small happens every few minutes: fruit drops, showers, wishes, a trader...</div>`;
+    if (!S.events.active.length) h += `<div class="qe">All quiet for now. Something small happens every few minutes: falling fruit, showers, wishes, a trader...</div>`;
     for (const e of S.events.active) {
       const x = evText(e, true);
       h += `<div class="evi live ${e.type}">${IC[EV_IC[e.type]]}<div><b>${x.t}</b><small>${x.s}</small>`;
       if (e.type === 'trader') {
         h += `<div class="offers">` + e.offers.map((k, j) => { const o = Events.OFFERS[k], done = e.done.includes(j), c = Events.canTrade(S, e.id, j);
-          return `<div class="of${done ? ' done' : ''}"><span class="gv">${goodsHtml(o.give)}</span><span class="ar">&#10140;</span><span class="gt2">${goodsHtml(o.get)}</span>${done ? `<span class="ok">traded!</span>` : `<button class="go sm" data-x="trade" data-id="${e.id}" data-j="${j}"${c.ok ? '' : ' disabled title="Not enough"'}>Trade</button>`}</div>`; }).join('') + `</div>`;
+          return `<div class="of${done ? ' done' : ''}"><span class="gv">${goodsHtml(o.give)}</span><span class="ar">&#10140;</span><span class="gt2">${goodsHtml(o.get)}</span>${done ? `<span class="ok">traded!</span>` : `<button class="go sm" data-x="trade" data-id="${e.id}" data-j="${j}"${c.ok ? '' : ' disabled title="A little more needed"'}>Trade</button>`}</div>`; }).join('') + `</div>`;
       } else if (e.type === 'wish') {
         const p = S.pups[e.pup];
-        if (p && p.job !== e.want) h += `<button class="go sm" data-x="wish" data-id="${e.id}">Give ${esc(p.name)} the ${JOB_NAMES[e.want]} job</button>`;
+        if (p && p.job !== e.want) h += `<button class="go sm" data-x="wish" data-id="${e.id}">${e.want === 'rest' ? `Let ${esc(p.name)} nap` : `Make ${esc(p.name)} ${anA(JOB_NAMES[e.want].toLowerCase())}`}</button>`;
       } else if (e.type === 'fruit') h += `<button class="ghost sm" data-x="fruit">Show me the fruit</button> <small class="inl">${e.n - e.got.length} left &middot; ${fmtT(Math.max(0, e.end - S.time))}</small>`;
       else if (e.type === 'shower') h += `<small class="inl">${fmtT(Math.max(0, e.end - S.time))} more</small>`;
       h += `</div></div>`;
     }
-    h += `<h4>${IC.clock} Island log</h4>`;
+    h += `<h4>${IC.clock} Earlier on the island</h4>`;
     const L = S.events.log.slice().reverse().filter(l => !S.events.active.some(a => a.id === l.id)).slice(0, 24);
-    if (!L.length) h += `<div class="qe">Nothing yet.</div>`;
+    if (!L.length) h += `<div class="qe">Nothing yet. The day is young.</div>`;
     for (const l of L) { const x = evText(l, false); h += `<div class="evi lg">${IC[EV_IC[l.type]]}<div><b>${x.t}</b><small>${x.s}${x.s ? ' &middot; ' : ''}${agoT(l.t)}</small></div></div>`; }
-    h += `<p class="sub small">Events never cost you anything: while you are away fruit gets gathered by the pups, wishes and traders just pass by.</p>`;
+    h += `<p class="sub small">Happenings never cost you anything: while you are away the pups gather the fruit, and wishes and traders simply drift by.</p>`;
     $('evBody').innerHTML = h;
   }
   function refreshEvBtn() {
@@ -1839,11 +1849,11 @@
   // need card: what feeds a need, who is on it, the blight / wards / seeds / stage around it
   let needK = null, needSig = '';
   const NEED_TXT = {
-    water: 'Water carriers fetch river water in buckets and pour it at the roots. The tree drinks less at night.',
-    light: 'Lantern keepers light their lanterns in the shrine and tend the glowing orbs. Busiest at dusk.',
-    nourish: 'Gardeners tend the beds and bring compost to the roots. With seeds they plant glow sprouts: every sprout makes all gardeners better for a few hours.',
-    protect: 'Blight creeps in as dark patches on the ground near the roots. Guardians sweep it away; crystal wards slow it down. Blight only ever slows the tree, and never spreads while the tree is healthy.',
-    spirit: 'Performers play music: on a stage at full joy, or busking on the plaza. Music lifts every pup\'s morale and nearby pups dance. At night the stage puts on a little light show.',
+    water: 'Spring carriers fill their buckets at the river and pour them at the roots. The tree drinks less at night.',
+    light: 'Lamplighters light their lanterns at the shrine and tend the glowing orbs. Busiest at dusk.',
+    nourish: 'Root gardeners tend the beds and bring compost to the roots. With seeds they plant glow sprouts: each sprout makes every gardener better for a few hours.',
+    protect: 'Blight creeps in as dark patches near the roots. Wardens sweep it away; crystal wards slow it down. Blight only ever slows the tree, and never spreads while the tree is well.',
+    spirit: 'Minstrels play music: their very best on a stage, or busking on the plaza. Music lifts every pup\'s happiness and nearby pups dance. At night the stage puts on a little light show.',
   };
   function openNeed(k) { closePlot(); closeExp(); closeEvents(); needK = k; $('needCard').hidden = false; renderNeed(true); }
   function closeNeed() { needK = null; $('needCard').hidden = true; }
@@ -1851,32 +1861,32 @@
     if (!needK) return; const k = needK, aw = Sim.C.NEEDS[k].floor ? Needs.awakeK(S, k) : 1, rate = needRate(k);
     const sig = k + Math.round(S.needs[k]) + (rate === null ? 'x' : Math.round(rate)) + S.pups.map(p => p.job).join() + S.blight.list.length + S.wards.length + Math.floor(S.res.crystal || 0) + S.inv.seeds + S.garden.sprouts.length + J(S.plots).length + Math.floor(S.time / 60);
     if (!force && sig === needSig) return; needSig = sig;
-    $('ncTitle').innerHTML = `${IC[k]} ${NEED_NAMES[k]} <small>${Math.round(S.needs[k])}%${rate !== null ? ` &middot; ${rate >= 0 ? '+' : ''}${rate.toFixed(0)}/h` : ''}</small>`;
+    $('ncTitle').innerHTML = `${IC[k]} ${NEED_NAMES[k]} <small>${Math.round(S.needs[k])}%${rate !== null ? ` &middot; ${rate >= 0 ? '+' : ''}${rate.toFixed(0)} an hour` : ''}</small>`;
     let h = `<p class="sub">${NEED_TXT[k]}</p>`;
-    if (aw < 0) h += `<p class="lockd">${IC.lock} Asleep for now: the island keeps it near ${Sim.C.NEEDS[k].floor}. ${S.wake.t === null ? 'It wakes after your <b>first sky trip</b> lands (build the Expedition dock at tree level 2).' : `It wakes in <b>${fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}</b>.`}</p>`;
-    else if (aw < 1) h += `<p class="sub small">Just woke up: it starts easy and needs more care over the next ${fmtT((1 - aw) * Needs.C.RAMP)}.</p>`;
+    if (aw < 0) h += `<p class="lockd">${IC.lock} Still asleep: the island keeps it near ${Sim.C.NEEDS[k].floor}. ${S.wake.t === null ? 'It wakes when your <b>first skyboat</b> comes home (build the Skyboat dock at tree level 2).' : `It wakes in <b>${fmtT(Math.max(0, Needs.wakeAt(S, k) - S.time))}</b>.`}</p>`;
+    else if (aw < 1) h += `<p class="sub small">Freshly awake: it starts gently and asks for more care over the next ${fmtT((1 - aw) * Needs.C.RAMP)}.</p>`;
     const on = S.pups.map((p, i) => i).filter(i => S.pups[i].job === k);
     if (aw >= 0) {
       h += `<h4>${IC[k]} ${JOB_WHO[k] || JOB_NAMES[k] + ' pups'} <span class="cnt">${on.length}</span></h4>`;
-      h += on.length ? `<div class="chips">${on.map(i => `<span class="chip" data-x="pup" data-i="${i}"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}</span>`).join('')}</div>` : `<div class="qe">Nobody yet.</div>`;
+      h += on.length ? `<div class="chips">${on.map(i => `<span class="chip" data-x="pup" data-i="${i}"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}</span>`).join('')}</div>` : `<div class="qe">Nobody yet. Tap a pup below to hand out the job.</div>`;
       const cand = S.pups.map((p, i) => i).filter(i => S.pups[i].job !== k && !S.pups[i].exp && S.pups[i].dislike !== k).sort((a, b) => (S.pups[b].like === k) - (S.pups[a].like === k) || (S.pups[a].job === 'rest' ? -1 : 0) - (S.pups[b].job === 'rest' ? -1 : 0) || a - b).slice(0, 3);
       if (cand.length) h += `<div class="chips">${cand.map(i => `<button class="ghost sm" data-x="assign" data-i="${i}">${IC[k]} ${esc(S.pups[i].name)}${S.pups[i].like === k ? ' <span class="lv">loves it</span>' : ''}</button>`).join('')}</div>`;
     }
     if (k === 'protect' && aw >= 0) {
       const B = Needs.C.BLIGHT, free = nav.wardSpots.length - S.wards.length;
-      h += `<h4>${IC.blight} Blight <span class="cnt">${S.blight.list.length}</span></h4><div class="qe">${S.blight.list.length ? S.blight.list.map(b => `<span class="chip" data-x="blight" data-k="${b.k}">${IC.blight}${Math.round(b.r * 100)}%</span>`).join(' ') : 'No blight right now.'}${S.health < B.SPREAD_H ? ' <b>The tree is weak: blight can spread.</b>' : ''}</div>`;
+      h += `<h4>${IC.blight} Blight <span class="cnt">${S.blight.list.length}</span></h4><div class="qe">${S.blight.list.length ? S.blight.list.map(b => `<span class="chip" data-x="blight" data-k="${b.k}">${IC.blight}${Math.round(b.r * 100)}%</span>`).join(' ') : 'No blight right now.'}${S.health < B.SPREAD_H ? ' <b>The tree feels weak: blight can spread.</b>' : ''}</div>`;
       h += `<h4>${IC.ward} Crystal wards <span class="cnt">${S.wards.length}/${nav.wardSpots.length}</span></h4><p class="sub small">A ward is a glowing crystal pillar: blight within ${B.WARD_R} m appears ${Math.round((1 - B.WARD_K) * 100)} % less and grows slower.</p>`;
-      h += `<button class="go" data-x="ward"${free > 0 && (S.res.crystal || 0) >= B.WARD_COST ? '' : ' disabled'}>${IC.ward} Set a ward (${IC.crystal}${B.WARD_COST})</button>${free <= 0 ? ' <small class="inl">all ward spots used</small>' : (S.res.crystal || 0) < B.WARD_COST ? ` <small class="inl">${Math.floor(S.res.crystal || 0)} crystals: expeditions + events find more</small>` : ''}`;
+      h += `<button class="go" data-x="ward"${free > 0 && (S.res.crystal || 0) >= B.WARD_COST ? '' : ' disabled'}>${IC.ward} Raise a ward (${IC.crystal}${B.WARD_COST})</button>${free <= 0 ? ' <small class="inl">every ward spot glows already</small>' : (S.res.crystal || 0) < B.WARD_COST ? ` <small class="inl">${Math.floor(S.res.crystal || 0)} crystals: skyboats + happenings find more</small>` : ''}`;
     }
     if (k === 'nourish' && aw >= 0) {
       const mx = Needs.sproutMax(S), cs = Needs.built(S, 'conserv');
-      h += `<h4>${IC.sprout} Glow sprouts <span class="cnt">${S.garden.sprouts.length}/${mx}</span></h4><p class="sub small">${IC.seed}${S.inv.seeds} seeds in the shed. Gardeners plant one when a bed is free; each sprout gives every gardener +${Math.round(Needs.C.GARDEN.SPROUT_K * 100)} % for ${fmtT(Needs.C.GARDEN.SPROUT_LIFE)}.${Needs.gardens(S).length ? ' Your berry gardens are gardening spots too.' : ' Without a berry garden they use the root beds by the door.'}</p>`;
-      h += cs ? `<p>${IC.conserv} <b>Conservatory</b> built: ${gives('conserv')}</p>` : `<p class="sub small">${IC.conserv} A <b>Conservatory</b> (tree level 3, tap Build) helps: ${gives('conserv')}.</p>`;
+      h += `<h4>${IC.sprout} Glow sprouts <span class="cnt">${S.garden.sprouts.length}/${mx}</span></h4><p class="sub small">${IC.seed}${S.inv.seeds} seeds in the shed. Root gardeners plant one when a bed is free; each sprout gives every gardener +${Math.round(Needs.C.GARDEN.SPROUT_K * 100)} % for ${fmtT(Needs.C.GARDEN.SPROUT_LIFE)}.${Needs.gardens(S).length ? ' Your berry patches are gardening spots too.' : ' Without a berry patch they use the root beds by the door.'}</p>`;
+      h += cs ? `<p>${IC.conserv} <b>Glasshouse</b> built: ${gives('conserv')}</p>` : `<p class="sub small">${IC.conserv} A <b>Glasshouse</b> (tree level 3, tap Build) helps: ${gives('conserv')}.</p>`;
     }
     if (k === 'spirit' && aw >= 0) {
       const st = Needs.firstBuilt(S, 'stage');
-      h += st !== null ? `<p>${IC.stage} <b>Music stage</b> built: ${gives('stage')}.</p>` : `<p class="sub small">${IC.stage} No stage yet: performers busk on the plaza at ${Math.round(Needs.C.BUSK_K * 100)} %. Build a <b>Music stage</b> on a plot.</p><button class="ghost" data-x="plot">${IC.home} Pick a plot for the stage</button>`;
-      if (S.needs.spirit < Needs.C.GLUM_SPIRIT) h += `<p class="lockd">The pups feel a bit glum (morale -${Needs.C.GLUM_MORALE}). Some music would help!</p>`;
+      h += st !== null ? `<p>${IC.stage} <b>Moonlit stage</b> built: ${gives('stage')}.</p>` : `<p class="sub small">${IC.stage} No stage yet: minstrels busk on the plaza at ${Math.round(Needs.C.BUSK_K * 100)} %. Build a <b>Moonlit stage</b> on a plot.</p><button class="ghost" data-x="plot">${IC.home} Pick a plot for the stage</button>`;
+      if (S.needs.spirit < Needs.C.GLUM_SPIRIT) h += `<p class="lockd">The pups feel a bit glum (happiness -${Needs.C.GLUM_MORALE}). A song would help!</p>`;
     }
     $('ncBody').innerHTML = h;
   }
@@ -1885,7 +1895,7 @@
     $('evClose').onclick = closeEvents; $('ncClose').onclick = closeNeed;
     $('evBody').addEventListener('click', e => {
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
-      if (x === 'trade') { const o = Events.trade(S, +b.dataset.id, +b.dataset.j); if (o) { toast(`${IC.cart} Traded ${goodsHtml(o.give)} for ${goodsHtml(o.get)}`, 2600); save(); refreshTree(); } }
+      if (x === 'trade') { const o = Events.trade(S, +b.dataset.id, +b.dataset.j); if (o) { toast(`${IC.cart} Swapped ${goodsHtml(o.give)} for ${goodsHtml(o.get)}`, 2600); save(); refreshTree(); } }
       else if (x === 'wish') { const ev = S.events.active.find(y => y.id === +b.dataset.id); if (ev) setJob(ev.pup, ev.want); }
       else if (x === 'fruit') { fruitCam(); }
       renderEvents(true); refreshEvBtn();
@@ -1894,7 +1904,7 @@
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
       if (x === 'assign') setJob(+b.dataset.i, needK);
       else if (x === 'pup') focusPup(+b.dataset.i);
-      else if (x === 'ward') { const k = Needs.placeWard(S, nav); if (k >= 0) { save(); snd.sfx('lantern'); toast(`${IC.ward} A crystal ward glows by the roots`, 2400); const p = nfx.wardPos(k); if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 4, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2); } } }
+      else if (x === 'ward') { const k = Needs.placeWard(S, nav); if (k >= 0) { save(); snd.sfx('lantern'); toast(`${IC.ward} A crystal ward rises, glowing by the roots`, 2400); const p = nfx.wardPos(k); if (p) { const tgt = new THREE.Vector3(p[0], p[1] + 4, p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(52)).add(new THREE.Vector3(0, 30, 0)), tgt, 1.2); } } }
       else if (x === 'blight') { const p = nfx.blightPos(+b.dataset.k); if (p) { const tgt = new THREE.Vector3(p[0], p[1], p[2]), out = new THREE.Vector3(p[0] - nav.TP[0], 0, p[2] - nav.TP[2]).normalize(); follow = -1; flyTo(tgt.clone().add(out.multiplyScalar(40)).add(new THREE.Vector3(0, 26, 0)), tgt, 1.2); } }
       else if (x === 'plot') { closeNeed(); const pi = plots.info.find(p => p.st === 'open' && p.show); if (pi) openPlot(pi.q.pid, true); return; }
       renderNeed(true);
@@ -1906,9 +1916,9 @@
   function expLabels() {
     const box = $('tlabels'), want = [];
     for (const v of expFx.view.trips) { const st = tripState(v.trip); want.push({ key: 't' + v.trip.id, p: v.label, html: `${IC.board}<b>${Exped.DEST[v.trip.dest].name}</b><small>${st.txt}</small>`, t: 'trip' }); }
-    { const tr = S.events.active.find(e => e.type === 'trader'); if (tr) { const p = nfx.traderAt(S); want.push({ key: 'trader', p: new THREE.Vector3(p[0], p[1] + 3, p[2]), html: `${IC.cart}<b>Trader</b><small>tap to trade</small>`, t: 'trader', cls: 'trd' }); } }
-    if (nfx.fruit.length) { const f = nfx.fruit[0]; want.push({ key: 'fruit', p: new THREE.Vector3(f.p[0], f.p[1] + 5, f.p[2]), html: `${IC.fruit}<b>Glowing fruit!</b><small>tap the fruit</small>`, t: 'fruit', cls: 'hr' }); }
-    if (S.exp.hauls.length && expFx.view.dock) want.push({ key: 'haul', p: expFx.view.dock.clone().setY(expFx.view.dock.y + 14), html: `${IC.gift}<b>Haul ready!</b><small>tap to open</small>`, t: 'haul', cls: 'hr' });
+    { const tr = S.events.active.find(e => e.type === 'trader'); if (tr) { const p = nfx.traderAt(S); want.push({ key: 'trader', p: new THREE.Vector3(p[0], p[1] + 3, p[2]), html: `${IC.cart}<b>Wandering trader</b><small>tap to trade</small>`, t: 'trader', cls: 'trd' }); } }
+    if (nfx.fruit.length) { const f = nfx.fruit[0]; want.push({ key: 'fruit', p: new THREE.Vector3(f.p[0], f.p[1] + 5, f.p[2]), html: `${IC.fruit}<b>Glowing fruit!</b><small>tap to gather</small>`, t: 'fruit', cls: 'hr' }); }
+    if (S.exp.hauls.length && expFx.view.dock) want.push({ key: 'haul', p: expFx.view.dock.clone().setY(expFx.view.dock.y + 14), html: `${IC.gift}<b>A sack of treasures!</b><small>tap to open</small>`, t: 'haul', cls: 'hr' });
     const have = {}; box.querySelectorAll('.tl').forEach(el => { have[el.dataset.key] = el; });
     for (const w of want) {
       let el = have[w.key]; delete have[w.key];
@@ -1938,7 +1948,7 @@
     if (sum.levels > 0) a.push('I grew a little taller');
     if (bl.length) a.push(bl.length === 1 ? `the pups built ${anA(bl[0])}` : `the pups built ${bl.length} new things`);
     if (news.length) a.push(news.length === 1 ? `${S.pups[news[0]].name} crossed the bridge to stay` : `${news.length} new pups came to stay`);
-    if ((sum.exped || []).length) a.push('a sky boat came home full');
+    if ((sum.exped || []).length) a.push('a skyboat came home full');
     const h = sum.healthTo, feel = h >= 80 ? 'I feel wonderful.' : h >= 60 ? 'I feel well.' : h >= 40 ? 'I am a little thirsty.' : 'I am tired and thirsty. Will you help them?';
     if (!a.length) return `While you were away, the pups looked after me. ${feel}`;
     const j = a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0];
@@ -1960,7 +1970,7 @@
     const live = sum ? (sum.critters || []).filter(v => Critters.BY[v.c] && S.crit.vis.some(x => x.id === v.id)) : [];
     const notable = sum && (sum.dream || sum.levels > 0 || (sum.built || []).length || (sum.exped || []).length || (sum.woke || []).length || live.length || (sum.resTo && sum.resTo.food <= 0));
     if (sum && sum.sec < AWAY_SHORT && !notable && !news.length && !sh) {   // a short absence: a tiny note (or nothing at all)
-      if (sum.sec >= 180 && sum.buckets + sum.orbs > 0) toast(`${IC.tree} Welcome back! The pups kept busy while you were gone.`, 3200);
+      if (sum.sec >= 180 && sum.buckets + sum.orbs > 0) toast(`${IC.tree} Welcome back! The pups kept the island humming while you were gone.`, 3200);
       return;
     }
     let h = '', det = '';
@@ -1969,37 +1979,37 @@
     $('away').classList.toggle('dreamy', !!dream);
     if (sum) {
       h += dream || `<li class="treeli"><div>${IC.tree}<p>${esc(treeLine(sum, news))}</p></div></li>`;
-      if (sum.levels > 0) h += `<li class="good exl">${IC.star}<div>The tree grew ${sum.levels > 1 ? sum.levels + ' levels' : 'a level'}! Now level ${S.level} (<b>${Growth.stageName(S.level)}</b>).<br><button class="go sm" data-memaway="${S.level}">${IC.memory} Read its memory</button></div></li>`;
+      if (sum.levels > 0) h += `<li class="good exl">${IC.star}<div>The Elder Tree grew ${sum.levels > 1 ? sum.levels + ' levels' : 'a level'}! Now level ${S.level} (<b>${Growth.stageName(S.level)}</b>).<br><button class="go sm" data-memaway="${S.level}">${IC.memory} Read its memory</button></div></li>`;
       // new buildings: one line
       const bl = (sum.built || []).map(b => { const q = nav.plotBy[b.pid]; return q ? { b, q } : null; }).filter(Boolean);
-      if (bl.length) h += `<li class="good">${IC[B_ICON[bl[0].b.kind]]}<div>Built: ${bl.map(x => `<b>${bName(x.b.kind, x.q)}</b>`).join(', ')}</div></li>`;
+      if (bl.length) h += `<li class="good">${IC[B_ICON[bl[0].b.kind]]}<div>Newly built: ${bl.map(x => `<b>${bName(x.b.kind, x.q)}</b>`).join(', ')}</div></li>`;
       // expeditions that landed while away (the haul is in; the reveal card opens from here or the trip board)
       for (const x of sum.exped || []) {
         const k = S.exp.hauls.findIndex(y => y.id === x.id);
-        h += `<li class="good exl">${IC.board}<div>The <b>${Exped.DEST[x.dest].name}</b> team (${x.names.map(esc).join(', ')}) came back with: ${haulLine(x)}${k >= 0 ? `<br><button class="go sm" data-haul="${k}">Open the haul</button>` : ''}</div></li>`;
+        h += `<li class="good exl">${IC.board}<div>The skyboat drifted home from <b>${Exped.DEST[x.dest].name}</b> (${x.names.map(esc).join(', ')}) with ${haulLine(x)}${k >= 0 ? `<br><button class="go sm" data-haul="${k}">Open the sack</button>` : ''}</div></li>`;
       }
-      for (const k of sum.woke || []) h += `<li class="good">${IC[k]}<div><b>${NEED_NAMES[k]}</b> woke up: a new job, <b>${JOB_WHO[k]}</b>! Tap the need for details.</div></li>`;
-      if (sum.resTo && sum.resTo.food <= 0) h += `<li>${IC.food}The pantry ran empty: the pups are hungry and slower. Put someone on Berries or build a garden.</li>`;
+      for (const k of sum.woke || []) h += `<li class="good">${IC[k]}<div><b>${NEED_NAMES[k]}</b> woke up, and with it a new job: <b>${JOB_WHO[k]}</b>! Tap the bar to learn more.</div></li>`;
+      if (sum.resTo && sum.resTo.food <= 0) h += `<li>${IC.food}The pantry ran empty: the pups are hungry and a little slower. A berry picker or a berry patch would help.</li>`;
       // sky critters still here: go see (the rest of the visitors are in the details)
-      for (const v of live.slice(-2)) { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); h += `<li class="evl live">${cface(sp, st === 'seen' ? 'seen' : 'glimpsed')}<div>${esc(Critters.line(S, v, nav, (sum.nightSec || 0) >= 5400))}<br><button class="go sm" data-crit="${v.id}">Still here: go see!</button></div></li>`; }
+      for (const v of live.slice(-2)) { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); h += `<li class="evl live">${cface(sp, st === 'seen' ? 'seen' : 'glimpsed')}<div>${esc(Critters.line(S, v, nav, (sum.nightSec || 0) >= 5400))}<br><button class="go sm" data-crit="${v.id}">Still here: go say hello!</button></div></li>`; }
       // ---- the details (folded): the numbers, only the ones that are not zero
       const g = sum.gathered || {}, ledger = [];
       if (sum.buckets >= 1) ledger.push(`${IC.water}${plural(sum.buckets, 'bucket')}`); if (sum.orbs >= 1) ledger.push(`${IC.orb}${plural(sum.orbs, 'orb')}`); if (sum.sap >= 1) ledger.push(`${IC.sap}+${fmtN(sum.sap)}`);
-      det += `<li>${IC.clock}${sum.capped ? 'Over 8 h (pups count up to 8 h)' : fmtT(sum.sec)}</li>`;
+      det += `<li>${IC.clock}${sum.capped ? 'Over 8 h (the pups keep count up to 8 h)' : fmtT(sum.sec)}</li>`;
       if (ledger.length) det += `<li>${ledger.join(' &middot; ')}</li>`;
-      det += `<li>${IC.heart}Tree health ${Math.round(sum.healthFrom)}% &rarr; <b>${Math.round(sum.healthTo)}%</b> (${healthWord(sum.healthTo)})</li>`;
+      det += `<li>${IC.heart}The Elder Tree ${Math.round(sum.healthFrom)}% &rarr; <b>${Math.round(sum.healthTo)}%</b> (${healthWord(sum.healthTo)})</li>`;
       if (sum.nightSec >= 1800) det += `<li>${IC.moon}${fmtT(sum.nightSec)} of it was night: the pups took sleepy naps and the tree drank less.</li>`;
       const gl = ['wood', 'stone', 'food'].filter(k => (g[k] || 0) >= 1).map(k => `${IC[k]}+${fmtN(g[k])}`);
       if (gl.length) det += `<li>${gl.join(' ')} gathered</li>`;
       for (const x of bl) det += `<li>${IC[B_ICON[x.b.kind]]}<div><b>${bName(x.b.kind, x.q)}</b>: ${gives(x.b.kind, x.q)}</div></li>`;
-      for (const tr of S.exp.trips) if (tr.dep >= 0) det += `<li>${IC.isle}The <b>${Exped.DEST[tr.dest].name}</b> team is still exploring: back in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}.</li>`;
-      if (sum.fed) det += `<li>${IC.nourish}Gardeners fed the tree ${plural(sum.fed, 'time')}</li>`;
-      if (sum.cleared || sum.blightNew) det += `<li>${IC.blight}${sum.blightNew ? `${sum.blightNew} blight patch${sum.blightNew > 1 ? 'es' : ''} crept in` : ''}${sum.blightNew && sum.cleared ? ', ' : ''}${sum.cleared ? `guardians swept away ${sum.cleared}` : ''}</li>`;
+      for (const tr of S.exp.trips) if (tr.dep >= 0) det += `<li>${IC.isle}The <b>${Exped.DEST[tr.dest].name}</b> crew is still exploring: home in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}.</li>`;
+      if (sum.fed) det += `<li>${IC.nourish}Root gardeners fed the roots ${plural(sum.fed, 'time')}</li>`;
+      if (sum.cleared || sum.blightNew) det += `<li>${IC.blight}${sum.blightNew ? `${sum.blightNew} blight patch${sum.blightNew > 1 ? 'es' : ''} crept in` : ''}${sum.blightNew && sum.cleared ? ', ' : ''}${sum.cleared ? `wardens swept away ${sum.cleared}` : ''}</li>`;
       const evs = (sum.events || []).map(id => S.events.log.find(l => l.id === id)).filter(Boolean);
       if (evs.length) {
-        det += `<li class="hd">${IC.bell}<b>${evs.length} little event${evs.length > 1 ? 's' : ''}</b></li>`;
+        det += `<li class="hd">${IC.bell}<b>${evs.length} little happening${evs.length > 1 ? 's' : ''}</b></li>`;
         for (const l of evs.slice(-6)) { const lv = S.events.active.find(a => a.id === l.id), x = evText(lv || l, !!lv); det += `<li class="evl${lv ? ' live' : ''}">${IC[EV_IC[l.type]]}<div>${x.t}${x.s ? `<small>${x.s}${lv ? ' &middot; <b>still here!</b>' : ''}</small>` : ''}</div></li>`; }
-        if (evs.length > 6) det += `<li class="evl"><small>... and ${evs.length - 6} earlier (see Events)</small></li>`;
+        if (evs.length > 6) det += `<li class="evl"><small>... and ${evs.length - 6} earlier (see Today)</small></li>`;
       }
       // Round 2 step 3: sky critters who visited, in the tree's voice
       const cv = (sum.critters || []).filter(v => Critters.BY[v.c] && !live.includes(v));
@@ -2007,7 +2017,7 @@
         const slept = (sum.nightSec || 0) >= 5400, gifts = (sum.critGifts || []).map(v => Critters.BY[v.c]).filter(Boolean);
         det += `<li class="hd">${IC.critter}<b>${cv.length === 1 ? 'A visitor came by' : cv.length + ' visitors came by'}</b></li>`;
         for (const v of cv.slice(-5)) { const sp = Critters.BY[v.c], st = Critters.status(S, v.c); det += `<li class="evl">${cface(sp, st === 'seen' ? 'seen' : 'glimpsed')}<div>${esc(Critters.line(S, v, nav, slept))}</div></li>`; }
-        if (cv.length > 5) det += `<li class="evl"><small>... and ${cv.length - 5} more (the Book's Critters page)</small></li>`;
+        if (cv.length > 5) det += `<li class="evl"><small>... and ${cv.length - 5} more (the Book's Sky critters page)</small></li>`;
         if (gifts.length) det += `<li class="good">${IC.gift}<div>They left little gifts: ${gifts.slice(0, 4).map(sp => esc(sp.gift.name)).join(', ')}${gifts.length > 4 ? ' and more' : ''}.</div></li>`;
       }
     }
@@ -2019,9 +2029,9 @@
       }
     }
     h += sh;
-    if (det) h += `<li class="awdbtn"><button class="ghost" data-awdet="1">Details &#9662;</button></li><li class="awdw"><ul class="awdet" hidden>${det}</ul></li>`;
+    if (det) h += `<li class="awdbtn"><button class="ghost" data-awdet="1">The numbers &#9662;</button></li><li class="awdw"><ul class="awdet" hidden>${det}</ul></li>`;
     if (!h) return;
-    $('awayTitle').textContent = sum || (sh && !news.length) ? 'While you were away' : 'Welcome, newcomer!';
+    $('awayTitle').textContent = sum || (sh && !news.length) ? (document.body.classList.contains('phone') ? 'While you were away' : 'While you were away · the island kept your lanterns lit') : 'Welcome, newcomer!';   // (the long one wraps to 3 lines on a 375 px phone)
     $('awayList').innerHTML = h; $('away').hidden = false;
     awayStops = sum ? tourStops(sum, news) : null; if (sum && awayStops && awayStops.length) sum.toured = true;
   }
@@ -2113,7 +2123,7 @@
   }
   function levelUp(lv) {
     const newStage = Growth.STAGES.some(st => st.from === lv); snd.sfx('sting_level');
-    toast(`${IC.star} The Elder Tree grew! <b>Level ${lv}</b>${newStage ? ` &middot; a new stage: <b>${Growth.stageName(lv)}</b>` : ''}`, 4200);
+    toast(`${IC.star} The Elder Tree grows! <b>Level ${lv}</b>${newStage ? ` &middot; it becomes a <b>${Growth.stageName(lv)}</b> tree` : ''}`, 4200);
     const back = { e: camera.position.clone(), t: controls.target.clone() }, wasFollow = follow;
     const s = Sim.C.SCALE[lv - 1], TP = nav.TP, sz = fx.size(TreeFx.growthOf(S), s);   // framed for the GROWN tree (it grows while we watch)
     const tgt = new THREE.Vector3(TP[0], TP[1] + Math.max(45 * s, sz.h * 0.42), TP[2]);
@@ -2236,7 +2246,7 @@
     let ld;
     if (VISIT) {
       const vs = await soc.visitLoad(VISIT);
-      if (!vs) { $('loading').innerHTML = `<div class="card">That island could not be found (it may be private now). <a href="${soc.homeUrl()}">Back home</a></div>`; return; }
+      if (!vs) { $('loading').innerHTML = `<div class="card">That island has drifted out of sight (it may be private now). <a href="${soc.homeUrl()}">Back home</a></div>`; return; }
       ld = { state: vs, away: 0, visit: true };
     } else {
       const cb = await cloudBoot;   // <= Cloud.C.BOOT_WAIT; a newer cloud copy is already in SAVE_KEY: the normal load / migrate / catch-up runs on it
@@ -2281,13 +2291,13 @@
     if (window.LightFx) lightFx = LightFx(scene, m, nav, ground, { phone: PHONE, water: sndWater, camera });   // vibe 2 lane C: wind, cloud shadows, plaza warmth, god rays, dawn mist
     if (window.WeatherFx) { wxFx = WeatherFx(scene, m, nav, ground, { phone: PHONE }); wxUI = WeatherFx.chip({ $, toast }); }   // seasons + weather pass
     growLand(S.level); fx.level = S.level;
-    if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree has ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
+    if (!ld.fresh && !VISIT && S.book.read < S.level) setTimeout(() => toast(`${IC.book} The Elder Tree kept ${S.level - S.book.read} new memor${S.level - S.book.read > 1 ? 'ies' : 'y'} for you. <u>Open the Book</u>`, 9000, () => openBook('mem')), 1500);
     syncPups();
     hs = S.health; hl = S.needs.light;
     const h = homeView(); camera.position.copy(h.eye); controls.target.copy(h.target); controls.update();
     const cq = /^pup(\d+)$/.exec(Q.get('cam') || ''); if (cq && +cq[1] < S.pups.length) { follow = +cq[1]; pups.select(follow); }
     refreshTree(); refreshRoster(true); refreshBuild(true); refreshExpBtn(); refreshEvBtn();
-    if (ld.corrupt) toast('The old save could not be read, so a fresh island was started.', 5000);
+    if (ld.corrupt) toast('The old save could not be read, so a fresh island has begun.', 5000);
     if (ld.fromV < 5 && S.wake.t !== null) ev.push({ type: 'wake', need: 'nourish' });   // a v4 island that already sailed: Gardeners from now
     if (ld.migrated) toast('Your island moved to the new version: wood, stone, berries and building are here!', 5000);
     if ((sum && ld.away >= 60) || S.pups.some(p => p.isNew)) showAway(sum && ld.away >= 60 ? sum : null);
@@ -2315,7 +2325,7 @@
       cloudUI = CloudUI({ net: NET, cloud: CLOUD_ON ? cloud : null, esc, toast, IC, closeOthers: () => soc.close(), onAccount, signOut: cloudSignOut, reloadClean });
       NET.onAuth && NET.onAuth((ev, id) => { if (ev === 'switched') onAccount(id); else if (cloudUI.safeOpen) cloudUI.openSafe('main'); });
       if (pendingPick) { cloudUI.showPick(pendingPick); pendingPick = null; }
-      if (ld.cloud && ld.cloud.loaded) setTimeout(() => toast(`${CloudUI && cloudUI.IX.cloud} Welcome back! Your island came from the cloud${ld.cloud.from ? ` (saved on ${esc(ld.cloud.from)})` : ''}.`, 5000), 600);
+      if (ld.cloud && ld.cloud.loaded) setTimeout(() => toast(`${CloudUI && cloudUI.IX.cloud} Welcome back! Your island floated down from the cloud${ld.cloud.from ? ` (saved on ${esc(ld.cloud.from)})` : ''}.`, 5000), 600);
       { let a = null; try { a = sessionStorage.getItem('schiffy-elderglow.after' + SLOT); sessionStorage.removeItem('schiffy-elderglow.after' + SLOT); } catch (e) {} if (a) setTimeout(() => toast(`${cloudUI.IX.cloud} ${esc(a)}`, 5000), 700); }
       // step 7: this page was opened from an email link (sign-in link, or the "confirm your email" link on another device)
       { const L = NET.landed; if (L) setTimeout(() => {
@@ -2428,32 +2438,32 @@
     } else if (e.type === 'level') levelUp(e.level);
     else if (e.type === 'built') {
       const q = nav.plotBy[e.pid]; if (!q) return;
-      toast(`${IC[B_ICON[e.kind]]} Built: <b>${bName(e.kind, q)}</b> &middot; ${gives(e.kind, q)}`, 4200, () => openPlot(e.pid, true));
+      toast(`${IC[B_ICON[e.kind]]} Freshly built: <b>${bName(e.kind, q)}</b> &middot; ${gives(e.kind, q)}`, 4200, () => openPlot(e.pid, true));
     } else if (e.type === 'exp-go') {
-      const tr = S.exp.trips.find(x => x.id === e.trip); if (tr) { toast(`${IC.board} Lift-off! The boat sails for <b>${Exped.DEST[tr.dest].name}</b>`, 3000); startBoatCam(tr.id); }
+      const tr = S.exp.trips.find(x => x.id === e.trip); if (tr) { toast(`${IC.board} Lift-off! The skyboat sails for <b>${Exped.DEST[tr.dest].name}</b>`, 3000); startBoatCam(tr.id); }
     } else if (e.type === 'exp-back') {
       const h = e.haul; syncPups(); refreshExpBtn();
-      toast(`${IC.board} The <b>${Exped.DEST[h.dest].name}</b> team is back with a haul! <u>Open it</u>`, 15000, () => { const k = S.exp.hauls.findIndex(y => y.id === h.id); if (k >= 0) openHaul(k); });
+      toast(`${IC.board} The skyboat drifts home from <b>${Exped.DEST[h.dest].name}</b> with a sack of treasures! <u>Open it</u>`, 15000, () => { const k = S.exp.hauls.findIndex(y => y.id === h.id); if (k >= 0) openHaul(k); });
     } else if (e.type === 'arrive') {
       syncPups(); const p = S.pups[e.pup];
       if (e.puppy && p.parents) toast(`${IC.friends} Puppy! <b>${esc(S.pups[p.parents[0]].name)}</b> and <b>${esc(S.pups[p.parents[1]].name)}</b> welcome little <b>${esc(p.name)}</b>! <u>Say hi</u>`, 14000, () => { focusPup(e.pup); showAway(null); });
-      else toast(`${IC.paw} A stray pup, <b>${esc(p.name)}</b>, is crossing the bridge! <u>Say hi</u>`, 12000, () => { focusPup(e.pup); showAway(null); });
+      else toast(`${IC.paw} A wanderer, <b>${esc(p.name)}</b>, is crossing the bridge! <u>Say hi</u>`, 12000, () => { focusPup(e.pup); showAway(null); });
     }
     // ---- step 4
     else if (e.type === 'wake') {
-      const k = e.need, msg = { nourish: 'The trip brought seeds: the tree is hungry for <b>Nourishment</b>. New job: <b>Gardeners</b>!', protect: 'Dark <b>blight</b> creeps near the roots. New job: <b>Guardians</b>!', spirit: 'The pups long for music: <b>Spirit</b> woke up. New job: <b>Performers</b>!' }[k];
+      const k = e.need, msg = { nourish: 'The skyboat brought seeds: the tree\'s <b>Roots</b> are hungry. New job: <b>Root gardeners</b>!', protect: 'Dark <b>blight</b> creeps near the roots: the <b>Ward</b> wakes. New job: <b>Wardens</b>!', spirit: 'The pups long for music: <b>Song</b> woke up. New job: <b>Minstrels</b>!' }[k];
       toast(`${IC[k]} ${msg} <u>Tap</u>`, 16000, () => openNeed(k)); refreshRoster(true);
     } else if (e.type === 'cleared') { const P = pups.list[e.pup]; if (P) floater([P.holder.position.x, P.holder.position.y + 11, P.holder.position.z], `${IC.blight}&#10003;`); }
     else if (e.type === 'sprout') { const P = pups.list[e.pup]; if (P) floater([P.holder.position.x, P.holder.position.y + 9, P.holder.position.z], `${IC.sprout}`); }
-    else if (e.type === 'blight' && e.why !== 'wave' && !S.pups.some(p => p.job === 'protect') && Needs.awakeK(S, 'protect') >= 0 && S.blight.list.length === 1) toast(`${IC.blight} A dark blight patch creeps by the roots. Give a pup the <b>Guard</b> job! <u>Show</u>`, 7000, () => openNeed('protect'));
+    else if (e.type === 'blight' && e.why !== 'wave' && !S.pups.some(p => p.job === 'protect') && Needs.awakeK(S, 'protect') >= 0 && S.blight.list.length === 1) toast(`${IC.blight} A dark blight patch creeps by the roots. A <b>Warden</b> would sweep it away! <u>Show</u>`, 7000, () => openNeed('protect'));
     else if (e.type === 'event') {
       const x = e.e, tx = evText(x, e.k === 'start');
       if (e.k === 'start') {
         const tap = { fruit: fruitCam, trader: () => { openEvents(); traderCam(); }, wish: openEvents, wave: () => openNeed('protect') }[x.type];
-        toast(`${IC[EV_IC[x.type]]} ${tx.t}${x.type === 'wave' ? '! Guardians, sweep!' : x.type === 'fruit' ? '! Tap them' : x.type === 'trader' ? ' set up a stall by the tree' : ''}${tap ? ' <u>Show</u>' : ''}`, x.type === 'crystal' || x.type === 'shower' ? 4200 : 9000, tap || null);
-      } else if (e.out === 'done' && x.type === 'wish') toast(`${IC.wish} ${pupN(x.pup)}'s wish came true! <b>+${Events.C.WISH_MORALE} morale</b>`, 4200);
+        toast(`${IC[EV_IC[x.type]]} ${tx.t}${x.type === 'wave' ? '! Wardens, sweep!' : x.type === 'fruit' ? '! Tap them' : x.type === 'trader' ? ' sets up a stall by the tree' : ''}${tap ? ' <u>Show</u>' : ''}`, x.type === 'crystal' || x.type === 'shower' ? 4200 : 9000, tap || null);
+      } else if (e.out === 'done' && x.type === 'wish') toast(`${IC.wish} ${pupN(x.pup)}'s wish is granted, tail going like a windmill! <b>+${Events.C.WISH_MORALE} happiness</b>`, 4200);
       else if (e.out === 'auto' && x.type === 'fruit') toast(`${IC.fruit} The pups gathered the leftover fruit`, 2600);
-      else if (e.out === 'left') toast(`${IC.cart} The trader packed up and moved on`, 2600);
+      else if (e.out === 'left') toast(`${IC.cart} The trader packed up and wandered on`, 2600);
       refreshEvBtn(); renderEvents(true);
     }
     // ---- Round 2 step 3: sky critters arrive / leave (a soft toast; tap = fly there; gifts float up when they go)
@@ -2461,12 +2471,12 @@
       const v = e.v, sp = Critters.BY[v.c]; if (!sp) return;
       if (e.k === 'start') {
         const isNew = !(S.crit.al[v.c] && S.crit.al[v.c].s), wh = Critters.where(S, v, nav);
-        const msg = v.c === 'whale' ? `Look up! A <b>sky whale</b> is drifting over the island...` : isNew ? `Someone new is visiting ${esc(wh)}...` : `${esc(Critters.article(sp)).replace(/^./, c => c.toUpperCase())} is visiting ${esc(wh)}`;
-        toast(`${IC.critter} ${msg} <u>Go see</u>`, v.c === 'whale' ? 20000 : 9000, () => meetCritter(v.id, true));
+        const msg = v.c === 'whale' ? `Look up! A <b>sky whale</b> is drifting over the island...` : isNew ? `Someone new is peeking in ${esc(wh)}...` : `${esc(Critters.article(sp)).replace(/^./, c => c.toUpperCase())} is visiting ${esc(wh)}`;
+        toast(`${IC.critter} ${msg} <u>Go say hello</u>`, v.c === 'whale' ? 20000 : 9000, () => meetCritter(v.id, true));
         if (!$('book').hidden && bookTab === 'crit') renderBook();
       } else if (e.k === 'end') {
         if (critOpen === v.id) closeCritCard();
-        if (e.gift) { const p = crFx && crFx.posOf(v.id); if (p) floater(p, IC.gift); toast(`${IC.gift} The ${esc(sp.name.toLowerCase())} left you ${esc(sp.gift.name)}`, 3600); refreshTree(); }
+        if (e.gift) { const p = crFx && crFx.posOf(v.id); if (p) floater(p, IC.gift); toast(`${IC.gift} The ${esc(sp.name.toLowerCase())} left a little gift: ${esc(sp.gift.name)}`, 3600); refreshTree(); }
         if (!$('book').hidden && bookTab === 'crit') renderBook();
       }
     }
