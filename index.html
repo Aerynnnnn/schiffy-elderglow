@@ -882,7 +882,36 @@ body .dot { box-shadow: 0 0 6px rgba(255, 210, 140, .5); }
   body.phone #side:not(.open) #needs .need > span { display: none; } body.phone #side:not(.open) #needs .need svg.ic { width: 16px; height: 16px; }
   body.phone #side:not(.open) #needs .need .bar { width: 100%; height: 8px; border-width: 1.5px; }
   body.phone #side:not(.open) #needs .need.alert { background: var(--u-sel); }
-</style>
+  /* ---- pacing pass (2026-11-03): the growth pace line under the xp bar, the upgrades tab, the welcome-back cap line, visit nudges */
+  #side #pace { display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 4px 9px; min-height: 30px; border-radius: 10px; background: var(--u-tile); border: 1.5px solid var(--u-tile-line); color: var(--u-t); font: 600 13px Fredoka, sans-serif; text-align: left; cursor: pointer; box-shadow: none; }
+  #side #pace[hidden], #side.min #pace, body.phone #side:not(.open) #pace { display: none; }
+  #side #pace svg.ic { width: 18px; height: 18px; flex: none; }
+  #side #pace b { font: 400 14px 'Lilita One', Fredoka, sans-serif; letter-spacing: .3px; white-space: nowrap; color: var(--u-t); }
+  #side #pace small { color: var(--u-t2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  #side #pace.up b { color: #ffd36a; } #side #pace.dn b { color: #ffab9c; }
+  #side #pace:hover { border-color: var(--u-line); }
+  body.phone #side #pace { min-height: 40px; }
+  #crBody .upk { display: flex; gap: 3px; margin: 2px 0 0; } #crBody .upk i { width: 14px; height: 6px; border-radius: 3px; background: var(--u-tile-line); } #crBody .upk i.on { background: #ffd36a; box-shadow: 0 0 6px rgba(255, 211, 106, .6); }
+  #crBody .cri.offer { border-color: var(--u-line); box-shadow: 0 0 0 1px rgba(255, 211, 106, .25) inset; }
+  #crBody .pacebox { margin: 0 0 8px; } #crBody .pacebox b { color: #ffd36a; }
+  #awayList li.capli { color: var(--u-t); } #awayList li.capli small { display: block; color: var(--u-t2); font-size: 12px; }
+  #visBar button.nudge { opacity: .78; } #visBar button.nudge span::after { content: ' \2731'; font-size: 10px; color: #ffd36a; vertical-align: super; }
+  #socBody .looknote { margin: 0 0 8px; padding: 6px 10px; border-radius: 10px; background: var(--u-tile); border: 1.5px dashed var(--u-tile-line); color: var(--u-t2); font-size: 13px; }
+  #socBody .looknote button { margin-left: 6px; }
+  /* ---- update 3: Elder rings + far-sky voyages (tokens only: Lanternlight skin) */
+  #side > #hbar, #side > #xbar, #side > #pace { flex-shrink: 0; }   /* (the open panel's pup list squeezed the growth bar to a sliver: its label was cut) */
+  body #xbar.rings { cursor: pointer; } body #xbar.rings i { background: linear-gradient(90deg, #ffd36a, #ffe9a8 55%, #9fe8ff); }
+  #bookBody .ringh { margin-top: 14px; } #bookBody .ringh .cnt { margin-left: 4px; background: var(--u-badge); color: var(--u-badge-t); border-radius: 999px; padding: 0 8px; font-size: 12px; }
+  #bookBody .ringnext { margin: 2px 0 10px; } #bookBody .ringnext .bar { height: 12px; border-width: 2px; margin: 2px 0 4px; }
+  #bookBody .ringnext .bar i { background: linear-gradient(90deg, #ffd36a, #9fe8ff); } #bookBody .ringnext small { font-size: 12px; line-height: 1.35; display: block; }
+  #bookBody .ringsoon { margin-top: 12px; display: flex; gap: 5px; align-items: center; }
+  body .mtile.ringt { min-height: 84px; } body .mtile.ringt .ml { color: #ffd36a; }
+  .munl.ringul li { flex-shrink: 0; } .munl.ringul li span b { font-weight: 600; }
+  #ecBody .bo.dest.voy:not(.off) { box-shadow: inset 0 0 0 1.5px #ffd36a55; } #ecBody .bo.dest.voy .inl { font-size: 11px; }
+  #ecBody .est.voyest { flex-wrap: wrap; } #ecBody .est.voyest .cost { font-weight: 600; font-size: 12px; padding: 1px 6px; } #ecBody .est.voyest .cost svg.ic { width: 14px; height: 14px; }
+  #ecBody .qi.voyq .bar i { background: linear-gradient(90deg, #ffd36a, #9fe8ff); }
+  #haul .trip.voyw { display: block; font-style: italic; line-height: 1.35; margin-top: 4px; } #haul .trip.voyw b { font-style: normal; }
+  #away li.ringli { border-color: #ffd36a; }</style>
 </head>
 <body>
 <div id="app">
@@ -891,6 +920,7 @@ body .dot { box-shadow: 0 0 6px rgba(255, 210, 140, .5); }
     <div class="th"><span class="ttl disp">Elder Tree</span><span class="stg" id="stg">Sapling</span><span class="lvb disp">Lv <b id="lv">1</b></span><span id="hmini" title="Tree health"><i></i><b>-</b></span><span id="pmini" title="Pups"></span><button id="sidePin" title="Keep this panel open"><svg viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M9 3h6l-1 6 3 3H7l3-3z" fill="#ffd36a"/><path d="M12 12v9" fill="none"/></svg></button><button id="sideFold" title="Fold the panel away"><svg viewBox="0 0 24 24" stroke="#2a2442" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M7 14l5-5 5 5"/></svg></button><button id="sheetBtn" class="disp">Pups &#9650;</button></div>
     <div id="hbar" class="bar"><i id="hfill"></i><span id="hlabel">-</span></div>
     <div id="xbar" class="bar full"><i id="xfill"></i><span id="xlabel">-</span></div>
+    <button id="pace" class="pace full" hidden></button>
     <div class="scroll">
       <div id="needs"></div>
       <h4 class="full">The builders' yard</h4>
@@ -961,7 +991,7 @@ body .dot { box-shadow: 0 0 6px rgba(255, 210, 140, .5); }
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/traits.js', 'src/seasons.js', 'src/weather.js', 'src/growth.js', 'src/expedition.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/weather_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/pacing.js', 'src/rings.js', 'src/traits.js', 'src/seasons.js', 'src/weather.js', 'src/growth.js', 'src/expedition.js', 'src/voyages.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/ring_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/weather_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

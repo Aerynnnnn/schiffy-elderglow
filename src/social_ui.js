@@ -113,19 +113,24 @@
         <label class="fl">Island name<input id="socIsl" maxlength="24" value="${esc(isl)}" placeholder="e.g. Mossy Hollow"></label>
         <label class="fl">Your pup name (shown as the host)<input id="socHost" maxlength="14" value="${esc(host)}" placeholder="e.g. Schiffy"></label>
         <p id="socWhy" class="why2"></p>
-        <label class="tog"><input type="checkbox" id="socPub0" ${!s || s.social.pub ? 'checked' : ''}><i></i>Open to visitors (anyone can drop by)</label>
-        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Pretend test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : 'Share my island'}</button></div>
+        ${g.mode === 'visit' ? '' : `<label class="tog"><input type="checkbox" id="socPub0" ${!s || s.social.pub ? 'checked' : ''}><i></i>Open to visitors (anyone can drop by)</label>`}
+        <div class="pf"><small class="sub">No email needed. ${net.kind === 'mock' ? 'Pretend test server: only this browser sees it.' : ''}</small><button class="go" id="socMake">${prof ? 'Save' : g.mode === 'visit' ? 'Save my name' : 'Share my island'}</button></div>
         ${g.mode === 'home' && g.openSafe && !prof ? `<div class="acctrow"><button class="ghost" id="cuOpenSafe">${IX.lock} Keep my island safe</button><button class="ghost" id="cuOpenHave">I already have an island</button></div>` : ''}`;
     };
+    // pacing pass (5B): "shared" = this player's own island is out there (a name, an account, open to visitors); on a visit
+    // that is the visitor's own island (read from its save, never written)
+    function isShared() { const s = g.mode === 'home' ? S() : V && V.own; return !!(prof && s && s.social && s.social.acct && s.social.pub); }
     function render() {
       const b = $('socBody'); if (!b) return;
       $('socTitle').innerHTML = `${IX.globe} Neighbour isles`;
       if (!signed) { b.innerHTML = '<p class="sub">Looking across the sky...</p>'; return; }
-      if (!prof || (g.mode === 'home' && !S().social.acct)) { b.innerHTML = setupForm(); return; }
-      const tabs = [['recent', IC.clock, 'Recent'], ['liked', IC.heart, 'Most liked'], ['random', IX.dice, 'Random'], ['search', IX.search, 'Search']].concat(g.mode === 'home' ? [['mine', IX.home, 'My island']] : []);
+      // pacing pass (5B): anyone can look around without sharing their own island; sharing it (My island) unlocks gifts + stars
+      const shared = isShared();
+      const tabs = [['recent', IC.clock, 'Recent'], ['liked', IC.heart, 'Most liked'], ['random', IX.dice, 'Random'], ['search', IX.search, 'Search']].concat(g.mode === 'home' ? [['mine', IX.home, shared ? 'My island' : 'Share mine']] : []);
       let h = `<div class="stabs">${tabs.map(([k, ic, t]) => `<button data-st="${k}" class="${tab === k ? 'on' : ''}">${ic}${t}</button>`).join('')}</div>`;
-      if (tab === 'mine') h += mineHtml();
+      if (tab === 'mine') h += !prof || !S().social.acct ? setupForm() : mineHtml();
       else {
+        if (!shared && g.mode === 'home') h += `<p class="looknote">${IX.globe} Look around as much as you like! Share your own island to leave gifts and tell hosts their isle is beautiful.<button class="ghost sm" data-st="mine">Share mine</button></p>`;
         if (tab !== 'search') h += shelfHtml();   // piece 5: Island of the week + Featured, right under the tabs
         if (tab === 'search') h += `<div class="srch"><input id="socQ" maxlength="24" placeholder="Island name" value="${esc(query)}"><button class="go sm" id="socGo">${IX.search}</button></div>`;
         if (!list) h += '<p class="sub">Looking for islands...</p>';
@@ -263,20 +268,27 @@
       const isl = V.island, c = window.Growth.stageName(Math.max(1, Math.min(8, isl.lv || 1)));
       $('visBan').innerHTML = `<span class="isw" style="background:${/^#[0-9a-f]{6}$/i.test(isl.col || '') ? isl.col : '#9fd88a'}">${IC.sprout}</span><div><small>Visiting</small><b class="disp">${esc(isl.name)}</b><small>${esc(isl.host)}'s island &middot; ${esc(c)} (Lv ${isl.lv | 0}) &middot; ${IC.heart}<span id="visLikes">${isl.likes | 0}</span>${P5 ? ` &middot; <span class="stc" title="visitors who found it beautiful">${IX.star}<span id="visStars">${SN[isl.id] | 0}</span></span>` : ''}</small></div><button class="go sm" id="visHome">${IX.home}Home</button>`;
       $('visBan').hidden = false; $('visBar').hidden = false;
-      const box = readBox(SLOT), canW = !V.own || window.Social.waterOk(V.own, isl.id, today(), box);
+      const box = readBox(SLOT), canW = !V.own || window.Social.waterOk(V.own, isl.id, today(), box), nz = isShared() ? '' : ' nudge';   // (5B: gifts + stars want your own island shared)
       $('visBar').innerHTML = `<button id="vWater" class="${canW ? '' : 'done'}" title="Give their tree a drink (once a day): a little boost for both trees">${IC.water}<span>${canW ? 'Water' : 'Watered'}</span></button>
-        <button id="vGift" title="Leave a gift from your own island">${IC.gift}<span>Gift</span></button>
+        <button id="vGift" class="${nz}" title="${nz ? 'Share your own island to leave gifts' : 'Leave a gift from your own island'}">${IC.gift}<span>Gift</span></button>
         <button id="vLike" class="${V.liked ? 'done' : ''}" title="Like this island">${IC.heart}<span>${V.liked ? 'Liked' : 'Like'}</span></button>
-        ${P5 ? `<button id="vStar" class="star${STARRED.has(isl.id) ? ' done' : ''}" title="Found it beautiful? Tell the host (once)">${IX.star}<span>${STARRED.has(isl.id) ? 'Beautiful!' : 'Beautiful'}</span></button>` : ''}
+        ${P5 ? `<button id="vStar" class="star${STARRED.has(isl.id) ? ' done' : ''}${nz}" title="${nz ? 'Share your own island to mark islands beautiful' : 'Found it beautiful? Tell the host (once)'}">${IX.star}<span>${STARRED.has(isl.id) ? 'Beautiful!' : 'Beautiful'}</span></button>` : ''}
         ${V.tour && g.startGuide ? `<button id="vTour" class="tour" title="Take the host's guided tour">${IX.tour}<span>Tour</span></button>` : ''}
         <button id="vNote" title="Guestbook">${IX.note}<span>Notes</span></button>
         <button id="vMore" title="The neighbour isles">${IX.globe}<span>Isles</span></button>`;
       $('visHome').onclick = () => { location.href = homeUrl(); };
-      $('vWater').onclick = water; $('vGift').onclick = () => panel('gift'); $('vLike').onclick = like; $('vNote').onclick = () => panel('note'); $('vMore').onclick = () => open();
-      if ($('vStar')) $('vStar').onclick = star;
+      $('vWater').onclick = water; $('vGift').onclick = () => isShared() ? panel('gift') : shareNudge('gift'); $('vLike').onclick = like; $('vNote').onclick = () => panel('note'); $('vMore').onclick = () => open();
+      if ($('vStar')) $('vStar').onclick = () => isShared() ? star() : shareNudge('star');
       if ($('vTour')) $('vTour').onclick = () => { $('visPanel').hidden = true; g.startGuide(); };
       if (document.body.classList.contains('phone')) $('visHint').innerHTML = 'Tap the ground to trot there. Drag to look around.';
       $('visHint').hidden = false; setTimeout(() => { const h = $('visHint'); if (h) h.style.opacity = 0; }, 9000);
+    }
+    // pacing pass (5B): a friendly nudge, not a wall: gifts come from your own island and stars go island to island
+    function shareNudge(kind) {
+      const el = $('visPanel'); el.hidden = false;
+      el.innerHTML = `<div class="pch"><span class="disp">${kind === 'gift' ? IC.gift + ' Leave a gift' : IX.star + ' Beautiful'}</span><button data-x="1">&#10005;</button></div>
+        <p class="sub">${kind === 'gift' ? 'Gifts come from your own island' : 'Stars go from one island to another'}, so this opens once yours is shared with the neighbour isles. Looking around is always free, and water, likes and notes only need a name.</p>
+        <div class="pf"><small class="sub">A name and one tap: you can make it private again any time.</small><button class="go sm" id="vShareHome">${IX.home} Share my island</button></div>`;
     }
     const needProfile = () => { if (prof) return false; open(); $('socBody').innerHTML = setupForm('To water, gift, like or sign the guestbook, pick a name first (no email needed).'); return true; };
     async function water() {
@@ -334,6 +346,7 @@
       $('visPanel').addEventListener('click', async e => {
         const t = e.target.closest('button'); if (!t) return;
         if (t.dataset.x) { $('visPanel').hidden = true; return; }
+        if (t.id === 'vShareHome') { const u = homeUrl(); location.href = u + (u.includes('?') ? '&' : '?') + 'share=1'; return; }
         if (t.dataset.gk || t.dataset.gd) {
           const g0 = t.dataset.gd ? { kind: 'decor', item: t.dataset.gd, n: 1 } : { kind: 'res', item: t.dataset.gk, n: +t.dataset.gn };
           const r = await net.gift(V.island.id, g0);
@@ -360,6 +373,8 @@
       setInterval(() => publish(false), 30000);
       addEventListener('pagehide', () => { publish(true); });
       document.addEventListener('visibilitychange', () => { if (document.hidden) publish(true); else homeSync(false); });
+      // pacing pass (5B): back from a visit's "Share my island" nudge = the Explore card opens on My island
+      if (Q.get('share') === '1') { try { const u = new URL(location.href); u.searchParams.delete('share'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {} setTimeout(() => open('mine'), 1800); }
       return homeSync(true);
     }
     function startVisit() { bind(); bindVisit(); document.body.classList.add('visit'); visitHud(); }

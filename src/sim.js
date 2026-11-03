@@ -9,7 +9,7 @@
   'use strict';
   const H = 3600;
   const C = {
-    STEP: 0.2, COARSE: 10, OFFLINE_CAP: 8 * H, SPEED: 5,
+    STEP: 0.2, COARSE: 10, OFFLINE_CAP: 12 * H, SPEED: 5,   // (pacing pass 2026-11-03: the offline cap went 8 h -> 12 h)
     FILL: 3, POUR: 3, LIGHT: 3, TEND: 4, DROP: 2, WAIT: 20, BUILD_CHUNK: 15,
     WORK: { wood: 8, stone: 9, food: 6 },
     // need decay in points per hour; jobs supply points per hour per pup (x morale multiplier 0.6 .. 1.2)
@@ -24,7 +24,7 @@
     GATHER: { wood: 36, stone: 24, food: 40 },   // per pup-hour of work (x morale), paid per trip like water
     // step 5: 8 levels in 5 stages (src/growth.js). xp/h = 3 x (health - 40): health 85 = 135 xp/h -> L2 ~20 min, L3 ~3 h,
     // L4 ~22 h (day 2), L5 ~2.5 days, L6 ~5 days, L7 ~9 days, Elder ~17 days of round-the-clock health 85 (~3 weeks for a
-    // player who checks in a few times a day: the 8 h offline cap loses some night hours). Table in tools/sim_check.mjs.
+    // player who checks in a few times a day; the pacing pass made this x0.8..1.3 by care: src/pacing.js). Table in tools/sim_check.mjs.
     LV_XP: [0, 40, 400, 3000, 8000, 16000, 30000, 55000], MAX_LV: 8, SCALE: [0.45, 0.56, 0.68, 0.76, 0.83, 0.89, 0.95, 1.0],
     ELDER_SAP: 1.25,      // L8: +25 % glow sap
     // faction buildings (step 5; each on its own layout plot, one each): what they do
@@ -145,7 +145,7 @@
     if (nav.setLand) nav.setLand(null, '');   // (nor another island's land)
     if (nav.setHomes) nav.setHomes([], '');   // (nor another island's turned / free homes)
     const s = {
-      v: 13, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 15, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false, craft: {} }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -174,6 +174,8 @@
   const mult = m => 0.6 + 0.6 * m / 100;
   // Round 3 update 2: what placed decorations do (src/catalog.js); exactly 1 (or 0 for the additive kinds) with no decor
   const catK = (s, nav, k) => window.Catalog ? window.Catalog.at(s, nav)[k] : (k === 'rest' || k === 'spirit' ? 0 : 1);
+  // pacing pass: island upgrades (src/pacing.js); exactly 1 with none bought
+  const upK = (s, id) => window.Pacing ? window.Pacing.upK(s, id) : 1;
 
   // ---- buildings
   const plotOf = (nav, pid) => nav.plotBy[pid];
@@ -223,7 +225,7 @@
     return true;
   }
   function foodNet(s) {
-    const c = counts(s); let f = c.garden * C.B.garden.food - C.EAT * eaters(s);
+    const c = counts(s); let f = c.garden * C.B.garden.food * upK(s, 'berry') - C.EAT * eaters(s);
     for (const p of s.pups) if (p.job === 'food' && !p.exp) f += C.GATHER.food * mult(p.morale) * 0.8;   // ~20 % of a trip is walking back
     return f;
   }
@@ -352,7 +354,7 @@
       case 'board': p.t = 0; break;   // still waiting at the dock
       case 'away': break;
       case 'pour': case 'tend': {
-        const job = p.phase === 'pour' ? 'water' : 'light', amt = C.SUPPLY[job] * p.acc / H * (job === 'light' ? catK(s, nav, 'light') : 1);   // lit paths (catalog.js)
+        const job = p.phase === 'pour' ? 'water' : 'light', amt = C.SUPPLY[job] * p.acc / H * (job === 'light' ? catK(s, nav, 'light') : 1) * upK(s, job === 'water' ? 'well' : 'lamp');   // lit paths (catalog.js); deep well / brighter lanterns (pacing.js)
         s.needs[job] = Math.min(100, s.needs[job] + amt); p.acc = 0; p.trips++; s.stats.trips++;
         if (job === 'water') s.stats.buckets++; else s.stats.orbs++;
         if (ev) ev.push({ type: 'deliver', pup: i, job, amount: amt, orb: job === 'light' ? orbSpot(s, i, nav) : null });
@@ -422,7 +424,7 @@
         const use = Math.min(rem, Math.max(0, p.dur - p.t));
         if (p.phase === 'build') {
           const e = s.plots[p.tgt];
-          if (e && !e.done) { e.prog += use * mult(p.morale) * facK(s, 'forge', 'build'); if (e.prog >= workOf(e.type, plotOf(nav, p.tgt))) { complete(s, p.tgt, nav, ev); continue; } }
+          if (e && !e.done) { e.prog += use * mult(p.morale) * facK(s, 'forge', 'build') * upK(s, 'shop'); if (e.prog >= workOf(e.type, plotOf(nav, p.tgt))) { complete(s, p.tgt, nav, ev); continue; } }
         }
         p.t += rem;
         if (p.t < p.dur) break;
@@ -447,11 +449,13 @@
     if (N.awakeK(s, 'spirit') >= 0) { const sp = catK(s, nav, 'spirit'); if (sp) s.needs.spirit = Math.min(100, s.needs.spirit + sp * dt / H); }   // happy spots (catalog.js)
     // buildings work by themselves; pups eat
     const c = counts(s);
-    if (c.lantern) s.needs.light = Math.min(100, s.needs.light + c.lantern * C.B.lantern.light * sea(s, 'lantern') * dt / H);
-    s.res.food = Math.max(0, s.res.food + (c.garden * C.B.garden.food * sea(s, 'garden') * catK(s, nav, 'garden') - C.EAT * eaters(s)) * dt / H);
+    if (c.lantern) s.needs.light = Math.min(100, s.needs.light + c.lantern * C.B.lantern.light * sea(s, 'lantern') * upK(s, 'lamp') * dt / H);
+    s.res.food = Math.max(0, s.res.food + (c.garden * C.B.garden.food * sea(s, 'garden') * catK(s, nav, 'garden') * upK(s, 'berry') - C.EAT * eaters(s)) * dt / H);
     s.res.wood += c.woodshed * C.B.woodshed.wood * dt / H; s.res.stone += c.quarry * C.B.quarry.stone * dt / H;
     s.health = healthOf(s);
-    s.xp += C.XP_PER_H(s.health) * dt / H;
+    // pacing pass: growth answers the player (needs met, jobs filled, homes built); neglect slows it but never stops it (src/pacing.js)
+    if (window.Pacing) window.Pacing.tick(s, dt, nav, ev);   // ("let the pups plan": a big surplus now and then goes into an upgrade)
+    s.xp += (window.Pacing ? window.Pacing.xpRate(s) : C.XP_PER_H(s.health)) * dt / H;
     if (window.Lanterns) window.Lanterns.tick(s, dt);   // Round 2 step 4: World Bloom petals from healthy tree hours
     const sap = C.SAP_PER_H(s.health) * sea(s, 'sap') * (s.level >= 8 ? C.ELDER_SAP : 1) * dt / H; s.sap += sap;
     while (s.level < C.MAX_LV && s.xp >= C.LV_XP[s.level]) {
@@ -459,6 +463,7 @@
       for (const p of s.pups) if (p.phase === 'rest') { p.phase = 'idle'; p.t = 0; p.dur = 0; }   // the trunk grew: nap further out
       window.Needs.rootsGrew(s, nav, ev);   // step 5: blight under the grown roots is pushed out
     }
+    if (window.Rings) window.Rings.tick(s, dt, nav, ev);   // update 3: past Elder the growth keeps earning rings (src/rings.js; nothing below L8)
     // arrivals
     if (arrivalOk(s, nav)) { s.arrive += dt; if (s.arrive >= (s.invite ? C.INVITE_WAIT : C.ARRIVE_WAIT)) arrive(s, nav, ev); }
     s.time += dt;
@@ -482,9 +487,9 @@
   function catchUp(s, seconds, nav) {
     const sec = Math.max(0, Math.min(C.OFFLINE_CAP, seconds || 0));
     const b = { buckets: s.stats.buckets, orbs: s.stats.orbs, sap: s.sap, xp: s.xp, level: s.level, health: s.health, needs: Object.assign({}, s.needs), res: Object.assign({}, s.res), st: Object.assign({}, s.stats), cleared: s.blight.cleared, fed: s.garden.fed, pend: s.lan ? s.lan.bl.pend : 0 };
-    let left = sec, nightSec = 0; const ev = [], tr0 = s.pups.map(p => p.trips), ring0 = s.story ? s.story.ring : 0;
+    let left = sec, nightSec = 0; const ev = [], tr0 = s.pups.map(p => p.trips), ring0 = s.story ? s.story.ring : 0, el0 = window.Rings && s.level >= 8 ? window.Rings.progress(s) : null;
     while (left > 1e-6) { const dt = Math.min(C.COARSE, left); if (dayCurve(dayH(s)).night > 0.5) nightSec += dt; step(s, dt, nav, ev); left -= dt; }
-    return { sec, nightSec, capped: seconds > C.OFFLINE_CAP, buckets: s.stats.buckets - b.buckets, orbs: s.stats.orbs - b.orbs, sap: s.sap - b.sap,
+    return { sec, away: Math.max(0, seconds || 0), nightSec, capped: seconds > C.OFFLINE_CAP, buckets: s.stats.buckets - b.buckets, orbs: s.stats.orbs - b.orbs, sap: s.sap - b.sap,
       xp: s.xp - b.xp, levels: s.level - b.level, healthFrom: b.health, healthTo: s.health, needsFrom: b.needs, needsTo: Object.assign({}, s.needs),
       gathered: { wood: s.stats.wood - b.st.wood, stone: s.stats.stone - b.st.stone, food: s.stats.food - b.st.food }, resFrom: b.res, resTo: Object.assign({}, s.res),
       built: ev.filter(e => e.type === 'built').map(e => ({ pid: e.pid, kind: e.kind })), arrived: ev.filter(e => e.type === 'arrive').map(e => e.pup),
@@ -497,7 +502,9 @@
       // Round 2 step 3: sky critters that came while away (start records) + the visits that left a gift
       critters: ev.filter(e => e.type === 'crit' && e.k === 'start').map(e => e.v), critGifts: ev.filter(e => e.type === 'crit' && e.k === 'end' && e.gift).map(e => e.v),
       // Round 2 step 4: World Bloom petals the island's care earned while away (sent when the game is online)
-      petals: s.lan ? s.lan.bl.pend - b.pend : 0 };
+      petals: s.lan ? s.lan.bl.pend - b.pend : 0,
+      // update 3: Elder rings reached while away + the ring progress before / after (null below Elder)
+      rings: ev.filter(e => e.type === 'ring').map(e => e.n), elderFrom: el0, elderTo: window.Rings && s.level >= 8 ? window.Rings.progress(s) : null };
   }
 
   // where a pup is for the renderer (extra = seconds since the last tick, for smooth motion)
@@ -526,7 +533,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -634,6 +641,10 @@
     if (window.Lanterns) window.Lanterns.sanitize(s, o.v >= 10 ? o : {});
     // v12 (Round 3 update 1): outfits on pups (owned ids only, one pup per outfit); older saves: everyone undressed
     if (window.Wardrobe) window.Wardrobe.sanitize(s);
+    // v14 (pacing pass): island upgrades + the tree offering (the field exists only once used); older saves: none yet
+    if (window.Pacing) window.Pacing.sanitize(s, o.v >= 14 ? o : {});
+    // v15 (update 3): Elder rings celebrated + voyage isles sailed (only from Elder on); an older Elder island earns its rings on the next step
+    if (window.Rings) window.Rings.sanitize(s, o.v >= 15 ? o : {});
     s.health = healthOf(s); return s;
   }
 

@@ -15,6 +15,7 @@
     { id: 'path', name: 'Garden paths' }, { id: 'fence', name: 'Fences + hedges' }, { id: 'light', name: 'Lanterns' }, { id: 'seat', name: 'Benches + nooks' },
     { id: 'flower', name: 'Flower beds' }, { id: 'water', name: 'Ponds' }, { id: 'pup', name: 'Pup things' }, { id: 'sign', name: 'Signposts' },
     { id: 'shrine', name: 'Shrines + charms' }, { id: 'woods', name: 'Little woods' }, { id: 'sky', name: 'Sky treasures' },
+    { id: 'grand', name: 'Grand wonders' },
   ];
   // ---- effects (fx): R = how close to what it helps (m), k = per piece, cap = the most all pieces of that kind add together
   const FX = {
@@ -71,6 +72,12 @@
     ['spruce', 'woods', 'Spruce', 'EG_Spruce_A', 1.4, { seeds: 1, food: 6 }, 2, null, { crit: ['owl'] }],
     ['spruce-b', 'woods', 'Snowy spruce', 'EG_Spruce_B', 1.4, { seeds: 1, food: 6 }, 3, null, { crit: ['owl'] }],
     ['stump', 'woods', 'Old stump', 'EG_Stump', 2.2, { wood: 2 }, 1, null, { crit: ['snail'] }],
+    // pacing pass (2026-11-03): grand wonders = big, costly, pure decoration (somewhere for a week's pile to go; existing kit
+    // models at a grand size, no stand-ins); critters still like them
+    ['grand-wisp', 'grand', 'Elder wisp tree', 'EG_WispTree_B', 3.2, { wood: 2000, food: 800, sap: 300 }, 4, null, { crit: ['owl'] }],
+    ['grand-ring', 'grand', 'Moonlit fairy circle', 'EG_FairyRing', 3.4, { food: 2000, stone: 600, sap: 300 }, 4, null, { crit: ['sprite', 'snail'] }],
+    ['grand-crystal', 'grand', 'Crystal spire', 'EG_CrystalPillar', 1.8, { stone: 2500, crystal: 12, sap: 400 }, 5, null, { crit: ['deer'] }],
+    ['grand-spirit', 'grand', 'Great spirit tree', 'EG_SpiritTree', 0.75, { wood: 1500, food: 1500, seeds: 3, sap: 500 }, 6, null, { crit: ['sprite', 'owl'] }],
   ];
   // the step-3 / step-5 decorations (trips + daily gifts) join the catalogue with an effect; never crafted
   const OLD = {
@@ -78,6 +85,11 @@
     'rune-boulder-b': ['shrine', 'trip', 'protect', ['deer']], 'glow-shrooms': ['light', 'trip', 'light', ['snail', 'moth']], 'fairy-ring': ['shrine', 'trip', 'spirit', ['sprite', 'snail']],
     'crystal-pillar': ['shrine', 'trip', 'protect', ['deer']], 'firefly-jar': ['light', 'gift', 'light', ['moth']], 'moon-lantern': ['light', 'gift', 'light', ['moth']],
     'star-shard': ['sky', 'trip', 'spirit', ['deer']], 'spirit-sapling': ['shrine', 'trip', 'spirit', ['sprite']],
+    // update 3: far-sky voyage finds + Elder ring gifts (never crafted; Exped.DECOR holds their pieces)
+    'song-stone': ['sky', 'voyage', 'spirit', ['finch']], 'shoal-glowcaps': ['sky', 'voyage', 'light', ['snail', 'moth']], 'lighthouse-lamp': ['sky', 'voyage', 'light', ['moth']],
+    'whale-stone': ['sky', 'voyage', 'protect', ['deer']], 'sister-sapling': ['sky', 'voyage', 'spirit', ['sprite']], 'starwell-stone': ['sky', 'voyage', 'protect', ['deer']],
+    'edge-orb': ['sky', 'voyage', 'light', ['moth']], 'ring-orb': ['sky', 'ring', 'light', ['moth']], 'elder-wisp': ['sky', 'ring', null, ['owl']],
+    'ring-stones': ['sky', 'ring', 'spirit', ['sprite', 'snail']], 'ring-lantern': ['sky', 'ring', 'light', ['moth']],
   };
   // the planned pieces that need new library models (kit_elderglow_build request): listed, never shown as stand-ins
   const NEEDS_LIBRARY = ['path tiles x3', 'edging stones', 'log fence', 'garden gate', 'hedge arch', 'string lights', 'lantern arch', 'nap nook', 'swing bench',
@@ -91,7 +103,7 @@
     const DEC = X_().DECOR;
     for (const e of LIST) if (!DEC[e.id]) DEC[e.id] = { name: e.name, piece: e.piece, s: e.s };
     for (const id in OLD) { const D = DEC[id]; if (!D || BY[id]) continue; const [set, from, fx, crit] = OLD[id];
-      const e = { id, set, name: D.name, piece: D.piece, s: D.s, cost: null, lv: 1, fx, from, crit, walk: false, glow: /lantern|jar|shrooms/.test(id) }; BY[id] = e; LIST.push(e); }
+      const e = { id, set, name: D.name, piece: D.piece, s: D.s, cost: null, lv: 1, fx, from, crit, walk: false, glow: /lantern|jar|shrooms|glowcaps|lamp|orb|starwell/.test(id) }; BY[id] = e; LIST.push(e); }
     const EF = D_() && D_().EFFECTS; if (EF) for (const e of LIST) if (e.fx) EF[e.id] = e.fx;
   }
   register();

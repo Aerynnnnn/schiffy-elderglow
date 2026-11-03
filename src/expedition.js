@@ -15,6 +15,8 @@
     { sec: 2 * H, label: '2 h', food: 10, xp: 20 },
     { sec: 4 * H, label: '4 h', food: 18, xp: 40 },
     { sec: 8 * H, label: '8 h', food: 32, xp: 80 },
+    // update 3: the far-sky voyages' tier (never offered for the near isles; length + supplies per isle: src/voyages.js)
+    { sec: 0, label: 'Voyage', food: 0, xp: 0, voy: true },
   ];
   const C = {
     MAX_TEAM: 4, BASE_RES: 12, BASE_CRYSTAL: 0.5, ROLLS_PER_H: 2.5, MIN_ROLLS: 2, RARE: 0.006, LIKE_K: 1.6, LV_K: 0.1,
@@ -50,6 +52,13 @@
     // step 5 (far isles)
     'rune-boulder-b': { name: 'Mossy rune stone', piece: 'EG_RuneBoulder_B', s: 1.9 }, 'star-shard': { name: 'Star shard', piece: 'EG_CrystalPillar', s: 0.9 },
     'wisp-tree-b': { name: 'Silver wisp tree', piece: 'EG_WispTree_B', s: 1.7 }, 'spirit-sapling': { name: 'Spirit sapling', piece: 'EG_SpiritTree', s: 0.3 },
+    // update 3: far-sky voyage finds (src/voyages.js) + Elder ring gifts (src/rings.js): kit pieces at their own size (no stand-ins)
+    'song-stone': { name: 'Song stone', piece: 'EG_RuneBoulder_A', s: 2.4 }, 'shoal-glowcaps': { name: 'Shoal glowcaps', piece: 'EG_GlowShrooms_B', s: 3.4 },
+    'lighthouse-lamp': { name: 'Lighthouse lamp', piece: 'EG_LanternPost', s: 3.2 }, 'whale-stone': { name: 'Whale-rest stone', piece: 'EG_RuneBoulder_B', s: 2.8 },
+    'sister-sapling': { name: 'Sister sapling', piece: 'EG_SpiritTree', s: 0.42 }, 'starwell-stone': { name: 'Starwell crystal', piece: 'EG_CrystalPillar', s: 1.2 },
+    'edge-orb': { name: 'Edge-of-the-sky orb', piece: 'EG_LightOrb', s: 2.1 },
+    'ring-orb': { name: 'Ring-light orb', piece: 'EG_LightOrb', s: 1.8 }, 'elder-wisp': { name: 'Elder-ring wisp', piece: 'EG_WispTree_A', s: 2.4 },
+    'ring-stones': { name: 'Old ring stones', piece: 'EG_FairyRing', s: 2.6 }, 'ring-lantern': { name: 'Ring lantern', piece: 'EG_Brazier', s: 2.4 },
   };
   // rare finds: isle pups (a breed the island doesn't have yet: Noodle) and sky outfits (names in Daily.OUTFITS)
   const ISLE_PUPS = [
@@ -69,7 +78,12 @@
 
   function board(s) { for (const k in s.plots) { const e = s.plots[k]; if (e.type === 'board' && e.done) return +k; } return null; }
   const maxTrips = s => s.level >= 6 ? 3 : s.level >= 3 ? 2 : 1;   // step 5: a third boat at tree level 6
-  const unlocked = (s, d) => !d.locked && s.level >= d.lv;
+  const V_ = () => window.Voyages, R_ = () => window.Rings;
+  // update 3: the 4th Elder ring adds a 5th seat to every skyboat
+  const maxTeam = s => C.MAX_TEAM + (R_() && R_().seat(s) ? 1 : 0);
+  // a trip's length: the tier's, or the voyage isle's own (update 3)
+  const secOf = t => { const d = DEST[t.dest]; return d && d.voy ? d.voy.h * H : TIERS[t.tier].sec; };
+  const unlocked = (s, d) => !d.locked && s.level >= d.lv && (!d.voy || !!(R_() && R_().voyOpen(s, d.id)));
   // where the k-th team pup waits at the dock (beside the boat), and the boat's parking spot
   function dockSpot(s, nav, k) { const b = board(s); return b !== null ? nav.site(b, k) : nav.rest(k, S_().scaleOf(s)); }
   const busy = p => !!p.exp || p.phase === 'arrive';
@@ -78,11 +92,14 @@
     const d = DEST[di], T = TIERS[tier];
     if (board(s) === null) return { ok: false, why: 'The Skyboat dock comes first' };
     if (!d || !T) return { ok: false, why: 'Pick an isle' };
-    if (!unlocked(s, d)) return { ok: false, why: d.locked ? 'Far out in the sky: out of reach for now' : `Drifts close at tree level ${d.lv}` };
+    if (!!T.voy !== !!d.voy) return { ok: false, why: 'Pick how long' };
+    if (!unlocked(s, d) && !d.voy) return { ok: false, why: d.locked ? 'Far out in the sky: out of reach for now' : `Drifts close at tree level ${d.lv}` };
     if (s.exp.trips.length >= maxTrips(s)) return { ok: false, why: s.level >= 6 ? 'All three skyboats are out' : s.level >= 3 ? 'Both skyboats are out (a 3rd at tree level 6)' : 'The skyboat is out (a 2nd at tree level 3)' };
-    if (!Array.isArray(team) || !team.length) return { ok: false, why: 'Pick a crew of 1-4 pups' };
-    if (team.length > C.MAX_TEAM || new Set(team).size !== team.length) return { ok: false, why: 'A skyboat holds 4 pups' };
-    for (const i of team) { const p = s.pups[i]; if (!p) return { ok: false, why: 'Pick a crew of 1-4 pups' }; if (busy(p)) return { ok: false, why: p.name + (p.exp ? ' is away on a skyboat' : ' is still arriving') }; }
+    const mt = maxTeam(s);
+    if (!Array.isArray(team) || !team.length) return { ok: false, why: `Pick a crew of ${d.voy ? window.Voyages.C.MIN_TEAM : 1}-${mt} pups` };
+    if (team.length > mt || new Set(team).size !== team.length) return { ok: false, why: `A skyboat holds ${mt} pups` };
+    for (const i of team) { const p = s.pups[i]; if (!p) return { ok: false, why: `Pick a crew of 1-${mt} pups` }; if (busy(p)) return { ok: false, why: p.name + (p.exp ? ' is away on a skyboat' : ' is still arriving') }; }
+    if (d.voy) { const v = V_().canSend(s, d, team); return v.ok ? { ok: true, food: 0, cost: v.cost } : v; }
     const food = T.food * team.length; if (s.res.food < food - 1e-9) return { ok: false, why: `A little more needed: ${food} berries to pack` };
     return { ok: true, food };
   }
@@ -91,6 +108,10 @@
     const I = S_()._, n = s.exp.n++;
     const seed = hash(n * 7919 + di * 131 + tier * 17 + team.reduce((a, i) => a + (i + 1) * 31, 0) + Math.floor(s.time)) || 1;
     const trip = { id: n + 1, dest: di, tier, team: team.slice(), lv: team.map(i => lvOf(s.pups[i].xpE)), like: team.map(i => s.pups[i].like), seed, t0: Math.round(s.time * 1000) / 1000, dep: -1, dur: TIERS[tier].sec };
+    const d = DEST[di];
+    if (d.voy) {   // update 3: a far-sky voyage: supplies paid now; 'first sail' kept for the haul (pure of the trip)
+      V_().pay(s, c.cost, 1); trip.dur = secOf(trip); trip.first = !(s.elder && s.elder.vy[d.id]); trip.sup = c.cost;
+    }
     s.res.food -= c.food; s.exp.trips.push(trip);
     team.forEach((i, k) => {
       const p = s.pups[i]; I.stopWalking(p, nav);
@@ -103,7 +124,9 @@
   function recall(s, nav, id) {
     const k = s.exp.trips.findIndex(t => t.id === id); if (k < 0) return false;
     const t = s.exp.trips[k]; if (t.dep >= 0) return false;
-    s.res.food += TIERS[t.tier].food * t.team.length; s.exp.trips.splice(k, 1);
+    if (t.sup) V_().pay(s, t.sup, -1);   // a voyage: every bit of the supplies back
+    else s.res.food += TIERS[t.tier].food * t.team.length;
+    s.exp.trips.splice(k, 1);
     for (const i of t.team) { const p = s.pups[i]; if (!p) continue; S_()._.stopWalking(p, nav); p.exp = null; }
     return true;
   }
@@ -152,13 +175,16 @@
   }
   const ownOf = s => ({ pups: s.pups.map(p => p.id).concat(s.invite ? [s.invite.id] : []), outfits: s.inv.outfits });
 
-  const durOf = (s, t) => window.Weather ? window.Weather.tripDur(s, TIERS[t.tier].sec, t.dep) : TIERS[t.tier].sec;
+  const durOf = (s, t) => window.Weather ? window.Weather.tripDur(s, secOf(t), t.dep) : secOf(t);
   function depart(s, t, nav) {
     t.dep = Math.round((s.time) * 1000) / 1000; t.dur = durOf(s, t);   // a wind at departure = a tail wind home (src/weather.js)
     t.team.forEach((i, k) => { const p = s.pups[i]; const at = dockSpot(s, nav, k); p.phase = 'away'; p.leg = null; p.t = 0; p.dur = 0; p.at = { p: at.p.slice(), n: at.n }; });
   }
   function land(s, t, nav, ev) {
-    const I = S_()._, h = haul(t, ownOf(s)), T = TIERS[t.tier];
+    const I = S_()._, dv = DEST[t.dest].voy, h = dv ? V_().haul(t, ownOf(s)) : haul(t, ownOf(s)), T = TIERS[t.tier];
+    if (dv) {   // update 3: starlight = Elder ring progress; the isle counted as sailed
+      s.xp += h.star; if (s.elder) s.elder.vy[DEST[t.dest].id] = (s.elder.vy[DEST[t.dest].id] || 0) + 1;
+    }
     for (const k in h.res) s.res[k] += h.res[k];
     s.res.crystal += h.crystal; s.inv.seeds += h.seeds;
     for (const d of h.decor) s.inv.decor.push(d);
@@ -176,7 +202,7 @@
     t.team.forEach((i, k) => {
       const p = s.pups[i]; if (!p) return; const at = dockSpot(s, nav, k);
       p.exp = null; p.task = null; p.tgt = null; p.phase = 'idle'; p.leg = null; p.t = 0; p.dur = 0; p.at = { p: at.p.slice(), n: at.n };
-      p.xpE = (p.xpE || 0) + Math.round(T.xp * S_().facK(s, 'sprout', 'school'));   // the Sprout House trains explorers faster
+      p.xpE = (p.xpE || 0) + Math.round((dv ? V_().C.XP_H * dv.h : T.xp) * S_().facK(s, 'sprout', 'school'));   // the Sprout House trains explorers faster
     });
     s.stats.exped++;
     const rec = Object.assign({ id: t.id, dest: t.dest, tier: t.tier, team: t.team.slice(), names: t.team.map(i => s.pups[i] ? s.pups[i].name : '?'), at: Math.round(s.time), pupIdx }, h);
@@ -197,6 +223,7 @@
   // the board's estimate (expected haul ignoring luck), for the team picker
   function estimate(s, di, tier, team) {
     const d = DEST[di], T = TIERS[tier], hrs = T.sec / H; if (!d || d.locked) return null;
+    if (d.voy) return V_().estimate(s, d, team);
     const like = team.map(i => s.pups[i].like), lv = team.map(i => lvOf(s.pups[i].xpE));
     const rs = Object.values(d.res).reduce((a, b) => a + b, 0), out = { res: {}, crystal: 0, rolls: 0, rare: 0, bonus: [] };
     for (const r in d.res) out.res[r] = 0;
@@ -224,12 +251,17 @@
     s.exp = { n: Math.round(fin(e.n, 0, 0, 1e9)), trips: [], hauls: [] };
     const inTrip = new Map();
     if (Array.isArray(e.trips)) for (const t of e.trips) {
-      if (!t || typeof t !== 'object' || !DEST[t.dest] || DEST[t.dest].locked || !TIERS[t.tier] || !Array.isArray(t.team)) continue;
-      const team = t.team.filter((i, k, a) => Number.isInteger(i) && s.pups[i] && a.indexOf(i) === k && !inTrip.has(i)).slice(0, C.MAX_TEAM); if (!team.length) continue;
+      if (!t || typeof t !== 'object' || !DEST[t.dest] || DEST[t.dest].locked || !TIERS[t.tier] || !Array.isArray(t.team) || !!TIERS[t.tier].voy !== !!DEST[t.dest].voy) continue;
+      const team = t.team.filter((i, k, a) => Number.isInteger(i) && s.pups[i] && a.indexOf(i) === k && !inTrip.has(i)).slice(0, C.MAX_TEAM + 1); if (!team.length) continue;
       const id = Math.round(fin(t.id, 0, 1, 1e9)); if (s.exp.trips.some(x => x.id === id)) continue;
       const lv = team.map((i, k) => Math.round(fin(Array.isArray(t.lv) ? t.lv[t.team.indexOf(i)] : 1, 1, 1, C.EXP_LV.length)));
       const like = team.map(i => Array.isArray(t.like) && typeof t.like[t.team.indexOf(i)] === 'string' && LIKE[t.like[t.team.indexOf(i)]] !== undefined ? t.like[t.team.indexOf(i)] : s.pups[i].like);
       const dep = fin(t.dep, -1, -1, 1e12), trip = { id, dest: t.dest, tier: t.tier, team, lv, like, seed: (Math.round(fin(t.seed, 1, 0, 4294967295)) >>> 0) || 1, t0: fin(t.t0, s.time, 0, 1e12), dep: dep < 0 ? -1 : dep, dur: TIERS[t.tier].sec };
+      trip.dur = secOf(trip);
+      if (DEST[t.dest].voy) {   // update 3: a voyage keeps its first-sail flag + the supplies (refund on call-off)
+        trip.first = t.first === true;
+        const sup = {}, w = window.Voyages ? window.Voyages.supplies(DEST[t.dest], team.length) : {}; for (const k in w) sup[k] = Math.round(fin(t.sup && t.sup[k], w[k], 0, 1e9)); trip.sup = sup;
+      }
       s.exp.trips.push(trip); team.forEach(i => inTrip.set(i, trip));
       if (id > s.exp.n) s.exp.n = id;
     }
@@ -250,14 +282,15 @@
       s.exp.hauls.push({ id: Math.round(fin(h.id, 0, 0, 1e9)), dest: h.dest, tier: h.tier, team: Array.isArray(h.team) ? h.team.filter(i => Number.isInteger(i) && s.pups[i]).slice(0, 4) : [],
         names: Array.isArray(h.names) ? h.names.filter(n => typeof n === 'string' && /^[^<>&"\u0000-\u001f]{1,24}$/.test(n)).slice(0, 4) : [], at: Math.round(fin(h.at, 0, 0, 1e12)),
         pupIdx: Number.isInteger(h.pupIdx) && s.pups[h.pupIdx] ? h.pupIdx : -1, res, crystal: Math.round(fin(h.crystal, 0, 0, 1e6)), seeds: Math.round(fin(h.seeds, 0, 0, 1e6)),
-        decor: Array.isArray(h.decor) ? h.decor.filter(x => DECOR[x]).slice(0, 8) : [], outfit: OUTFITS.includes(h.outfit) ? h.outfit : null, pup: pup ? Object.assign({}, pup) : null,
+        decor: Array.isArray(h.decor) ? h.decor.filter(x => DECOR[x]).slice(0, 8) : [], outfit: OUTFITS.includes(h.outfit) || (window.Voyages && window.Voyages.OUTFITS.includes(h.outfit)) ? h.outfit : null, pup: pup ? Object.assign({}, pup) : null,
         cache: Math.round(fin(h.cache, 0, 0, 1e3)), waits: h.waits === true });
+      if (DEST[h.dest].voy) { const x = s.exp.hauls[s.exp.hauls.length - 1]; x.star = Math.round(fin(h.star, 0, 0, 1e12)); x.voy = true; x.first = h.first === true; }   // update 3
     }
     // (placed decor: src/decor.js, run by Sim.sanitize before the pups)
     for (const p of s.pups) p.xpE = Math.round(fin(p.xpE, 0, 0, 1e7));
   }
   function create(s) { s.exp = { n: 0, trips: [], hauls: [] }; s.placed = []; }
 
-  window.Exped = { C, TIERS, DEST, DESTBY, DECOR, ISLE_PUPS, OUTFITS, LIKE, LIKE_TXT, lvOf, board, maxTrips, unlocked, dockSpot, busy, canSend, send, recall, haul, ownOf, tick, estimate, durOf,
+  window.Exped = { C, TIERS, DEST, DESTBY, DECOR, ISLE_PUPS, OUTFITS, LIKE, LIKE_TXT, lvOf, board, maxTrips, maxTeam, secOf, unlocked, dockSpot, busy, canSend, send, recall, haul, ownOf, tick, estimate, durOf,
     place, unplace, ownedFree, sanitize, create, rng, hash };
 })();

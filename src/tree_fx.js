@@ -373,7 +373,7 @@ vec3 egWood(vec3 p) {
         spk += (spkTo - spk) * Math.min(1, dt * (spkTo > spk ? 1.1 : 0.45));
         const breathe = 0.5 + 0.5 * Math.sin(t * 1.6);
         const gk = growK();
-        treeU.boost.value = bk * 1.2 + STAGE_GLOW[lv - 1] * hk * (1 + api.night * 0.5) + spk * (0.28 + 0.14 * breathe) + gk * 0.7;
+        treeU.boost.value = bk * 1.2 + STAGE_GLOW[lv - 1] * hk * (1 + api.night * 0.5) + spk * (0.28 + 0.14 * breathe) + gk * 0.7 + (api.ringK || 0) * hk * api.night * 0.25;   // (update 3: Elder rings: a deeper night glow, src/ring_fx.js sets ringK; the day look is the shipped one)
         treeU.sway.value = 1 + spk * 2.6;
         treeU.rim.value.w = (api.golden || 0) + spk * (0.32 + 0.1 * breathe);
         spiralAcc += dt * spk * spk * 16;
@@ -402,7 +402,7 @@ vec3 egWood(vec3 p) {
         crown.position.set(TP[0], (cp.y0 + cp.y1) / 2, TP[2]); crown.scale.setScalar(cp.r * 3.2);
         // tree growth: the Elder's own glow (G 3 -> 4) = a wider, brighter crown aura, strongest at night
         const eK = Math.max(0, Math.min(1, G - 3)); crown.scale.multiplyScalar(1 + eK * 0.35);
-        crown.material.opacity = Math.max(0, (h - 70) / 30) * (0.3 + api.night * (0.25 + eK * 0.3)) * (0.8 + STAGE_GLOW[lv - 1]) + bk * 0.6 + spk * (0.22 + 0.1 * breathe) + gk * 0.35;
+        crown.material.opacity = Math.max(0, (h - 70) / 30) * (0.3 + api.night * (0.25 + eK * 0.3)) * (0.8 + STAGE_GLOW[lv - 1]) + bk * 0.6 + spk * (0.22 + 0.1 * breathe) + gk * 0.35 + (api.ringK || 0) * Math.max(0, (h - 70) / 30) * api.night * 0.18;
         // spiralling leaves while it speaks: they circle the trunk on the way down (season colours, else green + gold)
         while (spiralAcc > 1) {
           spiralAcc--; const a = Math.random() * 6.28, rr = cp.r * (0.55 + Math.random() * 0.5), sw0 = api.season, pk = sw0[0] > 0.5 ? 0 : sw0[2] > 0.5 ? 2 : -1;

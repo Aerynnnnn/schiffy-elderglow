@@ -12,7 +12,7 @@
   function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.encoding = THREE.sRGBEncoding; return t; }
   const rr = (g, x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
   const inked = (mesh, k) => { const h = new THREE.Mesh(mesh.geometry, INK); h.scale.setScalar(k || 1.06); mesh.add(h); return mesh; };
-  const SEATS = [-4.3, -1.45, 1.45, 4.3];   // along the boat's long axis (local z)
+  const SEATS = [-4.3, -1.45, 1.45, 4.3, 6.4];   // along the boat's long axis (local z); the 5th (Elder ring 4) up at the bow
 
   // ---- the leaf boat: ~15 m long (pups are drawn 3.1x), local +z = bow
   function makeBoat() {
@@ -67,6 +67,9 @@
     // ---- destination isles: show them (role 'sky'), find each isle's landing point (ray down onto its top)
     const L = map.layout, isle = {};
     for (const d of Exped.DEST) {
+      if (d.voy) {   // update 3: a far-sky voyage isle = a point far out past the fog (bearing, distance, height from the tree): the boat sails off over the horizon
+        const [a, dist, hy] = d.voy.at, TP = nav.TP; isle[d.id] = { land: new THREE.Vector3(TP[0] + Math.cos(a) * dist, TP[1] + hy, TP[2] + Math.sin(a) * dist), top: TP[1] + hy, d, far: true }; continue;
+      }
       const p = L.placements[d.pid] && L.placements[d.pid].id === d.pid ? L.placements[d.pid] : L.placements.find(x => x.id === d.pid); if (!p) continue;
       let land = new THREE.Vector3().fromArray(p.pos).add(new THREE.Vector3(0, 20 * p.s, 0)), top = -Infinity;
       for (const b of map.batches) for (const i of b.inst) if (i.pid === d.pid) {
@@ -248,6 +251,7 @@
         let st;
         if (tr) st = boatState(S, f, tr, now, k, tmpState);
         else { slotPos(f, k, tmpState.pos); tmpState.mode = 'dock'; tmpState.yaw = Math.atan2(f.side[0], f.side[1]); tmpState.back = false; st = tmpState; }
+        if (tr && st.mode === 'isle' && isle[Exped.DEST[tr.dest].id].far) { b.visible = false; b.updateMatrixWorld(true); api.view.trips.push({ trip: tr, slot: k, boat: b, mode: 'far', back: false, label: isle[Exped.DEST[tr.dest].id].land.clone() }); return; }   // update 3: out past the clouds
         const bob = Math.sin(t * 1.3 + k * 2) * (st.mode === 'fly' ? 0.25 : 0.4);
         b.position.copy(st.pos); b.position.y += bob;
         let dy = st.yaw - b.rotation.y; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;

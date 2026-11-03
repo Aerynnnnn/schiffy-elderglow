@@ -666,7 +666,9 @@
     // can a pup still walk from p to q without going through a decoration? (round every footprint, or - where the layout's own
     // footprints leave no clean way, as offPath falls back - round the decorations at least)
     function reachOk(p, q) { const ex = unite(holding(p), holding(q)); return segOk(p, q, ex, true) || !!detour(p, q, ex, true) || segOk(p, q, ex, 'dec') || !!detour(p, q, ex, 'dec'); }
-    function polyOk(P, ex, mode) { for (let i = 1; i < P.length; i++) if (!segOk(P[i - 1], P[i], ex, mode)) return false; return true; }
+    // (the player's things: an inner corner standing in one is never ok. segOk frees a footprint that holds a line's END, so a
+    // water-only detour with a corner inside a flower bed passed as two lines "leaving" it, 2026-11-03)
+    function polyOk(P, ex, mode) { for (let i = 1; i < P.length; i++) { if (!segOk(P[i - 1], P[i], ex, mode)) return false; if (mode === 'dec' && i < P.length - 1 && blockAtM(P[i][0], P[i][2], ex, 'dec')) return false; } return true; }
 
     // ---- buildings (creative build part 2, piece 4, src/homes.js). Homes.sync hands over [{pid, piece, x, z, ry, s, free}]:
     // a fixed plot that was TURNED (90 deg steps round its placement) or SWAPPED to another house piece gets its own footprint

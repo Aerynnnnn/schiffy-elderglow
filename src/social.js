@@ -137,6 +137,7 @@
     if (window.Land) window.Land.unsnap(st, o.land, nav);      // painted paths, removed + planted trees, meadows (none = untouched land)
     if (window.Homes) window.Homes.unsnap(st, o.hm, o.plots, nav);   // buildings: free homes + their plot rows, colours / turns / roofs
     if (window.Tour) window.Tour.unsnap(st, o.tour, nav);            // piece 5: the host's tour stops (repaired like a save)
+    if (window.Rings && lv >= window.Rings.C.LV) st.elder = { r: window.Rings.ringOf(fin(o.xp, 0, 0, 1e12)), t: [], vy: {} };   // update 3: the host's Elder rings (from the snapshot's xp; view only)
     st.events.slot = 1e9; st.decide = false; st.lastArrive = 1e9; st.social.acct = null;   // quiet: no events, no arrivals, no account
     return st;
   }

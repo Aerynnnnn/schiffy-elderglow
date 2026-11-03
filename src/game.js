@@ -20,6 +20,7 @@
   let soc = null, walker = null, bootSum = null, cloudUI = null, noSaves = false, lan = null, lfx = null;   // Round 2 step 4: lantern notes + World Bloom
   let calm = null;   // vibe pass 1: the calm view (src/calm.js), home only
   // vibe pass 2 lane C: day light pass (src/light_fx.js), idle camera drift (cam_drift.js, home), night whispers (tree_voice.js, home), foley (foley.js)
+  let ringFx = null;   // update 3: Elder rings round the trunk (src/ring_fx.js)
   let lightFx = null, drift = null, voice = null, foley = null, wxFx = null, wxUI = null;   // wxFx = seasons + weather pass (src/weather_fx.js)
   // ---- step 7: ONE backend (src/net.js) for the social side and the cloud save; the cloud check starts NOW (sign-in +
   // fetch run while the map loads) so a newer cloud copy is in place before load() reads the save. Off for visits (never
@@ -517,11 +518,13 @@
     for (const [t, ic, nm] of [['mem', 'memory', 'Tree memories'], ['pups', 'paw', 'Our pups'], ['decor', 'decor', 'Treasures'], ['outfits', 'scarf', 'Wardrobe'], ['crit', 'critter', 'Sky critters'], ['lan', 'lantern', 'Lanterns'], ['words', 'tree', 'Whispers']]) { const b = $('bookTabs').querySelector(`[data-t="${t}"]`); b.innerHTML = IC[ic] + nm; }
     $('bookTabs').addEventListener('click', e => { const b = e.target.closest('button[data-t]'); if (b) { bookTab = b.dataset.t; renderBook(); } });
     $('bookBody').addEventListener('click', e => { const b = e.target.closest('[data-mem]'); if (b) showMemory(+b.dataset.mem);
+      const rg = e.target.closest('[data-ring]'); if (rg) { showRing([+rg.dataset.ring]); return; }   // update 3: an Elder ring's card
       const wf = e.target.closest('[data-bfit]'); if (wf) { const w = Wardrobe.wearer(S, wf.dataset.bfit); openWard(w >= 0 ? w : wardWho()); return; }
       const ch = e.target.closest('[data-crit]'); if (ch) { closeBook(); meetCritter(+ch.dataset.crit, true); }   // a visitor here now: fly there + its card
       const ct = e.target.closest('[data-csp]'); if (ct && Critters.status(S, ct.dataset.csp) === 'seen') openCritCard(ct.dataset.csp, null, false); });
     $('ccClose').onclick = closeCritCard;
     $('memOk').onclick = () => { closeMemory(); if (!$('book').hidden) renderBook(); };
+    $('xbar').addEventListener('click', () => { if (S.level >= Rings.C.LV && !VISIT) { openBook('mem'); setTimeout(() => { const r = document.querySelector('#bookBody .ringh'); if (r) r.scrollIntoView({ block: 'start' }); }, 30); } });   // update 3: the rings
     $('book').addEventListener('click', e => { if (e.target.id === 'book') closeBook(); });
     $('buildBtn').onclick = () => { if (!$('plotCard').hidden) { closePlot(); return; } const x = plots.info.find(x => x.st === 'open' && x.show) || plots.info[0]; openPlot(x.q.pid, true); };
     $('pcClose').onclick = closePlot;
@@ -545,6 +548,7 @@
     $('awayList').addEventListener('click', e => {
       const db = e.target.closest('button[data-awdet]'); if (db) { const u = $('awayList').querySelector('.awdet'); if (u) { u.hidden = !u.hidden; db.classList.toggle('on', !u.hidden); db.innerHTML = (u.hidden ? 'The numbers &#9662;' : 'Hide the numbers &#9652;'); } return; }
       const hb = e.target.closest('button[data-haul]'); if (hb) { awayClose(false); openHaul(+hb.dataset.haul); return; }
+      const rb = e.target.closest('button[data-ringaway]'); if (rb) { const L = rb.dataset.ringaway.split(',').map(Number); awayClose('later'); queueCard('ring' + L[L.length - 1], () => showRing(L), true); return; }
       const mb = e.target.closest('button[data-memaway]'); if (mb) { awayClose('later'); queueCard('mem' + mb.dataset.memaway, () => showMemory(+mb.dataset.memaway), true); return; }
       const cb = e.target.closest('button[data-crit]'); if (cb) { awayClose(false); meetCritter(+cb.dataset.crit, true); return; }
       const b = e.target.closest('button[data-job]'); if (!b) return; const i = +b.closest('[data-i]').dataset.i; setJob(i, b.dataset.job, true);
@@ -630,12 +634,21 @@
       if (p.job !== k || p.exp) return; let x = Sim.C.SUPPLY[k] * Sim.mult(p.morale);
       if (k === 'spirit' && p.task === 'busk') x *= Needs.C.BUSK_K;
       if (k === 'nourish') x *= (1 + Needs.C.GARDEN.SPROUT_K * S.garden.sprouts.length) * (1 + Needs.C.GARDEN.CONS_K * Math.min(1, Needs.built(S, 'conserv')));
-      sup += x;
+      sup += x * Pacing.upK(S, k === 'water' ? 'well' : k === 'light' ? 'lamp' : k === 'nourish' ? 'roots' : '');   // (island upgrades: pacing.js)
     });
-    if (k === 'light') sup += Sim.counts(S).lantern * Sim.C.B.lantern.light;
+    if (k === 'light') sup += Sim.counts(S).lantern * Sim.C.B.lantern.light * Pacing.upK(S, 'lamp');
     if (k === 'nourish' && Needs.built(S, 'conserv')) sup += Needs.C.GARDEN.CONS_N;
     const decay = n.floor ? (n.decay + (k === 'protect' ? Needs.C.BLIGHT.LOAD * Needs.load(S) : 0)) * (0.25 + 0.75 * aw) : n.decay;
     return sup - decay;
+  }
+  // pacing pass: the tree card's growth pace line ("Growing 1.2x · needs met, pups busy"); tap = upgrades + the offering
+  function refreshPace(full) {
+    const el = $('pace'); if (!el) return; el.hidden = !!full || !!VISIT; if (el.hidden) return;
+    const w = Pacing.words(S), up = w.k > 1.001, dn = w.k < 0.999;
+    const why = w.why.concat(w.low).join(', ') || 'fill every job and build homes to speed it up';
+    const h = `${IC[dn ? 'heart' : 'sprout'] || ''}<b>${up || dn ? `Growing ${w.x}&times;` : 'Usual pace'}</b><small>${esc(why)}</small>`;
+    if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; el.classList.toggle('up', up); el.classList.toggle('dn', dn);
+      el.title = `How fast the Elder Tree grows: ${w.x}x. Needs met, every job filled and homes built speed it up (up to 1.3x); a thirsty tree slows down but never stops. Tap for upgrades + the tree offering.`; }
   }
   function refreshTree() {
     const h = S.health; $('lv').textContent = S.level;
@@ -645,8 +658,14 @@
     $('hlabel').textContent = `${healthWord(h)} ${Math.round(h)}%`;
     const lo = Sim.C.LV_XP[S.level - 1] || 0, hi = Sim.C.LV_XP[S.level];
     $('stg').textContent = Growth.stageName(S.level);
-    if (hi === undefined) { $('xfill').style.width = '100%'; $('xlabel').textContent = `Fully grown, the great Elder Tree · ${fmtN(S.xp)} growth`; }
-    else { $('xfill').style.width = ((S.xp - lo) / (hi - lo) * 100).toFixed(1) + '%'; $('xlabel').textContent = `Growing ${Math.floor(S.xp).toLocaleString()} / ${hi.toLocaleString()} · +${Math.round(Sim.C.XP_PER_H(h))} an hour`; }
+    if (hi === undefined) {   // update 3: past Elder the bar fills toward the next Elder ring (src/rings.js)
+      const R = Rings.progress(S), rate = Pacing.xpRate(S), n = VISIT ? Rings.got(S) : R.n;
+      $('xfill').style.width = (VISIT ? 100 : R.f * 100).toFixed(1) + '%'; $('xbar').classList.add('rings');
+      $('xlabel').textContent = VISIT ? `The great Elder Tree · ${n ? 'Ring ' + n : 'fully grown'}` : `Ring ${n} · ${Math.floor(R.f * 100)}% to ring ${n + 1} · +${Math.round(rate)} an hour`;
+      $('xbar').title = VISIT ? '' : `Past Elder the tree grows rings. Ring ${n + 1} in about ${fmtDays(R.left / rate * 3600)} at this pace (${esc(Rings.perkText(Rings.perkOf(n + 1)))}). Tap for the rings.`;
+    }
+    else { $('xfill').style.width = ((S.xp - lo) / (hi - lo) * 100).toFixed(1) + '%'; $('xlabel').textContent = `Growing ${Math.floor(S.xp).toLocaleString()} / ${hi.toLocaleString()} · +${Math.round(Pacing.xpRate(S))} an hour`; }
+    refreshPace(false);   // (update 3: past Elder the pace still matters: it grows the rings)
     document.querySelectorAll('#needs .need').forEach(r => {
       const k = r.dataset.k, v = S.needs[k]; r.querySelector('i').style.width = v.toFixed(1) + '%';
       const rate = needRate(k), tr = r.querySelector('.tr');
@@ -810,6 +829,68 @@
   function wardStep(d) { const n = S.pups.length; if (!n) return; wardI = ((wardI + d) % n + n) % n; focusPup(wardI, WARD_D); renderWard(); }
   // "Dress a pup" from a gift / haul: the selected pup, else the first one not wearing anything, else the first
   const wardWho = () => pups.selected >= 0 && S.pups[pups.selected] ? pups.selected : Math.max(0, S.pups.findIndex(p => !p.fit));
+
+  // ---- update 3: Elder rings (src/rings.js) + far-sky voyages (src/voyages.js). A ring reached while playing: its band of light
+  // draws itself round the trunk (src/ring_fx.js), a toast, then ONE card (rings that come together = one card); rings grown while
+  // away are on the away card. The Book's memories page lists them; the tree card's bar fills toward the next one.
+  let ringQ = [], ringT = null;
+  function ringReached(n) {
+    if (VISIT) return; ringQ.push(n); if (ringT) return;
+    ringT = setTimeout(() => { ringT = null; const L = ringQ.splice(0); if (!L.length) return; const k = L[L.length - 1];
+      if (ringFx) ringFx.celebrate(k); snd.sfx('theme_wave'); refreshTree();
+      toast(`${IC.tree} The Elder Tree grew ${L.length > 1 ? L.length + ' new rings' : 'a new ring'}: <b>Ring ${k}</b> &middot; ${esc(Rings.perkText(Rings.perkOf(k)))} <u>See it</u>`, 9000, () => queueCard('ring' + k, () => showRing(L), true));
+      queueCard('ring' + k, () => showRing(L)); save(); }, 1500);
+  }
+  const ringPup = () => (S.pups[0] && S.pups[0].name) || 'Pudding';
+  const giftWords = g => [g.sap ? `${IC.sap}${fmtN(g.sap)} sap` : '', g.crystal ? `${IC.crystal}${g.crystal} crystals` : '', g.seeds ? `${IC.seed}${g.seeds} seeds` : '', g.outfit ? `${IC.scarf}${esc(outfitName(g.outfit))}` : '', g.decor ? `${IC.decor}${esc(decorName(g.decor))}` : ''].filter(Boolean).join(' &middot; ');
+  // the ring card (in the memory card): one ring = its memory + perk + gift; several = the newest in full, the others in a list
+  function showRing(L) {
+    L = (Array.isArray(L) ? L : [L]).filter(n => n >= 1 && n <= Rings.got(S)); if (!L.length) return;
+    const n = L[L.length - 1], sk = Seasons.of(S), m = Rings.memOf(n, sk === null ? -1 : sk, ringPup()), p = Rings.perkOf(n), g = Rings.giftOf(n);
+    let h = `<div class="mstage disp">${IC.memory} Elder ring ${n}</div><h2 class="disp">${esc(m.title)}</h2><p class="mtext">${esc(m.text)}</p>`;
+    h += `<h4>${IC.star} The new ring brought</h4><ul class="munl ringul"><li>${IC[p.k === 'voy' ? 'isle' : p.k === 'seat' ? 'board' : (Pacing.UP[p.id] || {}).ic] || IC.star}<span>${esc(Rings.perkText(p))}</span></li><li>${IC.gift}<span>${giftWords(g)}</span></li><li>${IC.tree}<span>One more band of light round the trunk</span></li></ul>`;
+    if (L.length > 1) h += `<h4>${IC.tree} Also grown</h4><ul class="munl ringul">` + L.slice(0, -1).reverse().slice(0, 4).map(k => `<li>${IC.memory}<span><b>Ring ${k}:</b> ${esc(Rings.memOf(k, -1, ringPup()).title)} &middot; ${esc(Rings.perkText(Rings.perkOf(k)))}</span></li>`).join('') + (L.length > 5 ? `<li>${IC.book}<span>... and ${L.length - 5} more: the Book keeps every ring</span></li>` : '') + '</ul>';
+    $('memBody').innerHTML = h; memOpen = 0; $('mem').hidden = false; snd.sfx('sting_gift', { gain: 0.7 });
+  }
+  // the Book's memories page: the rings (newest first), what the next one brings, the ring bar
+  function ringsBookHtml() {
+    if (S.level < Rings.C.LV) return `<p class="bsub ringsoon">${IC.lock} Past the Elder Tree, the tree keeps growing: one ring at a time, each a little gift for the island.</p>`;
+    const r = Rings.got(S), P = Rings.progress(S), nx = Rings.perkOf(r + 1), rate = Pacing.xpRate(S), nb = Rings.nextBig(S);
+    let h = `<h4 class="ringh">${IC.tree} Elder rings <span class="cnt">${r}</span></h4>`;
+    if (!VISIT) h += `<div class="ringnext"><div class="bar"><i style="width:${(P.f * 100).toFixed(1)}%"></i></div><small>Ring ${r + 1}: ${Math.round(P.f * 100)}% &middot; about ${fmtDays(P.left / rate * 3600)} at this pace &middot; brings: ${esc(Rings.perkText(nx))}${nb.n !== r + 1 ? ` &middot; ring ${nb.n}: ${esc(Rings.perkText(nb.p))}` : ''}</small></div>`;
+    h += '<div class="mgrid">';
+    for (let n = r; n >= Math.max(1, r - 29); n--) { const m = Rings.memOf(n, -1, ringPup()); h += `<button class="mtile ringt" data-ring="${n}"><span class="ml disp">Ring ${n}</span><b class="disp">${esc(m.title)}</b><small>${esc(Rings.perkText(Rings.perkOf(n)))}</small></button>`; }
+    if (!r) h += `<div class="mtile lock"><span class="ml disp">Ring 1</span><b>${IC.lock} Still growing under the bark</b><small>${esc(Rings.perkText(Rings.perkOf(1)))}</small></div>`;
+    return h + '</div>';
+  }
+  // the skyboat card's far-sky voyages: open isles (Plan), the rest with the ring that opens them
+  function voyListHtml(bd) {
+    if (S.level < Rings.C.LV) return `<h4>${IC.star} Far-sky voyages</h4><p class="lockd">${IC.lock} Beyond the floating isles lie places no skyboat has reached yet. They open with the <b>Elder Tree's rings</b>, once it is fully grown.</p>`;
+    const out = Voyages.out(S);
+    let h = `<h4>${IC.star} Far-sky voyages <span class="cnt">ring ${Rings.got(S)}</span></h4><p class="sub small">Long voyages past the clouds: they need supplies from your stores and bring back starlight (Elder ring growth), crystals and rare finds. One voyage at a time.</p>`;
+    for (const v of Voyages.LIST) {
+      const d = Voyages.BY[v.id], ok = Exped.unlocked(S, d), n = Rings.voyRing(v.id), sailed = S.elder && S.elder.vy[v.id];
+      h += `<div class="bo dest voy${ok ? '' : ' off'}" data-x="${ok ? 'plan' : 'peek'}" data-d="${d.i}">${IC.star}<div class="bi"><b>${d.name}</b> <small class="inl">${v.h} h${sailed ? ' &middot; sailed ' + sailed + 'x' : ok ? ' &middot; not yet sailed' : ''}</small><small>${esc(v.blurb)}</small></div>${ok ? `<button class="go"${bd === null || out ? ' disabled' : ''}>${out ? 'Out' : 'Plan'}</button>` : `<span class="why">${IC.lock}Ring ${n}</span>`}</div>`;
+    }
+    return h;
+  }
+  // a voyage's plan: the crew (2-4, 5 from ring 4), the supplies (short = red), what it brings, Set sail
+  function renderVoyPlan(body, pv, d) {
+    const v = d.voy, max = Exped.maxTeam(S);
+    $('ecTitle').innerHTML = `${IC.star} ${d.name}`;
+    let h = `<p class="sub">${esc(v.blurb)} A crew of ${Voyages.C.MIN_TEAM}-${max} pups, ${v.h} hours out and home again (even while you're away).</p><div class="team">`;
+    S.pups.forEach((p, i) => {
+      const on = pv.team.includes(i), bz = Exped.busy(p);
+      h += `<button class="tp${on ? ' on' : ''}${bz ? ' busy' : ''}" data-x="pick" data-i="${i}"${bz ? ' disabled' : ''}><span class="dot" style="background:${p.collar}"></span><b>${esc(p.name)}</b><span class="xl">Explorer ${expLv(p)}</span><small>${bz ? (p.exp ? 'away on a skyboat' : 'just arriving') : `loves ${IC[p.like] || ''}`}</small>${on ? `<em>${pv.team.indexOf(i) + 1}</em>` : ''}</button>`;
+    });
+    h += '</div>';
+    const c = Exped.canSend(S, nav, pv.dest, pv.tier, pv.team), n = Math.max(pv.team.length, Voyages.C.MIN_TEAM), cost = Voyages.supplies(d, n), est = Exped.estimate(S, pv.dest, pv.tier, pv.team.length ? pv.team : []);
+    const have = k => k === 'sap' ? S.sap : (S.res[k] || 0);
+    h += `<div class="est voyest"><b>Supplies${pv.team.length ? '' : ' (for ' + n + ')'}</b> ${Object.keys(cost).map(k => `<span class="cost${have(k) < cost[k] + (k === 'food' ? Voyages.C.KEEP : 0) ? ' short' : ''}">${IC[COST_IC[k]] || ''}${fmtN(cost[k])}</span>`).join(' ')}`;
+    if (est) h += `<br><b>Likely treasures</b> <span class="gl">${IC.star}~${fmtN(est.star)} starlight (${Math.round(est.starF * 100)}% of a ring)</span> <span class="gl">${IC.crystal}~${est.crystal}</span> <span class="gl">${IC.seed}~${est.seeds}</span>${est.first ? ` <span class="gl">${IC.gift}the isle's own find</span>` : ` <span class="gl">${IC.decor}a chance of rare finds</span>`}<br><small>Home in ${v.h} h &middot; +${Voyages.C.XP_H * v.h} explorer xp each &middot; called off before lift-off = every bit back</small>`;
+    h += `</div><div class="pf"><button class="ghost" data-x="back">&#9664; Isles</button><button class="big${c.ok ? ' pulse' : ''}" data-x="send"${c.ok ? '' : ' disabled'}>${IC.board} Set sail!</button></div>${c.ok ? '' : `<p class="why2">${esc(c.why)}</p>`}`;
+    body.innerHTML = h;
+  }
   // a dream for the away card (only after a night away); it is this session's one unprompted message
   function awayDream(sum, away) {
     if (!sum || away < 60) return;
@@ -927,7 +1008,7 @@
         h += got ? `<button class="mtile${nw ? ' new' : ''}" data-mem="${lv}"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b class="disp">${m.title}</b><small>${m.text.slice(0, 64)}...</small>${nw ? '<em>new</em>' : ''}</button>`
           : `<div class="mtile lock"><span class="ml disp">Lv ${lv} &middot; ${Growth.stageName(lv)}</span><b>${IC.lock} A memory still sleeping in the bark</b><small>${Growth.UNLOCKS[lv].map(u => u[1]).slice(0, 2).join(', ')}...</small></div>`;
       }
-      h += '</div>';
+      h += '</div>' + ringsBookHtml();
     } else if (bookTab === 'pups') {
       const by = {}; S.pups.forEach(p => { (by[p.breed] = by[p.breed] || []).push(p); });
       const met = Sim.BREEDS.filter(b => by[b]).length;
@@ -951,7 +1032,7 @@
     } else if (bookTab === 'lan') {   // Round 2 step 4: lanterns received + sent
       h += lan ? lan.bookHtml() : '<p class="bsub">Lanterns only float over your own island.</p>';
     } else {
-      const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS))], own = new Set(S.inv.outfits);
+      const all = [...new Set(Object.keys(Daily.OUTFITS).concat(Exped.OUTFITS, Voyages.OUTFITS, Rings.OUTFITS))], own = new Set(S.inv.outfits);   // (update 3: + voyage + ring outfits)
       h += `<p class="bsub">Outfits: <b>${all.filter(o => own.has(o)).length} / ${all.length}</b>.${VISIT ? '' : ' Tap one to dress a pup up.'}</p><div class="pgrid">`;
       for (const o of all) { const w = Wardrobe.wearer(S, o), tag = own.has(o) && !VISIT ? 'button' : 'div';
         h += `<${tag} class="ptile${own.has(o) ? ' fitt' : ' lock'}"${tag === 'button' ? ` data-bfit="${o}"` : ''}><i class="dface">${own.has(o) ? IC.scarf : IC.lock}</i><b class="disp">${own.has(o) ? outfitName(o) : '???'}</b><small>${own.has(o) ? (w >= 0 ? 'worn by ' + esc(S.pups[w].name) : 'on its hook') : Wardrobe.where(o)}</small></${tag}>`; }
@@ -1038,7 +1119,7 @@
     }
     follow = -1; pups.select(-1); flyTo(tgt.clone().add(dir.multiplyScalar(d)).add(up), tgt, 1.3);
   }
-  const findWhere = d => { if (Catalog.BY[d] && Catalog.BY[d].from === 'craft') return 'made in the crafting nook'; const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the wandering trader' : 'tucked in a gift basket'; };
+  const findWhere = d => { if (Catalog.BY[d] && Catalog.BY[d].from === 'craft') return 'made in the crafting nook'; if (Catalog.BY[d] && Catalog.BY[d].from === 'ring') return 'an Elder ring gift'; const ds = Exped.DEST.filter(x => (x.decor || []).includes(d)).map(x => x.name); return ds.length ? 'found on ' + ds.slice(0, 2).join(' / ') : Events.OFFERS.some(o => o.get.decor === d) ? 'from the wandering trader' : 'tucked in a gift basket'; };
 
   // ---- daily gift (src/daily.js): calendar popup, opened by itself on the first open of a local day
   let giftPending = false, giftJust = null;
@@ -1283,11 +1364,12 @@
   // ---- expeditions (src/expedition.js): trip board card (destinations, trips, hauls, decor), team picker, haul reveal
   let expView = null, expSig = '';   // null = closed, {v: 'home'} or {v: 'plan', dest, tier, team: []}
   const decorName = id => (Exped.DECOR[id] || {}).name || Daily.DECOR[id] || id;
-  const outfitName = id => Daily.OUTFITS[id] || id;
+  const outfitName = id => Daily.OUTFITS[id] || (Wardrobe.DEFS[id] && Wardrobe.DEFS[id].name) || id;
   const expLv = p => Exped.lvOf(p.xpE);
   function haulItems(h) {   // [{ic, txt, rare}] in reveal order: resources, crystals, seeds, decor, rare
     const a = [];
     for (const k of ['wood', 'stone', 'food']) if (h.res[k]) a.push({ ic: IC[k], txt: `+${h.res[k]}`, sub: k === 'food' ? 'berries' : k });   // (compares the key: the display name changed in the UI voice pass)
+    if (h.star) a.push({ ic: IC.star, txt: `+${fmtN(h.star)}`, sub: 'starlight: Elder ring growth', rare: true });   // update 3: a far-sky voyage
     if (h.crystal) a.push({ ic: IC.crystal, txt: `+${h.crystal}`, sub: h.cache ? 'crystals (a cache!)' : 'crystals' });
     if (h.seeds) a.push({ ic: IC.seed, txt: `+${h.seeds}`, sub: 'seeds' });
     for (const d of h.decor) a.push({ ic: IC.decor, txt: decorName(d), sub: 'treasure' });
@@ -1299,7 +1381,8 @@
   function tripState(tr) {
     if (tr.dep < 0) return { txt: 'climbing aboard at the dock', f: 0 };
     const el = S.time - tr.dep, FLY = Math.min(Exped.C.FLY, tr.dur * 0.25), left = Math.max(0, tr.dep + tr.dur - S.time);
-    return { txt: el < FLY ? 'sailing out' : left < FLY ? 'drifting home!' : `exploring &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
+    const vy = Exped.DEST[tr.dest].voy;   // (update 3: a far-sky voyage)
+    return { txt: el < FLY ? 'sailing out' : left < FLY ? 'drifting home!' : `${vy ? 'past the clouds' : 'exploring'} &middot; back in ${fmtT(left)}`, f: Math.min(1, el / tr.dur), left };
   }
   function openExp(view) {
     closePlot(); closeEvents(); closeNeed(); closeCraft(); expView = view || { v: 'home' }; $('expCard').hidden = false; renderExp(true);
@@ -1326,15 +1409,17 @@
       h += `<h4>${IC.isle} Out in the sky <span class="cnt">${S.exp.trips.length}/${Exped.maxTrips(S)}</span></h4>`;
       for (const tr of S.exp.trips) {
         const st = tripState(tr), d = Exped.DEST[tr.dest];
-        h += `<div class="qi" data-x="look" data-id="${tr.id}">${IC.board}<div><b>${d.name}</b> <small class="inl">${Exped.TIERS[tr.tier].label}</small><div class="bar"><i style="width:${(st.f * 100).toFixed(1)}%"></i></div><small>${tr.team.map(i => `<span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}`).join(' ')} &middot; ${st.txt}</small></div>${tr.dep < 0 ? `<button class="ghost" data-x="recall" data-id="${tr.id}">Stay home</button>` : ''}</div>`;
+        h += `<div class="qi${d.voy ? ' voyq' : ''}" data-x="look" data-id="${tr.id}">${IC.board}<div><b>${d.name}</b> <small class="inl">${d.voy ? 'far-sky voyage &middot; ' + d.voy.h + ' h' : Exped.TIERS[tr.tier].label}</small><div class="bar"><i style="width:${(st.f * 100).toFixed(1)}%"></i></div><small>${tr.team.map(i => `<span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)}`).join(' ')} &middot; ${st.txt}</small></div>${tr.dep < 0 ? `<button class="ghost" data-x="recall" data-id="${tr.id}">Stay home</button>` : ''}</div>`;
       }
     }
     h += `<h4>${IC.isle} Floating isles</h4>`;
     for (const d of Exped.DEST) {
+      if (d.voy) continue;   // (update 3: the far-sky voyages have their own list below)
       const ok = Exped.unlocked(S, d);
       const finds = d.locked ? '' : Object.keys(d.res).map(k => IC[k]).join('') + (d.roll.crystal >= 2 ? IC.crystal : '') + (d.roll.seeds >= 2 ? IC.seed : '') + (d.roll.decor >= 2 ? IC.decor : '') + (d.rare ? IC.star : '');
       h += `<div class="bo dest${ok ? '' : ' off'}" data-x="${ok ? 'plan' : 'peek'}" data-d="${d.i}">${IC.isle}<div class="bi"><b>${d.name}</b><small>${d.blurb}</small>${ok ? `<div class="cs">${finds}</div>` : ''}</div>${ok ? `<button class="go"${bd === null ? ' disabled' : ''}>Plan</button>` : `<span class="why">${IC.lock}${d.locked ? 'Far sky, soon' : `Tree Lv ${d.lv}`}</span>`}</div>`;
     }
+    h += voyListHtml(bd);   // update 3: far-sky voyages
     // decorations: what you own (not placed) + what's out on the island
     const own = {}; for (const id of S.inv.decor) own[id] = (own[id] || 0) + 1;
     const ids = Object.keys(own);
@@ -1350,9 +1435,10 @@
   }
   function renderPlan(body) {
     const pv = expView, d = Exped.DEST[pv.dest], T = Exped.TIERS[pv.tier];
+    if (d.voy) { renderVoyPlan(body, pv, d); return; }   // update 3
     $('ecTitle').innerHTML = `${IC.isle} ${d.name}`;
-    let h = `<p class="sub">${d.blurb} Pick a crew of 1-4 pups: a pup who loves a job finds more of its kind.</p><div class="tiers">`;
-    Exped.TIERS.forEach((t, k) => { h += `<button data-x="tier" data-k="${k}" class="${k === pv.tier ? 'on' : ''}">${IC.clock}${t.label}<small>${IC.food}${t.food}/pup</small></button>`; });
+    let h = `<p class="sub">${d.blurb} Pick a crew of 1-${Exped.maxTeam(S)} pups: a pup who loves a job finds more of its kind.</p><div class="tiers">`;
+    Exped.TIERS.forEach((t, k) => { if (t.voy) return; h += `<button data-x="tier" data-k="${k}" class="${k === pv.tier ? 'on' : ''}">${IC.clock}${t.label}<small>${IC.food}${t.food}/pup</small></button>`; });
     h += `</div><div class="team">`;
     S.pups.forEach((p, i) => {
       const on = pv.team.includes(i), bz = Exped.busy(p), w = Exped.LIKE[p.like], good = w && (!['wood', 'stone', 'food'].includes(w) || d.res[w]);
@@ -1442,7 +1528,9 @@
     $('crTitle').innerHTML = `${IC.decor} The crafting nook`;
     $('crSets').innerHTML = Catalog.SETS.filter(t => Catalog.LIST.some(e => e.set === t.id)).map(t => `<button data-set="${t.id}" class="${t.id === craftSet ? 'on' : ''}">${t.name}</button>`).join('') +
       `<button data-set="land" class="${craftSet === 'land' ? 'on' : ''}">Shape the land</button>` +   // creative build part 2
-      `<button data-set="homes" class="${craftSet === 'homes' ? 'on' : ''}">Place a home</button>`;   // (buildings: a home on open land)
+      `<button data-set="homes" class="${craftSet === 'homes' ? 'on' : ''}">Place a home</button>` +   // (buildings: a home on open land)
+      `<button data-set="up" class="${craftSet === 'up' ? 'on' : ''}">Upgrades + offering</button>`;   // pacing pass
+    if (craftSet === 'up') { $('crBody').innerHTML = upCraftHtml(); return; }
     if (craftSet === 'land') { $('crBody').innerHTML = landCraftHtml(); return; }
     if (craftSet === 'homes') { $('crBody').innerHTML = homesCraftHtml(); return; }
     let h = '';
@@ -1452,7 +1540,7 @@
       h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC[F ? F.ic : 'decor'] || IC.decor}<b>${esc(e.name)}</b><small>${out ? out + ' out' : ''}${out && shed ? ' &middot; ' : ''}${shed ? shed + ' in the shed' : ''}</small></div>`;
       if (e.from === 'craft') h += `<div class="crc">${Object.keys(e.cost).map(k => `<span class="${c.need && c.need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${e.cost[k]}</span>`).join('')}</div>`;
       h += F ? `<div class="crf">${IC.star}${esc(F.txt)}</div>` : `<div class="crf pure">Just for beauty</div>`;
-      h += `<div class="crb">${e.from !== 'craft' ? `<span class="why">${e.from === 'gift' ? 'From a gift basket' : 'Found by skyboat crews'}</span>` : !c.ok ? `<span class="why">${c.why === 'cost' ? 'A little more needed' : CRAFT_WHY[c.why] ? CRAFT_WHY[c.why](e.lv) : ''}</span>` : ''}`;
+      h += `<div class="crb">${e.from !== 'craft' ? `<span class="why">${e.from === 'gift' ? 'From a gift basket' : e.from === 'voyage' ? 'Found on far-sky voyages' : e.from === 'ring' ? 'An Elder ring gift' : 'Found by skyboat crews'}</span>` : !c.ok ? `<span class="why">${c.why === 'cost' ? 'A little more needed' : CRAFT_WHY[c.why] ? CRAFT_WHY[c.why](e.lv) : ''}</span>` : ''}`;
       if (S.inv.craft[e.id] > 0 && shed > 0) h += `<button class="ghost sm" data-x="undo" data-id="${e.id}" title="Take it apart: the full cost comes back">Undo</button>`;
       if (shed > 0) h += `<button class="ghost sm" data-x="place" data-id="${e.id}">Place</button>`;
       if (e.from === 'craft') h += `<button class="go sm" data-x="craft" data-id="${e.id}"${c.ok ? '' : ' disabled'}>Craft</button>`;
@@ -1466,7 +1554,29 @@
     else if (x === 'place') { closeCraft(); startPlace(id); return; }
     else if (x === 'land') { closeCraft(); startLand(id); return; }
     else if (x === 'home') { const k = Homes.KINDS.find(k => k.k === id); if (k) { closeCraft(); startHome(k.piece); } return; }
+    else if (x === 'up') { const r = Pacing.buy(S, id); if (!r.ok) return; const u = Pacing.UP[id]; save(); refreshTree(); snd.sfx('built'); toast(`${IC[u.ic] || IC.build} <b>${u.name}</b> level ${r.n}: ${u.txt(r.n)}`, 3200); }
+    else if (x === 'offer') { const r = Pacing.offer(S); if (!r.ok) return; save(); refreshTree(); snd.sfx('sting_gift'); toast(`${IC.sprout} The Elder Tree drinks in your offering: it grows a little faster for the next 8 hours`, 3600); }
     renderCraft();
+  }
+  // pacing pass: the Craft card's "Upgrades + offering" tab (src/pacing.js): the growth pace and why, the tree offering, the
+  // five island upgrades (level pips, the next price, what the next level does)
+  function upCraftHtml() {
+    const P = Pacing, w = P.words(S), cst = (c, need) => Object.keys(c).map(k => `<span class="${need && need[k] ? 'short' : ''}">${IC[COST_IC[k]] || ''}${fmtN(c[k])}</span>`).join('');
+    let h = `<p class="sub pacebox">${IC.sprout} The Elder Tree is growing <b>${w.x}&times;</b>${w.why.length ? ': ' + esc(w.why.join(', ')) : ''}${w.low.length ? ' &middot; ' + esc(w.low.join(', ')) : ''}. Needs met, every job filled and homes built speed it up (up to 1.3&times;).</p>`;
+    const oc = P.canOffer(S), oCost = P.C.OFFER.cost(Math.max(S.level, P.C.OFFER.LV));
+    const oWhy = oc.ok ? '' : oc.why === 'level' ? `Tree level ${P.C.OFFER.LV}` : oc.why === 'on' ? `Glowing: ${fmtT(oc.left)} left` : oc.why === 'rest' ? `Again in ${fmtT(oc.left)}` : 'A little more needed';
+    h += `<div class="cri offer${oc.why === 'level' ? ' lock' : ''}"><div class="crh">${IC.sap}<b>Tree offering</b><small>${S.pace && S.pace.offN ? S.pace.offN + ' given' : ''}</small></div><div class="crc">${cst(oCost, oc.need)}</div>`;
+    h += `<div class="crf">${IC.star}Sap + berries at the roots: the tree grows +${Math.round(P.C.OFFER.K * 100)}% for 8 hours. One a day; it speeds the tree, it never skips a level.</div>`;
+    h += `<div class="crb"><span class="why">${oWhy}</span><button class="go sm" data-x="offer" data-id="offer"${oc.ok ? '' : ' disabled'}>Offer</button></div></div>`;
+    for (const id of P.ORDER) {
+      const u = P.UP[id], n = P.lvOf(S, id), c = P.canUp(S, id), lock = c.why === 'level' || c.why === 'asleep';
+      h += `<div class="cri${lock ? ' lock' : ''}"><div class="crh">${IC[u.ic] || IC.build}<b>${u.name}</b><small>level ${n} of ${u.max}</small></div><div class="upk">${[...Array(u.max)].map((_, k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('')}</div>`;
+      if (n < u.max) h += `<div class="crc">${cst(P.costOf(id, n), c.need)}</div>`;
+      h += `<div class="crf">${IC.star}${n ? esc(u.txt(n)) + (n < u.max ? ` &middot; next: ${esc(u.next)}` : '') : 'Next: ' + esc(u.next)}</div>`;
+      const why = c.ok ? '' : c.why === 'max' ? 'All done!' : c.why === 'level' ? `Tree level ${u.lv}` : c.why === 'asleep' ? 'Wakes with Nourish' : 'A little more needed';
+      h += `<div class="crb"><span class="why">${why}</span>${n < u.max ? `<button class="go sm" data-x="up" data-id="${id}"${c.ok ? '' : ' disabled'}>Upgrade</button>` : ''}</div></div>`;
+    }
+    return h + `<p class="sub small">With "Let the pups plan the village" on, the pups now and then put a big spare pile into the cheapest upgrade themselves.</p>`;
   }
   // the Craft card's "Place a home" tab: a cottage / big cottage / treehouse anywhere on open land (its door within 25 m of a
   // path); it goes down as a blueprint the builders build like any plot (the usual cost, paid when they start)
@@ -1484,8 +1594,8 @@
   function openHaul(k) {
     const h = S.exp.hauls[k]; if (!h) return; haulK = k; closeExp();
     const d = Exped.DEST[h.dest], items = haulItems(h);
-    $('hTitle').innerHTML = `The skyboat drifts home from ${d.name}!`;
-    $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + `<small class="trip">a ${Exped.TIERS[h.tier].label} skyboat trip</small>`;
+    $('hTitle').innerHTML = d.voy ? `Home from the far sky: ${d.name}!` : `The skyboat drifts home from ${d.name}!`;
+    $('hTeam').innerHTML = h.team.map((i, m) => S.pups[i] ? `<span class="tm2"><span class="dot" style="background:${S.pups[i].collar}"></span>${esc(S.pups[i].name)} <small>Explorer ${expLv(S.pups[i])}</small></span>` : '').join('') + (d.voy ? `<small class="trip voyw">${esc(d.voy.back)}${h.first ? ' <b>A first visit: they brought back something of the isle\'s own.</b>' : ''}</small>` : `<small class="trip">a ${Exped.TIERS[h.tier].label} skyboat trip</small>`);
     $('hItems').innerHTML = items.map((x, m) => `<div class="hi${x.rare ? ' rare' : ''}" style="animation-delay:${(0.45 + m * 0.32).toFixed(2)}s">${x.ic}<b>${x.txt}</b><small>${x.sub}</small></div>`).join('');
     $('hSack').classList.remove('open'); void $('hSack').offsetWidth; $('hSack').classList.add('open');
     $('hDecor').hidden = !h.decor.length; $('hPup').hidden = !(h.pup && h.pupIdx >= 0); $('hWard').hidden = !h.outfit;
@@ -1903,6 +2013,7 @@
     $('phFrame').addEventListener('click', e => { const b = e.target.closest('button[data-fr]'); if (b && PHOTO) { PHOTO.frame = b.dataset.fr; renderPhoto(); } });
     addEventListener('keydown', e => { if (PHOTO && e.key === 'Escape') closePhoto(); });
     $('craftBtn').onclick = () => { if (craftOpen) closeCraft(); else openCraft(); }; $('crClose').onclick = closeCraft;
+    $('pace').onclick = () => { if (craftOpen && craftSet === 'up') closeCraft(); else openCraft('up'); };   // pacing pass: the tree card's pace line
     $('crSets').addEventListener('click', e => { const b = e.target.closest('button[data-set]'); if (b) { craftSet = b.dataset.set; renderCraft(); $('craftCard').scrollTop = 0; } });
     $('crBody').addEventListener('click', e => { const b = e.target.closest('button[data-x]'); if (b && !b.disabled) craftAct(b.dataset.x, b.dataset.id); });
     // free decor: the place bar + the menu over a placed decoration
@@ -1926,15 +2037,15 @@
     $('hPup').onclick = () => { const h = S.exp.hauls[haulK], i = h ? h.pupIdx : -1; closeHaul(); if (i >= 0) { focusPup(i); showAway(null); } };
     $('ecBody').addEventListener('click', e => {
       const b = e.target.closest('[data-x]'); if (!b || b.disabled) return; const x = b.dataset.x;
-      if (x === 'plan') { const d = +b.dataset.d; if (Exped.board(S) === null) return; expView = { v: 'plan', dest: d, tier: 1, team: [] }; }
-      else if (x === 'peek') { const d = Exped.DEST[+b.dataset.d]; toast(`${IC.lock} ${d.name}: ${d.locked ? 'far out in the sky, out of reach for now' : 'drifts close at tree level ' + d.lv}`, 2600); return; }
+      if (x === 'plan') { const d = +b.dataset.d; if (Exped.board(S) === null) return; expView = { v: 'plan', dest: d, tier: Exped.DEST[d].voy ? Exped.TIERS.findIndex(t => t.voy) : 1, team: [] }; }
+      else if (x === 'peek') { const d = Exped.DEST[+b.dataset.d]; toast(`${IC.lock} ${d.name}: ${d.voy ? (S.level < 8 ? 'far out past the floating isles: the Elder Tree first' : 'opens with Elder ring ' + Rings.voyRing(d.id)) : d.locked ? 'far out in the sky, out of reach for now' : 'drifts close at tree level ' + d.lv}`, 2600); return; }
       else if (x === 'back') expView = { v: 'home' };
       else if (x === 'tier') expView.tier = +b.dataset.k;
-      else if (x === 'pick') { const i = +b.dataset.i, k = expView.team.indexOf(i); if (k >= 0) expView.team.splice(k, 1); else if (expView.team.length < Exped.C.MAX_TEAM) expView.team.push(i); else toast('A skyboat holds 4 pups', 1600); }
+      else if (x === 'pick') { const i = +b.dataset.i, k = expView.team.indexOf(i); if (k >= 0) expView.team.splice(k, 1); else if (expView.team.length < Exped.maxTeam(S)) expView.team.push(i); else toast(`A skyboat holds ${Exped.maxTeam(S)} pups`, 1600); }
       else if (x === 'send') { const v = expView; sendTrip(v.dest, v.tier, v.team.slice()); return; }
       else if (x === 'haul') { openHaul(+b.dataset.k); return; }
-      else if (x === 'recall') { e.stopPropagation(); if (Exped.recall(S, nav, +b.dataset.id)) { toast('The crew stays home: packed berries back in the pantry', 2400); save(); } }
-      else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
+      else if (x === 'recall') { e.stopPropagation(); const tr = S.exp.trips.find(t => t.id === +b.dataset.id), vy = tr && tr.sup; if (Exped.recall(S, nav, +b.dataset.id)) { toast(vy ? 'The crew stays home: every bit of the supplies goes back to the stores' : 'The crew stays home: packed berries back in the pantry', 2400); save(); } }
+      else if (x === 'look') { const v = expFx.view.trips.find(t => t.trip.id === +b.dataset.id); if (v && v.mode === 'far') { toast(`${IC.star} The crew is out past the clouds: home in ${fmtT(Math.max(0, v.trip.dep + v.trip.dur - S.time))}`, 2600); return; } if (v) { const p = v.label.clone(); follow = -1; flyTo(p.clone().add(camera.position.clone().sub(controls.target).setLength(160)), p, 1.3); } return; }
       else if (x === 'place') { placeDecor(b.dataset.id); }
       else if (x === 'craft') { openCraft(); return; }
       else if (x === 'unplace') { if (Exped.unplace(S, +b.dataset.k, nav)) { save(); syncPups(); toast('Tucked back in the shed', 1600); } }
@@ -2133,6 +2244,9 @@
     const out = []; for (const s of st) if (!out.some(o => Math.hypot(o.p[0] - s.p[0], o.p[2] - s.p[2]) < 25)) out.push(s);
     return out.slice(0, 4);
   }
+  const capH = () => Math.round(Sim.C.OFFLINE_CAP / 3600);
+  // "14 h", or "3 days" past 3 days
+  const awayLen = sec =>sec >= 72 * 3600 ? `${Math.round(sec / 86400)} days` : `${Math.round(sec / 3600)} h`;
   function showAway(sum) {
     const news = S.pups.map((p, i) => p.isNew ? i : -1).filter(i => i >= 0);
     const sh = (soc ? soc.awayHtml() : '') + (lan ? lan.awayHtml(sum) : '');   // step 6: visitors, gifts, notes; Round 2 step 4: lanterns + bloom petals
@@ -2148,6 +2262,9 @@
     $('away').classList.toggle('dreamy', !!dream);
     if (sum) {
       h += dream || `<li class="treeli"><div>${IC.tree}<p>${esc(treeLine(sum, news))}</p></div></li>`;
+      // pacing pass (3B): a long absence says plainly how much of it the pups worked (the offline cap, 12 h)
+      if (sum.capped && sum.away > sum.sec) h += `<li class="capli">${IC.clock}<div>Your pups worked <b>${capH()}${sum.away >= 72 * 3600 ? ' h' : ''}</b> of your <b>${awayLen(sum.away)}</b> away<small>They keep count for up to ${capH()} hours at a time: drop by twice a day and nothing is missed.</small></div></li>`;
+      if (sum.rings && sum.rings.length) { const L = sum.rings, n = L[L.length - 1]; h += `<li class="good exl ringli">${IC.tree}<div>The Elder Tree grew ${L.length > 1 ? L.length + ' new rings' : 'a new ring'} while you were away: <b>Ring ${n}</b>. ${esc(Rings.perkText(Rings.perkOf(n)))}.<br><button class="go sm" data-ringaway="${L.join(',')}">${IC.memory} See ${L.length > 1 ? 'the rings' : 'the ring'}</button></div></li>`; if (ringFx) ringFx.celebrate(n); }
       if (sum.levels > 0) h += `<li class="good exl">${IC.star}<div>The Elder Tree grew ${sum.levels > 1 ? sum.levels + ' levels' : 'a level'}! Now level ${S.level} (<b>${Growth.stageName(S.level)}</b>).<br><button class="go sm" data-memaway="${S.level}">${IC.memory} Read its memory</button></div></li>`;
       // new buildings: one line
       const bl = (sum.built || []).map(b => { const q = nav.plotBy[b.pid]; return q ? { b, q } : null; }).filter(Boolean);
@@ -2164,14 +2281,15 @@
       // ---- the details (folded): the numbers, only the ones that are not zero
       const g = sum.gathered || {}, ledger = [];
       if (sum.buckets >= 1) ledger.push(`${IC.water}${plural(sum.buckets, 'bucket')}`); if (sum.orbs >= 1) ledger.push(`${IC.orb}${plural(sum.orbs, 'orb')}`); if (sum.sap >= 1) ledger.push(`${IC.sap}+${fmtN(sum.sap)}`);
-      det += `<li>${IC.clock}${sum.capped ? 'Over 8 h (the pups keep count up to 8 h)' : fmtT(sum.sec)}</li>`;
+      det += `<li>${IC.clock}${sum.capped ? `${awayLen(sum.away)} away &middot; the pups worked the first ${fmtT(sum.sec)} (they keep count for up to ${capH()} h)` : fmtT(sum.sec)}</li>`;
       if (ledger.length) det += `<li>${ledger.join(' &middot; ')}</li>`;
       det += `<li>${IC.heart}The Elder Tree ${Math.round(sum.healthFrom)}% &rarr; <b>${Math.round(sum.healthTo)}%</b> (${healthWord(sum.healthTo)})</li>`;
       if (sum.nightSec >= 1800) det += `<li>${IC.moon}${fmtT(sum.nightSec)} of it was night: the pups took sleepy naps and the tree drank less.</li>`;
       const gl = ['wood', 'stone', 'food'].filter(k => (g[k] || 0) >= 1).map(k => `${IC[k]}+${fmtN(g[k])}`);
       if (gl.length) det += `<li>${gl.join(' ')} gathered</li>`;
       for (const x of bl) det += `<li>${IC[B_ICON[x.b.kind]]}<div><b>${bName(x.b.kind, x.q)}</b>: ${gives(x.b.kind, x.q)}</div></li>`;
-      for (const tr of S.exp.trips) if (tr.dep >= 0) det += `<li>${IC.isle}The <b>${Exped.DEST[tr.dest].name}</b> crew is still exploring: home in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}.</li>`;
+      for (const tr of S.exp.trips) if (tr.dep >= 0) det += `<li>${IC.isle}<span>The <b>${Exped.DEST[tr.dest].name}</b> crew is still ${Exped.DEST[tr.dest].voy ? 'out on its voyage' : 'exploring'}: home in ${fmtT(Math.max(0, tr.dep + tr.dur - S.time))}.</span></li>`;
+      if (sum.elderTo) { const a = sum.elderFrom, b = sum.elderTo; det += `<li>${IC.tree}<span>Elder ring ${b.n + 1}: ${a && a.n === b.n ? Math.round(a.f * 100) + '% &rarr; ' : ''}<b>${Math.round(b.f * 100)}%</b> (+${fmtN(sum.xp)} growth)</span></li>`; }
       if (sum.fed) det += `<li>${IC.nourish}Root gardeners fed the roots ${plural(sum.fed, 'time')}</li>`;
       if (sum.cleared || sum.blightNew) det += `<li>${IC.blight}${sum.blightNew ? `${sum.blightNew} blight patch${sum.blightNew > 1 ? 'es' : ''} crept in` : ''}${sum.blightNew && sum.cleared ? ', ' : ''}${sum.cleared ? `wardens swept away ${sum.cleared}` : ''}</li>`;
       const evs = (sum.events || []).map(id => S.events.log.find(l => l.id === id)).filter(Boolean);
@@ -2481,6 +2599,7 @@
     }
     S = ld.state;
     fx = TreeFx(scene, m, nav); fx.setScale(Sim.scaleOf(S), TreeFx.growthOf(S));
+    if (window.RingFx) ringFx = RingFx(scene, fx, nav);   // update 3: Elder rings round the trunk (view only)
     plots = Plots(scene, m, nav, ground);
     expFx = ExpFx(scene, m, nav, ground, { phone: PHONE, focus: () => controls.target });   // (phones: nearest 180 decorations to the orbit target)
     const loader = new THREE.GLTFLoader();
@@ -2649,14 +2768,15 @@
       Critters, get crFx() { return crFx; }, meetCritter, critCam, openCritCard, closeCritCard, sparkleAt,
       spawnCritter(c, key, min) { const sp = Critters.BY[c]; if (!sp) return null; S.crit.vis = S.crit.vis.filter(v => v.c !== c); const v = { id: ++S.crit.n, c, k: key || 't0', t0: S.time - 10, end: S.time + (min || 60) * 60, tap: 0 }; S.crit.vis.push(v); Critters.entry(S, c).v++; return v; },
       setColour(R, wave) { RST.lock = null; RST.wave = null; ElderMap.uRestWave.value = 0; if (R === null) { RST.R = Story.radius(S).R; return RST.R; } if (wave) { RST.R = Math.min(RST.R, R); startWave(RST.R, R); RST.wave.lockEnd = R; } else RST.lock = R; return R; },
-      waterRuns() { return waterRuns(m); }, waterFine() { return waterFine(m); }, spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
+      waterRuns() { return waterRuns(m); }, waterFine() { return waterFine(m); }, get ringFx() { return ringFx; }, Rings, Voyages, showRing, ringReached, voyPlan: (id, team) => { openExp({ v: 'plan', dest: Voyages.BY[id].i, tier: Exped.TIERS.findIndex(t => t.voy), team: team || [] }); },   // update 3
+      spotCheck() { const n2 = Nav(m.layout); n2.setDecorOk(waterFree(m)); return J(n2.decorSpots.map(d => d.pid)) === J(nav.decorSpots.map(d => d.pid)); }, spotSig: () => nav.spotSig() };
   }).catch(e => { err('Could not start: ' + (e.stack || e)); window.__mapError = String(e); });
 
   // ---- loop: fixed sim steps from real time, render reads the sim
   let acc = 0, hs = 80, hl = 80, last = performance.now(), frames = 0, pacc = 0, cpu = 0, uiAcc = 0, clockAcc = 0;
   const STEP = Sim.C.STEP;
   const onEv = e => {
-    if (cloud && (e.type === 'level' || e.type === 'built' || e.type === 'exp-back' || e.type === 'arrive')) cloud.soon();   // big moments reach the cloud within seconds
+    if (cloud && (e.type === 'level' || e.type === 'ring' || e.type === 'built' || e.type === 'exp-back' || e.type === 'arrive')) cloud.soon();   // big moments reach the cloud within seconds
     if (snd.live) sndEv(e);   // sound: soft, positional, rate-limited (src/audio.js)
     if (e.type === 'deliver') {
       const P = pups.list[e.pup]; if (!P) return;
@@ -2666,14 +2786,17 @@
       else if (e.job === 'nourish' || e.job === 'protect' || e.job === 'spirit') { if (e.job === 'nourish') fx.splash(hp.x, hp.y, hp.z); floater([hp.x, hp.y + 9, hp.z], `+${IC[e.job]}`); }
       else floater([hp.x, hp.y + 9, hp.z], `+${Math.max(1, Math.round(e.amount))}${IC[e.job]}`);
     } else if (e.type === 'level') levelUp(e.level);
+    else if (e.type === 'ring') ringReached(e.n);   // update 3: Elder rings
     else if (e.type === 'built') {
       const q = nav.plotBy[e.pid]; if (!q) return;
       toast(`${IC[B_ICON[e.kind]]} Freshly built: <b>${bName(e.kind, q)}</b> &middot; ${gives(e.kind, q)}`, 4200, () => openPlot(e.pid, true));
+    } else if (e.type === 'upgrade' && e.auto && Pacing.UP[e.id]) {   // pacing pass: "let the pups plan" put a surplus into an upgrade
+      toast(`${IC[Pacing.UP[e.id].ic] || IC.build} The pups put the spare pile into the <b>${Pacing.UP[e.id].name}</b> (level ${e.n}) &middot; ${Pacing.UP[e.id].txt(e.n)}`, 5200, () => openCraft('up'));
     } else if (e.type === 'exp-go') {
-      const tr = S.exp.trips.find(x => x.id === e.trip); if (tr) { toast(`${IC.board} Lift-off! The skyboat sails for <b>${Exped.DEST[tr.dest].name}</b>`, 3000); startBoatCam(tr.id); }
+      const tr = S.exp.trips.find(x => x.id === e.trip); if (tr) { const dv = Exped.DEST[tr.dest].voy; toast(dv ? `${IC.board} ${esc(dv.go)} Home in ${dv.h} hours.` : `${IC.board} Lift-off! The skyboat sails for <b>${Exped.DEST[tr.dest].name}</b>`, dv ? 5200 : 3000); startBoatCam(tr.id); }
     } else if (e.type === 'exp-back') {
       const h = e.haul; syncPups(); refreshExpBtn();
-      toast(`${IC.board} The skyboat drifts home from <b>${Exped.DEST[h.dest].name}</b> with a sack of treasures! <u>Open it</u>`, 15000, () => { const k = S.exp.hauls.findIndex(y => y.id === h.id); if (k >= 0) openHaul(k); });
+      toast(h.voy ? `${IC.star} The voyage is home from <b>${Exped.DEST[h.dest].name}</b>, the sack glowing with starlight! <u>Open it</u>` : `${IC.board} The skyboat drifts home from <b>${Exped.DEST[h.dest].name}</b> with a sack of treasures! <u>Open it</u>`, 15000, () => { const k = S.exp.hauls.findIndex(y => y.id === h.id); if (k >= 0) openHaul(k); });
     } else if (e.type === 'arrive') {
       syncPups(); const p = S.pups[e.pup];
       if (e.puppy && p.parents) toast(`${IC.friends} Puppy! <b>${esc(S.pups[p.parents[0]].name)}</b> and <b>${esc(S.pups[p.parents[1]].name)}</b> welcome little <b>${esc(p.name)}</b>! <u>Say hi</u>`, 14000, () => { focusPup(e.pup); showAway(null); });
@@ -2793,9 +2916,10 @@
     fx.tick(Sim.scaleOf(S), TreeFx.growthOf(S), dt);   // tree growth: eases inside a level, a growth moment on level-up (tree_fx.js)
     hs += (S.health - hs) * Math.min(1, dt * 1.5); hl += (S.needs.light - hl) * Math.min(1, dt * 1.5);
     fx.night = dn.state.night; fx.update(t, dt, hs, hl, renderer);
+    if (ringFx) ringFx.update(t, dt, Rings.got(S), dn.state.night);
     const sick = Math.max(0, Math.min(1, (60 - hs) / 50));
     // the island clock: follows the sim (so ?speed shows days passing); on the real clock (speed 1, no ?time) it is
-    // re-anchored when it drifts > 2 min (DST, time-zone trip, a sleep longer than the 8 h catch-up cap)
+    // re-anchored when it drifts > 2 min (DST, time-zone trip, a sleep longer than the 12 h catch-up cap)
     clockAcc += real;
     if (clockAcc > 10) {
       clockAcc = 0;

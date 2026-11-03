@@ -15,6 +15,17 @@
     'cloud-cape': { name: 'Cloud cape', slot: 'back', from: 'trip', look: { kind: 'cloud', col: 0xf4f7ff, col2: 0xb9d4ff } },
     'feather-cap': { name: 'Feather cap', slot: 'head', from: 'trip', look: { kind: 'beret', col: 0x4a7fd6, col2: 0xff6f91 } },
     'sky-goggles': { name: 'Sky goggles', slot: 'face', from: 'trip', look: { kind: 'goggles', col: 0xb8743a, col2: 0x9fe8ff } },
+    // update 3: far-sky voyage finds (src/voyages.js) + Elder ring gifts (src/rings.js): the same recipes in their own colours
+    'aurora-scarf': { name: 'Aurora scarf', slot: 'neck', from: 'voyage', look: { kind: 'scarf', col: 0x3fbfa8, col2: 0xd99bff, glow: true } },
+    'keeper-cape': { name: "Lighthouse keeper's cape", slot: 'back', from: 'voyage', look: { kind: 'cape', col: 0xc8423a, col2: 0xfff2c4, glow: true } },
+    'cloudwool-cape': { name: 'Cloudwool cape', slot: 'back', from: 'voyage', look: { kind: 'cloud', col: 0xe9ddff, col2: 0xa98be0 } },
+    'sister-hood': { name: 'Sister-leaf hood', slot: 'head', from: 'voyage', look: { kind: 'leaves', col: 0xc9d6c2, col2: 0x9ff0c8, glow: true } },
+    'star-sailor-hat': { name: 'Star-sailor hat', slot: 'head', from: 'voyage', look: { kind: 'beret', col: 0x26306a, col2: 0xffd84a } },
+    'edgelight-collar': { name: 'Edge-light collar', slot: 'neck', from: 'voyage', look: { kind: 'stars', col: 0xbfe9ff, col2: 0x24305e, glow: true } },
+    'bark-bandana': { name: 'Bark bandana', slot: 'neck', from: 'ring', look: { kind: 'bandana', col: 0x7a5232, col2: 0x8fd16a } },
+    'ringlight-cap': { name: 'Ring-light cap', slot: 'head', from: 'ring', look: { kind: 'acorn', col: 0xd9a441, col2: 0xfff0a8, glow: true } },
+    'blossom-hood': { name: 'Blossom hood', slot: 'head', from: 'ring', look: { kind: 'leaves', col: 0xffb3d1, col2: 0xfff4f8 } },
+    'elder-cape': { name: 'Elder leaf cape', slot: 'back', from: 'ring', look: { kind: 'cape', col: 0x2f6b3c, col2: 0xffd86a, glow: true } },
   };
   const IDS = Object.keys(DEFS);
   const FROM = { gift: 'a gift-basket outfit', trip: 'a rare skyboat find', voyage: 'a far-sky voyage find', ring: 'an Elder ring gift' };
