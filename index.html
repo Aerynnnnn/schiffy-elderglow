@@ -911,7 +911,16 @@ body .dot { box-shadow: 0 0 6px rgba(255, 210, 140, .5); }
   #ecBody .est.voyest { flex-wrap: wrap; } #ecBody .est.voyest .cost { font-weight: 600; font-size: 12px; padding: 1px 6px; } #ecBody .est.voyest .cost svg.ic { width: 14px; height: 14px; }
   #ecBody .qi.voyq .bar i { background: linear-gradient(90deg, #ffd36a, #9fe8ff); }
   #haul .trip.voyw { display: block; font-style: italic; line-height: 1.35; margin-top: 4px; } #haul .trip.voyw b { font-style: normal; }
-  #away li.ringli { border-color: #ffd36a; }</style>
+  #away li.ringli { border-color: #ffd36a; }
+/* help build (2026-11-06): "Help build this" in the plot card (+ its preview, the crew line), the roster's "helping" chip */
+  #pcBody .helpb { background: var(--u-tile); border: 2px solid var(--u-tile-line); border-radius: 12px; padding: 7px 9px; margin: 6px 0 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #pcBody .helpb > button { flex: 1 1 auto; min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  #pcBody .helpb p { margin: 0; flex: 1 1 100%; font-size: 13px; line-height: 1.35; color: var(--u-t); display: flex; gap: 6px; align-items: flex-start; } #pcBody .helpb p svg.ic { flex: none; width: 18px; height: 18px; }
+  #pcBody .helpb .hbb { display: flex; gap: 8px; flex: 1 1 100%; } #pcBody .helpb .hbb button { flex: 1; min-height: 38px; }
+  #pcBody .helpb.on { border-color: var(--u-line); } #pcBody .helpb.on > span { flex: 1 1 100%; font-size: 12.5px; color: var(--u-t); display: flex; gap: 5px; align-items: flex-start; } #pcBody .helpb.on > span svg.ic { flex: none; width: 16px; height: 16px; }
+  #pcBody .helpb button:disabled { opacity: 1; color: var(--u-t2); cursor: default; box-shadow: none; font-size: 12.5px; }
+  .pup .hlp { display: inline-flex; align-items: center; gap: 2px; font-size: 10.5px; color: var(--u-h); background: var(--u-chip); border-radius: 7px; padding: 0 5px; margin-left: 3px; white-space: nowrap; } .pup .hlp svg.ic { width: 12px; height: 12px; } .pup .hlp[hidden] { display: none; }
+  body.phone #pcBody .helpb > button, body.phone #pcBody .helpb .hbb button { min-height: 44px; }</style>
 </head>
 <body>
 <div id="app">
@@ -991,7 +1000,7 @@ body .dot { box-shadow: 0 0 6px rgba(255, 210, 140, .5); }
 // ?debug=1 = Lane A's map debug view (role filter, cameras, stats); otherwise the game.
 (function () {
   const debug = new URLSearchParams(location.search).get('debug') === '1';
-  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/pacing.js', 'src/rings.js', 'src/traits.js', 'src/seasons.js', 'src/weather.js', 'src/growth.js', 'src/expedition.js', 'src/voyages.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/ring_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/weather_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
+  const files = debug ? ['src/debug_view.js'] : ['src/nav.js', 'src/sim.js', 'src/pacing.js', 'src/rings.js', 'src/help.js', 'src/traits.js', 'src/seasons.js', 'src/weather.js', 'src/growth.js', 'src/expedition.js', 'src/voyages.js', 'src/decor.js', 'src/catalog.js', 'src/land.js', 'src/homes.js', 'src/tour.js', 'src/needs.js', 'src/events.js', 'src/daily.js', 'src/wardrobe.js', 'src/social.js', 'src/story.js', 'src/critters.js', 'src/lanterns.js', 'src/cloud.js', 'src/net_config.js', 'src/net.js','src/pups.js', 'src/tree_fx.js', 'src/ring_fx.js', 'src/plots.js', 'src/expedition_fx.js', 'src/needs_fx.js', 'src/daynight.js', 'src/season_fx.js', 'src/world_fx.js', 'src/land_fx.js', 'src/pup_life.js', 'src/steer.js', 'src/critter_fx.js', 'src/lantern_fx.js', 'src/walker.js', 'src/social_ui.js', 'src/cloud_ui.js', 'src/lantern_ui.js', 'src/audio.js', 'src/light_fx.js', 'src/weather_fx.js', 'src/foley.js', 'src/cam_drift.js', 'src/tree_voice.js', 'src/calm.js', 'src/game.js'];
   if (debug) { document.getElementById('app').remove(); }
   const next = () => { const f = files.shift(); if (!f) return; const s = document.createElement('script'); s.src = f; s.onload = next; s.onerror = () => { const e = document.getElementById('err'); e.style.display = 'block'; e.textContent = 'Could not load ' + f; }; document.body.appendChild(s); };
   next();

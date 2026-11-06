@@ -145,7 +145,7 @@
     if (nav.setLand) nav.setLand(null, '');   // (nor another island's land)
     if (nav.setHomes) nav.setHomes([], '');   // (nor another island's turned / free homes)
     const s = {
-      v: 15, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
+      v: 16, time: 0, clock0: C.CLOCK0, ep0: null, book: { read: 0, sea: -1 }, level: 1, xp: 0, sap: 0, health: 0,
       daily: { claims: 0, last: -1, maxDay: -1, streak: 0, mkey: -1, mN: 0 }, inv: { seeds: 0, decor: [], outfits: [], lumen: false, craft: {} }, invite: null,
       needs: { water: 80, light: 80, nourish: 80, protect: 80, spirit: 80 },
       res: Object.assign({}, C.START_RES),
@@ -432,6 +432,7 @@
         finish(s, i, nav, ev);
       }
     }
+    if (window.Help) window.Help.tick(s, dt, nav, ev);   // "Help build this": a crew goes back to its old jobs once the building is paid (src/help.js)
     window.Exped.tick(s, dt, nav, ev);   // expeditions: depart when the team is aboard, land + haul when due
     N.tick(s, dt, nav, ev);              // wake-ups, blight, sprouts, friendships (src/needs.js)
     window.Events.tick(s, dt, nav, ev);  // small events (src/events.js)
@@ -504,7 +505,7 @@
       // Round 2 step 4: World Bloom petals the island's care earned while away (sent when the game is online)
       petals: s.lan ? s.lan.bl.pend - b.pend : 0,
       // update 3: Elder rings reached while away + the ring progress before / after (null below Elder)
-      rings: ev.filter(e => e.type === 'ring').map(e => e.n), elderFrom: el0, elderTo: window.Rings && s.level >= 8 ? window.Rings.progress(s) : null };
+      rings: ev.filter(e => e.type === 'ring').map(e => e.n), helped: ev.filter(e => e.type === 'help-back'), elderFrom: el0, elderTo: window.Rings && s.level >= 8 ? window.Rings.progress(s) : null };
   }
 
   // where a pup is for the renderer (extra = seconds since the last tick, for smooth motion)
@@ -533,7 +534,7 @@
   const isLoc = l => l && isP(l.p) && Number.isInteger(l.n) && l.n >= 0;
   const LIKES = JOBS.concat(['nourish', 'protect', 'spirit']);
   function sanitize(o, nav) {
-    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(o.v) || !Array.isArray(o.pups)) return null;
+    if (!o || typeof o !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(o.v) || !Array.isArray(o.pups)) return null;
     const v1 = o.v === 1;
     const s = create(nav);
     s.time = fin(o.time, 0, 0, 1e12); s.clock0 = fin(o.clock0, C.CLOCK0, 0, 86400);
@@ -645,6 +646,8 @@
     if (window.Pacing) window.Pacing.sanitize(s, o.v >= 14 ? o : {});
     // v15 (update 3): Elder rings celebrated + voyage isles sailed (only from Elder on); an older Elder island earns its rings on the next step
     if (window.Rings) window.Rings.sanitize(s, o.v >= 15 ? o : {});
+    // v16 (help build): a crew out helping (the field exists only while one is out); older saves: none
+    if (window.Help) window.Help.sanitize(s, o.v >= 16 ? o : {});
     s.health = healthOf(s); return s;
   }
 

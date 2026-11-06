@@ -464,6 +464,51 @@
     for (const pid of S.queue) { const e = S.plots[pid], q = nav.plotBy[pid]; if (e && !e.done && q) return { pid, e, q, miss: missing(Sim.costOf(e.type, q)) }; }
     return null;
   }
+  // ---- help build (src/help.js): one tap moves a few pups onto what a plan is short of until it is paid; the sim sends them back
+  let helpAsk = null;   // the plot whose "Help build this" preview is open in the plot card
+  const HELP_GO = { wood: ['goes to cut wood', 'go cut wood'], stone: ['goes to the quarry', 'go to the quarry'], food: ['goes berry picking', 'go berry picking'] };
+  const andList = a => a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  const aboutT = t => !isFinite(t) || t > 12 * 3600 ? 'it may take a while' : t < 5 * 60 ? 'a few minutes' : t < 90 * 60 ? `about ${Math.max(5, Math.round(t / 300) * 5)} min` : `about ${Math.round(t / 1800) / 2} h`;
+  const byJob = crew => { const g = {}; for (const [i, , k] of crew) (g[k] = g[k] || []).push(i); return g; };
+  const helpPlotN = (pid, kind) => { const q = nav.plotBy[pid], e = S.plots[pid], k = kind || (e && e.type); return q && k && Sim.C.B[k] ? bName(k, q) : null; };
+  function helpPreview(p) {
+    const g = byJob(p.crew), parts = Object.keys(g).map(k => `${andList(g[k].map(i => `<b>${esc(S.pups[i].name)}</b>`))} ${HELP_GO[k][g[k].length > 1 ? 1 : 0]}`);
+    return `${parts.join(', ')}, until the <b>${helpPlotN(p.pid) || 'plan'}</b> is paid &middot; ${aboutT(p.t)}`;
+  }
+  const helpLine = h => { const g = byJob(h.crew); return 'Helping: ' + Object.keys(g).map(k => `${g[k].map(i => esc(S.pups[i].name)).join(', ')} (${RES_N[k]})`).join(', ') + ' &middot; back when it\'s paid'; };
+  // the words when a crew goes back (toast + away card); null = nobody to name
+  function helpBackTxt(r) {
+    const names = r.pups.map(i => `<b>${pupN(i)}</b>`), later = r.later.map(i => `<b>${pupN(i)}</b>`), nm = helpPlotN(r.pid, r.kind);
+    if (!names.length && !later.length) return null;
+    const went = names.length ? `${andList(names)} went back to ${names.length > 1 ? 'their jobs' : 'their job'}` : '';
+    const lat = later.length ? `${andList(later)} ${later.length > 1 ? 'go' : 'goes'} back once the skyboat lands` : '';
+    const what = went && lat ? `${went}; ${lat}` : went || lat;
+    if (r.why === 'paid' || r.why === 'built') return `The <b>${nm || 'plan'}</b> is paid for: ${what}`;
+    if (r.why === 'gone') return `The plans were rolled up: ${what}`;
+    if (r.why === 'ready') return `Everything for the <b>${nm || 'plan'}</b> is here: ${what}`;
+    if (r.why === 'part') return `Their part of the <b>${nm || 'plan'}</b> is in: ${what}`;
+    if (r.why === 'time') return `After a long shift: ${what} (the <b>${nm || 'plan'}</b> still waits)`;
+    return what.charAt(0).toUpperCase() + what.slice(1);
+  }
+  function helpHtml() {
+    if (VISIT || !window.Help || curPlot === null) return '';
+    const p = Help.plan(S, nav, curPlot);
+    if (p.why === 'on') return `<div class="helpb on"><span>${IC.build}${helpLine(S.help)}</span><button class="ghost sm" data-act="helpback">Send them back now</button></div>`;
+    if (p.why === 'other') return `<p class="sub small">${IC.build} Some pups are already helping with the ${helpPlotN(S.help.pid) || 'other plans'}.</p>`;
+    if (!p.ok) return p.why === 'busy' ? `<div class="helpb"><button class="ghost" disabled>${IC.heart} Everyone's busy keeping the tree well</button></div>` : '';
+    if (helpAsk === curPlot) return `<div class="helpb ask"><p>${IC.build}<span>${helpPreview(p)}</span></p><div class="hbb"><button class="go" data-act="helpgo">Send them</button><button class="ghost" data-act="helpno">Cancel</button></div></div>`;
+    return `<div class="helpb"><button class="go" data-act="help">${IC.build} Help build this</button></div>`;
+  }
+  const helpSig = () => `${helpAsk}|${S.help ? S.help.pid + ':' + S.help.crew.join(';') : ''}|${S.pups.map(p => p.job + (p.exp ? 'x' : '')).join()}|${Object.values(S.needs).map(v => v >= 80 ? 1 : 0).join('')}`;
+  function helpGo() {
+    const pid = curPlot, p = Help.start(S, nav, pid); helpAsk = null;
+    if (!p.ok) { if (p.why === 'busy') toast(`${IC.heart} Everyone's busy keeping the tree well`, 2600); return; }
+    jobTouched = true; for (const c of p.crew) idleT[c[0]] = 0; snd.sfx('assign'); hintDone();
+    toast(`${IC.build} ${andList(p.crew.map(c => `<b>${pupN(c[0])}</b>`))} ${p.crew.length > 1 ? 'are' : 'is'} off to help &middot; back when it's paid`, 2600);
+    const i = p.crew[0][0]; if (life && traitOf(i)) life.say(i, Traits.chat(traitOf(i), 'job', (S.time | 0) + i * 7, { j: Traits.JOBW[p.crew[0][2]] }), 4);
+    save(); refreshRoster(true);
+  }
+  function helpBack() { const r = Help.stopNow(S, nav, null); if (r) { const t = helpBackTxt(r); if (t) toast(`${IC.build} ${t}`, 3600); snd.sfx('assign'); save(); refreshRoster(true); } }
   const costHtml = cost => Object.keys(cost).map(k => `<span class="cost${have(k) + 1e-9 < cost[k] ? ' short' : ''}">${IC[k]}${cost[k]}</span>`).join('');
   const plotName = q => q.faction ? q.faction.name : q.free ? 'A spot of your own' : `Plot ${q.i + 1}`;
 
@@ -538,6 +583,10 @@
           toast(`${IC[B_ICON[b.dataset.type]]} Plans drawn: ${bName(b.dataset.type, q)}${builders ? '' : ' &middot; a pup needs the Builder job'}`, 3000); save();
         }
       } else if (b.dataset.act === 'exp') { closePlot(); openExp(); return; }
+      else if (b.dataset.act === 'help') { helpAsk = curPlot; snd.sfx('pop'); }   // help build: the preview first
+      else if (b.dataset.act === 'helpno') helpAsk = null;
+      else if (b.dataset.act === 'helpgo') helpGo();
+      else if (b.dataset.act === 'helpback') helpBack();
       else if (b.dataset.act === 'cancel') { const fr = q && q.free; if (Sim.cancel(S, curPlot, nav)) { toast('Plans rolled up, materials back in the pile', 2400); save(); if (fr) { closePlot(); refreshBuild(true); return; } } }
       else if (['col', 'roof', 'turn', 'hmove', 'hdown'].includes(b.dataset.act)) { homeAct(b.dataset.act, b); if (curPlot === null) { refreshBuild(true); return; } }
       renderPlot(true); refreshBuild(true);
@@ -595,7 +644,7 @@
     lv: ['Explorer level', (a, b) => (S.pups[b].xpE || 0) - (S.pups[a].xpE || 0) || byName(a, b)], mood: ['Happiest first', (a, b) => S.pups[b].morale - S.pups[a].morale || byName(a, b)] };
   let rosterSort = (() => { try { const v = JSON.parse(localStorage.getItem(ROSTER_KEY) || '{}').sort; return ROSTER_SORTS[v] ? v : 'arr'; } catch (e) { return 'arr'; } })();
   function refreshRoster(force) {
-    const sig = S.pups.map(p => p.job + p.phase + p.task + Math.round(p.morale) + p.name + (p.isNew ? 'n' : '') + (p.xpE || 0) + (p.exp ? Math.floor(S.time / 60) : '')).join('|') + pups.selected + rosterFilter + rosterSort + rosterQ + Needs.NEW.map(jobOpen).join() + Math.floor(S.time / 120);
+    const sig = S.pups.map(p => p.job + p.phase + p.task + Math.round(p.morale) + p.name + (p.isNew ? 'n' : '') + (p.xpE || 0) + (p.exp ? Math.floor(S.time / 60) : '')).join('|') + pups.selected + rosterFilter + rosterSort + rosterQ + Needs.NEW.map(jobOpen).join() + Math.floor(S.time / 120) + (S.help ? 'h' + S.help.crew.join(';') : '');
     if (!force && sig === rosterSig) return; rosterSig = sig;
     // filter chips with counts
     const cnt = { all: S.pups.length }; for (const j of Sim.JOBS) cnt[j] = 0; for (const p of S.pups) cnt[p.job]++;
@@ -606,7 +655,7 @@
     const ro = $('roster');
     if (rs !== rowsSig) {
       rowsSig = rs;
-      ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span>${traitChip(i, true)}<span class="new">new</span><span class="xpc" title="Explorer level (skyboat trips)"></span><span class="mor" title="happiness">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
+      ro.innerHTML = S.pups.map((p, i) => `<div class="pup" data-i="${i}"><div class="nm"><span class="dot" style="background:${p.collar}"></span><span class="pn">${esc(p.name)}</span>${traitChip(i, true)}<span class="hlp" hidden title="Helping with a building: back to the old job once it is paid">${IC.build}helping</span><span class="new">new</span><span class="xpc" title="Explorer level (skyboat trips)"></span><span class="mor" title="happiness">${IC.heart}<b>70</b></span><span class="frc" title=""></span><span class="st">-</span></div><div class="jobs">${jobBtns(p)}</div><div class="frl"></div></div>`).join('');
     }
     { const tools = $('rosterTools'); if (tools) tools.hidden = S.pups.length < 8 && !rosterQ && rosterSort === 'arr'; }
     const cmp = ROSTER_SORTS[rosterSort] && ROSTER_SORTS[rosterSort][1], ord = new Map();
@@ -625,6 +674,7 @@
       row.querySelector('.st').textContent = statusOf(p);
       const xc = row.querySelector('.xpc'), xl = expLv(p); xc.textContent = p.xpE > 0 ? 'Explorer ' + xl : ''; xc.hidden = !(p.xpE > 0);
       row.classList.toggle('trip', !!p.exp);
+      { const hc = row.querySelector('.hlp'), hj = window.Help ? Help.crewOf(S, i) : null; if (hc) hc.hidden = !hj; }   // help build: a helper's row says so
     });
     document.querySelectorAll('#labels .lbl').forEach(l => { const i = +l.dataset.i, p = S.pups[i]; if (!p) return; l.classList.toggle('sel', pups.selected === i); l.style.borderColor = p.collar; l.querySelector('.ji').innerHTML = p.exp ? IC.board : IC[p.job]; l.querySelector('.nmx').textContent = p.name; });
   }
@@ -1235,7 +1285,11 @@
     if (idle >= 0) {
       const p = S.pups[idle], nm = esc(p.name), pl = S.queue.length ? planNow() : null, w = pl ? pl.miss.find(x => !FETCH[x.k]) : null;
       if (!pl) return { k: 'idle-plan', ic: 'build', t: `${nm} has nothing to build`, a: [['Plan a home', () => goBuild('home')], S.decide ? null : ['Let the pups plan', () => { $('decide').checked = true; $('decide').onchange({ target: $('decide') }); }], ['New job', () => focusPup(idle)]].filter(Boolean) };
-      if (w) return { k: 'idle-' + w.k, ic: w.k, t: `${nm} waits for ${w.n} ${RES_N[w.k]} (${RES_FROM[w.k]})`, a: [w.k === 'crystal' && Needs.firstBuilt(S, 'board') !== null ? ['Skyboats', () => openExp()] : ['See the plan', () => openPlot(pl.pid, true)], ['New job', () => focusPup(idle)]] };
+      // help build: a few pups can bring what it waits for (a crew already out for it = no nagging)
+      const hp = w && window.Help ? Help.plan(S, nav, pl.pid) : null;
+      if (w && hp && hp.why === 'on') { /* the helpers are on it */ }
+      else if (w && hp && hp.ok) return { k: 'idle-' + w.k, ic: w.k, t: `${nm} waits for ${w.n} ${RES_N[w.k]} (${RES_FROM[w.k]})`, a: [['Help build this', () => { openPlot(pl.pid, true); helpAsk = pl.pid; renderPlot(true); }], ['New job', () => focusPup(idle)]] };
+      else if (w) return { k: 'idle-' + w.k, ic: w.k, t: `${nm} waits for ${w.n} ${RES_N[w.k]} (${RES_FROM[w.k]})`, a: [w.k === 'crystal' && Needs.firstBuilt(S, 'board') !== null ? ['Skyboats', () => openExp()] : ['See the plan', () => openPlot(pl.pid, true)], ['New job', () => focusPup(idle)]] };
     }
     // 3. the first home (when the first hint has gone)
     if (!anyHome && N) return { k: 'home1', ic: 'home', t: 'Plan your first home: a free bed brings a new pup', a: [['Plan it', () => goBuild('home')]] };
@@ -1281,7 +1335,7 @@
   let curPlot = null, plotSig = '';
   function openPlot(pid, fly) {
     if (expView) closeExp(); closeEvents(); closeNeed();
-    curPlot = pid; plots.sel = pid; plots.build = true; $('plotCard').hidden = false; renderPlot(true);   // vibe pass 1: build look (outlines + signs) while the menu is open
+    if (helpAsk !== pid) helpAsk = null; curPlot = pid; plots.sel = pid; plots.build = true; $('plotCard').hidden = false; renderPlot(true);   // vibe pass 1: build look (outlines + signs) while the menu is open
     const x = plots.byPid[pid]; if (!x) return;
     if (fly) {
       const tgt = new THREE.Vector3(x.c[0], x.gy + 3, x.c[1]);
@@ -1293,7 +1347,7 @@
       follow = -1; pups.select(-1); flyTo(eye, tgt, 1.1);
     }
   }
-  function closePlot() { curPlot = null; if (plots) { plots.sel = null; plots.build = false; } $('plotCard').hidden = true; }
+  function closePlot() { curPlot = null; helpAsk = null; if (plots) { plots.sel = null; plots.build = false; } $('plotCard').hidden = true; }
   function cyclePlot(d) {
     const list = plots.info.filter(x => x.show && (x.marker || x.st === 'build' || x.st === 'done'));
     if (!list.length) return; let k = list.findIndex(x => x.q.pid === curPlot); k = (k + d + list.length) % list.length; openPlot(list[k].q.pid, true);
@@ -1301,7 +1355,7 @@
   function renderPlot(force) {
     if (curPlot === null) return;
     const q = nav.plotBy[curPlot], e = S.plots[curPlot]; if (!q) return;
-    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid + (e.rot || 0) + (e.col || 0) + (e.piece || '') + q.piece + q.ry : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + '|' + Math.floor(S.res.crystal || 0) + '|' + Math.floor(S.res.food) + S.pups.filter(p => p.job === 'build').length;
+    const sig = curPlot + (e ? e.type + Math.floor(e.prog / 20) + e.done + e.paid + (e.rot || 0) + (e.col || 0) + (e.piece || '') + q.piece + q.ry : '-') + S.level + Math.floor(S.res.wood) + Math.floor(S.res.stone) + Math.floor(S.sap) + '|' + Math.floor(S.res.crystal || 0) + '|' + Math.floor(S.res.food) + S.pups.filter(p => p.job === 'build').length + helpSig();
     if (!force && sig === plotSig) return; plotSig = sig;
     const builders = Math.max(1, S.pups.filter(p => p.job === 'build').length), nb = S.pups.filter(p => p.job === 'build').length;
     const fType = q.faction ? Object.keys(Sim.C.B).find(t => Sim.C.B[t].piece === q.piece) : null;   // step 5: the hall this plot holds
@@ -1326,7 +1380,7 @@
       const ms = e.paid ? [] : missing(Sim.costOf(e.type, q)), wait = ms.filter(x => !FETCH[x.k]);
       const stage = !e.paid ? (wait.length ? `Plans · waiting for ${wait.map(x => RES_N[x.k]).join(' + ')}` : ms.length ? (nb ? `Plans · builders fetching ${ms.map(x => RES_N[x.k]).join(' + ')}` : 'Plans · waiting for a builder') : nb ? 'Plans · starting soon' : 'Plans · waiting for a builder') : f < plots.SCAF ? 'Scaffolding' : f < 0.98 ? 'Framing' : 'Finishing touches';
       h = `<p>${IC[B_ICON[e.type]]} <b>${bName(e.type, q)}</b> &middot; ${gives(e.type, q)}</p><div class="bar big"><i style="width:${(f * 100).toFixed(1)}%"></i><span>${stage}${e.paid ? ' ' + Math.floor(f * 100) + '%' : ''}</span></div>
-        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} to go` : ms.length ? `Still needed:<br>${missTxt(ms, true)}` : nb ? 'Everything is here: the builders start soon.' : 'Everything is here. <b>No pup is a builder yet.</b>'}</p>` + homeTools(q, e) + `<button class="ghost" data-act="cancel">Roll up the plans${e.paid ? ' (refund)' : ''}</button>`;
+        <p class="sub">${e.paid ? `${on} builder${on === 1 ? '' : 's'} at work &middot; ~${fmtT((work - e.prog) / Math.max(1, on || builders))} to go` : ms.length ? `Still needed:<br>${missTxt(ms, true)}` : nb ? 'Everything is here: the builders start soon.' : 'Everything is here. <b>No pup is a builder yet.</b>'}</p>` + (e.paid ? '' : helpHtml()) + homeTools(q, e) + `<button class="ghost" data-act="cancel">Roll up the plans${e.paid ? ' (refund)' : ''}</button>`;
     }
     $('pcBody').innerHTML = h;
   }
@@ -2253,6 +2307,7 @@
     const live = sum ? (sum.critters || []).filter(v => Critters.BY[v.c] && S.crit.vis.some(x => x.id === v.id)) : [];
     const notable = sum && (sum.dream || sum.levels > 0 || (sum.built || []).length || (sum.exped || []).length || (sum.woke || []).length || live.length || (sum.resTo && sum.resTo.food <= 0));
     if (sum && sum.sec < AWAY_SHORT && !notable && !news.length && !sh) {   // a short absence: a tiny note (or nothing at all)
+      for (const r of sum.helped || []) { const tx = helpBackTxt(r); if (tx) toast(`${IC.build} ${tx}`, 4200); }   // help build
       if (sum.sec >= 180 && sum.buckets + sum.orbs > 0) toast(`${IC.tree} Welcome back! The pups kept the island humming while you were gone.`, 3200);
       return;
     }
@@ -2269,6 +2324,7 @@
       // new buildings: one line
       const bl = (sum.built || []).map(b => { const q = nav.plotBy[b.pid]; return q ? { b, q } : null; }).filter(Boolean);
       if (bl.length) h += `<li class="good">${IC[B_ICON[bl[0].b.kind]]}<div>Newly built: ${bl.map(x => `<b>${bName(x.b.kind, x.q)}</b>`).join(', ')}</div></li>`;
+      for (const r of sum.helped || []) { const tx = helpBackTxt(r); if (tx) h += `<li class="good">${IC.build}<div>${tx}</div></li>`; }   // help build: a crew went back while you were away
       // expeditions that landed while away (the haul is in; the reveal card opens from here or the trip board)
       for (const x of sum.exped || []) {
         const k = S.exp.hauls.findIndex(y => y.id === x.id);
@@ -2790,6 +2846,8 @@
     else if (e.type === 'built') {
       const q = nav.plotBy[e.pid]; if (!q) return;
       toast(`${IC[B_ICON[e.kind]]} Freshly built: <b>${bName(e.kind, q)}</b> &middot; ${gives(e.kind, q)}`, 4200, () => openPlot(e.pid, true));
+    } else if (e.type === 'help-back') {   // help build: the crew went back to its jobs
+      const tx = helpBackTxt(e); if (tx) toast(`${IC.build} ${tx}`, 5200, nav.plotBy[e.pid] && S.plots[e.pid] ? () => openPlot(e.pid, true) : null); refreshRoster(true); if (curPlot === e.pid) renderPlot(true);
     } else if (e.type === 'upgrade' && e.auto && Pacing.UP[e.id]) {   // pacing pass: "let the pups plan" put a surplus into an upgrade
       toast(`${IC[Pacing.UP[e.id].ic] || IC.build} The pups put the spare pile into the <b>${Pacing.UP[e.id].name}</b> (level ${e.n}) &middot; ${Pacing.UP[e.id].txt(e.n)}`, 5200, () => openCraft('up'));
     } else if (e.type === 'exp-go') {
