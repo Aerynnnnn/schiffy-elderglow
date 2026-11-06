@@ -35,7 +35,9 @@
             const m = n.material, src = Array.isArray(m) ? m[0] : m;
             n.material = new THREE.MeshToonMaterial({ color: src.color ? src.color.clone() : 0xffffff, map: src.map || null, transparent: !!src.transparent, alphaTest: src.alphaTest || 0, side: src.side, skinning: !!n.isSkinnedMesh });
             n.castShadow = !src.transparent; n.frustumCulled = false;
+            if (src.name === 'facedecals') face.mat = n.material;
           });
+          if (face.mat && window.ElderFaces) window.ElderFaces.onReady(makeFaces);
           model.updateMatrixWorld(true);
           const top = model.getObjectByName('HeadEnd_M'), h = top ? top.getWorldPosition(new V3()).y : 1.4;
           model.scale.setScalar(H / Math.max(0.2, h));
@@ -47,6 +49,22 @@
           ready = true; res(true);
         }, undefined, e => { console.warn('Schiffy model', e); res(false); });
       });
+    }
+    // ---- her faces (src/faces.js, the user's sheet, 2026-11-07): each sheet tile is her `facedecals` texture at half size, so a face
+    // = that material's map. Open (blinks + glances) while walking / standing, content (eyes shut) after 20 s standing still, joy at a
+    // tour stop and for a moment after watering / a gift / a like / a star (game.js calls mood), oops when she walks into something.
+    const face = { mat: null, tex: null, k: -1, mood: null, until: 0, still: 0, t: 0 };
+    function makeFaces(Fc) {
+      const o = face.mat.map;
+      face.tex = [0, 1, 2, 3, 4, 5].map(k => { const t = new THREE.CanvasTexture(Fc.tile(k, 512)); if (o) { t.flipY = o.flipY; t.encoding = o.encoding; t.wrapS = o.wrapS; t.wrapT = o.wrapT; } t.anisotropy = 4; return t; });
+    }
+    function mood(k, sec) { face.mood = k; face.until = face.t + (sec || 1.5); }
+    function faceTick(dt) {
+      face.t += dt; if (!face.tex) return;
+      face.still = st.moving > 0.05 ? 0 : face.still + dt;
+      const m = face.t < face.until ? face.mood : (G && G.phase === 'read') ? 'joy' : face.still > 20 ? 'shut' : 'open';
+      const k = window.ElderFaces.pick(m, face.t, 0.77);
+      if (k !== face.k) { face.k = k; face.mat.map = face.tex[k]; }
     }
     const deck = (x, z) => (nav.deckY ? nav.deckY(x, z) : null);
     const gy = (x, z, fb, br) => { const d = deck(x, z); return d !== null ? d : ground(x, z, fb, br); };
@@ -130,7 +148,7 @@
         // (a door spawn, a prop that popped in on her) = any step that is free counts
         const ok = (x, z) => { const g = ground.raw(x, z); return g !== null && Math.abs(gy(x, z, st.y) - st.y) < 6 && (free(x, z) || !free(st.x, st.z)); };
         let nx = st.x + vx, nz = st.z + vz;
-        if (!ok(nx, nz)) { if (ok(st.x + vx, st.z)) nz = st.z; else if (ok(st.x, st.z + vz)) nx = st.x; else { nx = st.x; nz = st.z; } }
+        if (!ok(nx, nz)) { if (ok(st.x + vx, st.z)) nz = st.z; else if (ok(st.x, st.z + vz)) nx = st.x; else { nx = st.x; nz = st.z; if (face.t >= face.until) mood('oops', 0.9); } }
         if (nx !== st.x || nz !== st.z) { st.x = nx; st.z = nz; st.y = gy(nx, nz, st.y); }
       } else if (st.path) {
         sp = st.path.len > 80 ? RUN : SPEED; st.s = Math.min(st.path.len, st.s + sp * dt);
@@ -143,13 +161,14 @@
       holder.position.set(st.x, st.y, st.z); holder.rotation.y = st.yaw;
       if (mixer) { if (run) run.setEffectiveWeight(st.moving); if (idle) idle.setEffectiveWeight(1 - st.moving); if (run) run.timeScale = sp > SPEED ? 1.4 : 1; mixer.update(dt); }
       else stub.position.y = 2.2 + Math.abs(Math.sin(performance.now() / 120)) * 0.4 * st.moving;
+      faceTick(dt);
       if (ring.visible) ring.material.opacity = 0.55 + 0.3 * Math.sin(performance.now() / 180);
       // camera follows (orbit stays free)
       const tgt = new V3(st.x, st.y + 4, st.z), dv = tgt.sub(controls.target).multiplyScalar(Math.min(1, dt * 6));
       controls.target.add(dv); camera.position.add(dv);
     }
     return { holder, load, place, walkTo, pickGround, update, st, free, freeNear, get ready() { return ready; }, pos: () => [st.x, st.y, st.z],
-      tour, endTour, get guide() { return G; } };
+      tour, endTour, get guide() { return G; }, mood, face };
   }
   window.Walker = Walker;
 })();

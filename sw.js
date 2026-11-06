@@ -7,8 +7,8 @@
 //                    hash of those files, so a new map makes a new cache (and the old 20 MB goes).
 //   cdn-1:           three.js / loaders / meshopt / supabase-js from cdnjs + jsDelivr (pinned versions = immutable) - CACHE FIRST.
 // Never cached: Supabase API calls, anything not GET, other paths of the same origin (e.g. ?lib=../Schiffy Asset Library/).
-const VERSION = '20261106-102502';   // publish_pages.ps1 writes the publish time here
-const LIBV = '8cc67a140eb9';      // publish_pages.ps1 writes a hash of lib/ + art/ here
+const VERSION = '20261107-010759';   // publish_pages.ps1 writes the publish time here
+const LIBV = '9d4b225ec81a';      // publish_pages.ps1 writes a hash of lib/ + art/ here
 const SHELL = 'eg-shell-' + VERSION, LIB = 'eg-lib-' + LIBV, CDN = 'eg-cdn-1';
 const BASE = new URL('./', self.registration.scope).href;
 const LIB_FILES = ['lib/elderglow_layout.json', 'lib/elderglow_terrain.glb', 'lib/elderglow_tree.glb', 'lib/elderglow_village.glb', 'lib/elderglow_land.glb',

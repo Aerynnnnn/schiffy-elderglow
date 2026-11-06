@@ -2638,11 +2638,11 @@
       touch: () => { if (cloud) cloud.touch(); }, openSafe: v => { if (cloudUI) cloudUI.openSafe(v); }, cloudStatus: () => cloudUI ? cloudUI.statusHtml() : '',
       refresh: () => { refreshTree(); refreshBuild(true); },
       onVisitors: names => { if (!VISIT && S && Story.visit(S, names[0] || '')) save(); },   // Round 2 step 2: the tree notices a friend's visit
-      onWater: () => { snd.sfx('water'); S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
-      onGift: () => { snd.sfx('gift'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
-      onLike: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); },
+      onWater: () => { snd.sfx('water'); if (walker) walker.mood('joy', 1.8); S.needs.water = Math.min(100, S.needs.water + Social.C.W_HOST.water); const d = nav.door(fx.scale).p; fx.splash(d[0], d[1], d[2]); floater([d[0], d[1] + 12, d[2]], `+${IC.water}`); hs = S.health = Sim.healthOf(S); },
+      onGift: () => { snd.sfx('gift'); if (walker) walker.mood('joy', 1.8); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.gift); },
+      onLike: () => { snd.sfx('like'); if (walker) walker.mood('joy', 1.8); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], IC.heart); },
       // creative build piece 5: the beautiful star, the guided tour (home: mark stops; visit: take it)
-      onStar: () => { snd.sfx('like'); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], '&#11088;'); },
+      onStar: () => { snd.sfx('like'); if (walker) walker.mood('joy', 1.8); const p = walker ? walker.pos() : nav.door(fx.scale).p; floater([p[0], p[1] + 9, p[2]], '&#11088;'); },
       stopName, tourPick: (tgt, show) => startTourPick(tgt, show), startGuide: () => startGuide() });
     let ld;
     if (VISIT) {

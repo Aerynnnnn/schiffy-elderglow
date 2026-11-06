@@ -169,6 +169,49 @@
     return root;
   }
 
+  // ---- Schiffy's eyes from the user's face sheet (src/faces.js, 2026-11-07). One small patch per eye that hugs the head (each
+  // vertex ray-cast onto that breed's head mesh, in head-joint space), six geometries per eye (shared positions, own UVs into the
+  // eye atlas), so changing the face = swapping the geometry; one shared material for every pup = 2 draws a pup (the old
+  // sphere eyes + shines were 4). Brows, nose, mouth and blush stay the breed's own (they are in the GLB's vertex colours).
+  const EYE = { W: 0.24, X: 0.17, Y: 0.06, R: 0.45 }, FACE = { mat: null, geo: {} };
+  const eyeRay = new THREE.Raycaster(), eyeO = new THREE.Vector3(), eyeD = new THREE.Vector3(0, 0, -1);
+  function eyeGeos(head, s) {   // s 0 = the sheet's left eye (at -x: the pup faces +z, so +x is the viewer's right), 1 = right
+    const key = head.geometry.uuid + ':' + s; if (FACE.geo[key]) return FACE.geo[key];
+    const tmp = new THREE.Mesh(head.geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })); tmp.updateMatrixWorld(true);
+    const hit = (x, y) => { eyeO.set(x, y, 3); eyeRay.set(eyeO, eyeD); const h = eyeRay.intersectObject(tmp, false)[0]; return h ? h.point.z : null; };
+    const cx = (s ? 1 : -1) * EYE.X, cy = EYE.Y, h0 = hit(cx, cy), z0 = h0 === null ? 0.4 : h0;
+    const base = new THREE.PlaneGeometry(EYE.W, EYE.W, 6, 6), pos = base.attributes.position, uv0 = base.attributes.uv;
+    for (let k = 0; k < pos.count; k++) {
+      const dx = pos.getX(k), dy = pos.getY(k), round = z0 - (dx * dx + dy * dy) / (2 * EYE.R);   // a ball round the eye's centre
+      let z = hit(cx + dx, cy + dy); if (z === null || z > round + 0.02) z = round;                  // off the head / a snout in front
+      pos.setXYZ(k, cx + dx, cy + dy, z + 0.01);
+    }
+    const A = window.ElderFaces.eyes(), out = [];
+    for (let f = 0; f < 6; f++) {
+      const [u0, v0, u1, v1] = A.uv(f, s), uv = new Float32Array(uv0.count * 2);
+      for (let k = 0; k < uv0.count; k++) { uv[k * 2] = u0 + uv0.getX(k) * (u1 - u0); uv[k * 2 + 1] = v0 + uv0.getY(k) * (v1 - v0); }
+      const g = new THREE.BufferGeometry(); g.setIndex(base.index); g.setAttribute('position', pos); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g.computeBoundingSphere(); out.push(g);
+    }
+    return FACE.geo[key] = out;
+  }
+  function faceMat() {
+    if (FACE.mat || !window.ElderFaces || !window.ElderFaces.ready) return FACE.mat;
+    const tex = new THREE.CanvasTexture(window.ElderFaces.eyes().canvas); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4;
+    return FACE.mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, alphaTest: 0.02, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  }
+  if (window.ElderFaces) window.ElderFaces.load();
+  // this frame's face for a drawn pup: shut while napping / dozing, joy while dancing / cheering / hopping / waving from a skyboat /
+  // handing in a delivery, oops for a moment when something makes it look up (whale, lantern, critter), else open (blinks + glances)
+  function pupFace(P, pose, V, t) {
+    const look = !!(V && V.look); if (look && !P.lookOn) P.oopsT = t + 1.1; P.lookOn = look;
+    let mood = 'open';
+    if (P.zz.visible || pose.phase === 'nap') mood = 'shut';
+    else if (pose.dance || pose.phase === 'board' || (V && (V.cheer || V.hop > 0.3)) || ((pose.phase === 'drop' || pose.phase === 'pour' || pose.phase === 'feed') && pose.f > 0.25)) mood = 'joy';
+    else if (t < (P.oopsT || 0)) mood = 'oops';
+    return window.ElderFaces.pick(mood, t, P.t0 * 3.7 + 1);
+  }
+
   // defs = {id, breed (GLB root Pup_<breed>), collar}; pups can be added any time after load() (api.add / api.sync)
   function Pups(scene) {
     const list = [], src = {};
@@ -187,10 +230,13 @@
       // ink hulls on the big parts only (draw calls)
       const detail = [];   // ink + eye shines: hidden on far pups (api.lod)
       for (const k of ['body', 'head', 'earN', 'earP']) if (j[k]) j[k].traverse(o => { if (o.isMesh && !o.userData.ink) { const h = new THREE.Mesh(o.geometry, inkMat); h.userData.ink = 1; o.add(h); detail.push(h); } });
-      // eyes (Pawty's face front: eyes at +-.17, .05, .36 on the head joint)
+      // eyes (Pawty's face front: eyes at +-.17, .05, .36 on the head joint). Since 2026-11-07 Schiffy's eyes from the user's face
+      // sheet (src/faces.js) replace these spheres once the sheet has loaded; the spheres stay as the fallback (hidden then).
+      j._old = [];
       if (j.head) for (const s of [-1, 1]) {
         const e = new THREE.Mesh(G.eye, M.eye); e.scale.set(0.85, 1.25, 0.55); e.position.set(s * 0.17, 0.06, 0.4); j.head.add(e);
         const w = new THREE.Mesh(G.shine, M.shine); w.position.set(s * 0.17 + 0.025, 0.11, 0.44); j.head.add(w); detail.push(w);
+        j._old.push(e, w);
       }
       j._detail = detail;
       return j;
@@ -300,6 +346,14 @@
       P.model.position.y = bob - sit * 0.34 + (roll ? 0.45 : 0); P.model.rotation.z = roll;
       { const k = pose.small ? 0.62 : 1; if (P.k !== k) { P.k = k; h.scale.setScalar(S * k); } }   // puppies
       P.zz.visible = V && V.zz !== undefined ? !!V.zz : sit > 0 && (pose.phase === 'rest' || pose.phase === 'nap'); if (P.zz.visible) { const k = (t * 0.45 + P.t0) % 1; P.zz.position.set(0.35 + k * 0.3, 1.9 + k * 0.6, 0); P.zz.material.opacity = Math.sin(k * Math.PI); }
+      // face-sheet eyes (src/faces.js): made on the first frame after the sheet loaded; the old sphere eyes + shines go then
+      if (j.head && faceMat()) {
+        if (!P.eyes) {
+          P.eyes = [0, 1].map(s => { const m = new THREE.Mesh(eyeGeos(j.head, s)[0], FACE.mat); m.name = 'eye' + s; j.head.add(m); return m; });
+          for (const o of j._old) j.head.remove(o); j._detail = j._detail.filter(o => !j._old.includes(o)); j._old = []; P.face = 0;
+        }
+        const f = pupFace(P, pose, V, t); if (f !== P.face) { P.face = f; P.eyes[0].geometry = eyeGeos(j.head, 0)[f]; P.eyes[1].geometry = eyeGeos(j.head, 1)[f]; }
+      }
       P.disc.material.opacity = api.selected === i ? 0.85 : 0.5; P.disc.visible = !pose.air;
       h.position.set(x, P.y, z);
       // props
